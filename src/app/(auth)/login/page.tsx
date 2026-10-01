@@ -4,8 +4,7 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, HelpCircle } from "lucide-react";
-// 1. Import NextAuth's signIn function instead of your custom API
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,12 +28,10 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        // NextAuth caught an error from your Node.js backend
         setError("Invalid email or password. Please try again.");
       } else {
-        // 3. Success! The secure cookie is set. Send them to the dashboard.
         router.push("/dashboard");
-        router.refresh(); // Forces Next.js to update layouts with the new auth state
+        router.refresh();
       }
     } catch (err) {
       setError("An unexpected system error occurred.");
