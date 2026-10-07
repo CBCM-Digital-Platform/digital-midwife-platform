@@ -1,10 +1,13 @@
-import { MentorUser, MenteeUser, MentorSummaryStats } from "@/types/user";
+import { MentorUser, MenteeUser, MentorSummaryStats, MenteeSummaryStats } from "@/types/user";
 
 export const mockMentorStats: MentorSummaryStats = {
   totalMentors: 148,
   activeCount: 132,
-  inactiveCount: 16,
-  quarterTrend: "+8 this quarter",
+  pendingCount: 16,
+  inactiveCount: 0,
+  operationalPercentage: "89.2% operational",
+  pendingStage: "Stage 1 Pre-Check",
+  quarterTrend: "↑8% term",
   partnerFacilities: 12,
   teachingHospitals: 9,
   clinicsCount: 3,
@@ -14,6 +17,17 @@ export const mockMentorStats: MentorSummaryStats = {
   completionPercentage: 94.6,
   completionTrend: "↑1.4%",
   completionTarget: 92,
+};
+
+export const mockMenteeStats: MenteeSummaryStats = {
+  totalMentees: 142,
+  termTrend: "↑8% term",
+  activeInRotation: 118,
+  operationalPercentage: "83.1% operational",
+  pendingOrientation: 14,
+  pendingStage: "Stage 1 Pre-Check",
+  avgKnowledgeMastery: 84.2,
+  cohortTrend: "+2.4% vs cohort",
 };
 
 export const mockMentors: MentorUser[] = [
@@ -123,7 +137,7 @@ export const mockMentors: MentorUser[] = [
     thematicArea: "Infectious Diseases",
     yearsOfExperience: 13,
     assignedMenteesCount: 2,
-    status: "inactive",
+    status: "pending",
   },
   {
     id: "m-7",
@@ -304,4 +318,71 @@ export const mockMentees: MenteeUser[] = [
     scoreTier: "Tier 2",
     status: "pending_start",
   },
+  {
+    id: "mnt-8",
+    systemId: "MNT-2024-155",
+    name: "Aster Negash",
+    email: "aster.negash@tash.edu.et",
+    phone: "+251 92 888 9900",
+    role: "mentee",
+    avatarInitials: "AN",
+    avatarBgColor: "bg-indigo-100 text-indigo-700",
+    profession: "Pediatric ICU Trainee",
+    cadreLevel: "Post-Graduate Year 2",
+    facility: "Tikur Anbessa Specialized Hospital (TASH)",
+    thematicArea: "Pediatrics & Neo",
+    assignedMentor: {
+      name: "Dr. Dawit Hailemariam, MD",
+      title: "Senior Obstetrician-Gynecologist",
+      avatarInitials: "DH",
+      status: "assigned",
+    },
+    knowledgeScore: 91,
+    scoreTier: "Tier 1",
+    status: "active",
+  },
+  {
+    id: "mnt-9",
+    systemId: "MNT-2024-162",
+    name: "Dawit Tilahun",
+    email: "dawit.tilahun@sphmmc.edu.et",
+    phone: "+251 92 999 0011",
+    role: "mentee",
+    avatarInitials: "DT",
+    avatarBgColor: "bg-cyan-100 text-cyan-700",
+    profession: "Surgical Midwife Fellow",
+    cadreLevel: "EmONC Surgical Practicum",
+    facility: "St. Paul's Hospital Millennium Medical College (SPHMMC)",
+    thematicArea: "Emergency Care",
+    assignedMentor: {
+      status: "pending_review",
+    },
+    knowledgeScore: 65,
+    scoreTier: "Tier 2",
+    status: "pending_start",
+  },
+  {
+    id: "mnt-10",
+    systemId: "MNT-2024-178",
+    name: "Rahel Wolde",
+    email: "rahel.wolde@yekatit12.gov.et",
+    phone: "+251 92 000 1122",
+    role: "mentee",
+    avatarInitials: "RW",
+    avatarBgColor: "bg-emerald-100 text-emerald-700",
+    profession: "Midwife Practitioner",
+    cadreLevel: "Labor Resuscitation Fellow",
+    facility: "Yekatit 12 Hospital Medical College",
+    thematicArea: "Emergency Care",
+    assignedMentor: {
+      name: "Sister Gennet Assefa, MSc",
+      title: "EmONC Clinical Trainer",
+      avatarInitials: "GA",
+      status: "assigned",
+    },
+    knowledgeScore: 88,
+    scoreTier: "Tier 1",
+    status: "active",
+  },
 ];
+

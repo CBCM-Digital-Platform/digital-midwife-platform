@@ -5,51 +5,42 @@ import {
   Users,
   Activity,
   Clock,
-  CheckCircle2,
+  Award,
   UploadCloud,
-  ArrowUpRight,
 } from "lucide-react";
 import { UsersTable } from "@/components/User/UsersTable";
 import { AddUserDialog } from "@/components/User/AddUserDialog";
-import { mockMentors, mockMentorStats } from "@/lib/mock-users";
-import { ClinicalUser, MentorSummaryStats } from "@/types/user";
+import { mockMentees, mockMenteeStats } from "@/lib/mock-users";
+import { ClinicalUser, MenteeSummaryStats } from "@/types/user";
 
-const defaultMentorStats: MentorSummaryStats = {
-  totalMentors: 148,
-  activeCount: 132,
-  pendingCount: 16,
-  inactiveCount: 0,
-  operationalPercentage: "89.2% active",
-  pendingStage: "Pending Review",
-  quarterTrend: "↑8% this quarter",
-  partnerFacilities: 12,
-  teachingHospitals: 9,
-  clinicsCount: 3,
-  activeMentees: 412,
-  avgPerPreceptor: 2.8,
-  loadStatus: "Optimal Load",
-  completionPercentage: 94.6,
-  completionTrend: "↑1.4%",
-  completionTarget: 92,
+const defaultMenteeStats: MenteeSummaryStats = {
+  totalMentees: 142,
+  termTrend: "↑8% this term",
+  activeInRotation: 118,
+  operationalPercentage: "In clinical rotation",
+  pendingOrientation: 14,
+  pendingStage: "Awaiting Assignment",
+  avgKnowledgeMastery: 84.2,
+  cohortTrend: "+2.4% vs cohort",
 };
 
-export default function MentorsPage() {
-  const [mentorsList, setMentorsList] = useState<ClinicalUser[]>(() => mockMentors || []);
-  const [stats, setStats] = useState<MentorSummaryStats>(() => mockMentorStats || defaultMentorStats);
+export default function MenteesPage() {
+  const [menteesList, setMenteesList] = useState<ClinicalUser[]>(() => mockMentees || []);
+  const [stats, setStats] = useState<MenteeSummaryStats>(() => mockMenteeStats || defaultMenteeStats);
 
-  const currentStats = stats || defaultMentorStats;
+  const currentStats = stats || defaultMenteeStats;
 
-  const handleMentorCreated = (newUser: ClinicalUser) => {
-    // Prepend the newly created mentor to the active list
-    setMentorsList((prev) => [newUser, ...prev]);
+  const handleMenteeCreated = (newUser: ClinicalUser) => {
+    // Prepend newly created mentee to the list
+    setMenteesList((prev) => [newUser, ...prev]);
 
-    // Dynamically increment summary counters
+    // Dynamically update counter badges
     setStats((prev) => {
-      const base = prev || defaultMentorStats;
+      const base = prev || defaultMenteeStats;
       return {
         ...base,
-        totalMentors: base.totalMentors + 1,
-        activeCount: base.activeCount + 1,
+        totalMentees: base.totalMentees + 1,
+        pendingOrientation: base.pendingOrientation + 1,
       };
     });
   };
@@ -59,9 +50,9 @@ export default function MentorsPage() {
       {/* 1. PAGE TITLE & HEADER ACTIONS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mentor Management</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mentee Management</h1>
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-            Oversee clinical preceptors, departmental mentorship assignments, and training statuses across regional facilities.
+            Oversee clinical mentees, track progress, and manage facility assignments across regional facilities.
           </p>
         </div>
 
@@ -72,22 +63,22 @@ export default function MentorsPage() {
           </button>
 
           <AddUserDialog
-            role="mentor"
-            onUserCreated={handleMentorCreated}
+            role="mentee"
+            onUserCreated={handleMenteeCreated}
           />
         </div>
       </div>
 
       {/* 2. STAT SUMMARY CARDS (Clear, descriptive titles) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CARD 1: TOTAL MENTORS */}
+        {/* CARD 1: TOTAL MENTEES */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Mentors</p>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Mentees</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.totalMentors}</span>
-                <span className="text-xs font-bold text-emerald-600">{currentStats.quarterTrend}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{currentStats.totalMentees}</span>
+                <span className="text-xs font-bold text-emerald-600">{currentStats.termTrend}</span>
               </div>
             </div>
             <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
@@ -99,15 +90,15 @@ export default function MentorsPage() {
           </div>
         </div>
 
-        {/* CARD 2: ACTIVE MENTORS */}
+        {/* CARD 2: ACTIVE MENTEES */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Mentors</p>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Mentees</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.activeCount}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{currentStats.activeInRotation}</span>
                 <span className="text-xs font-semibold text-gray-500">
-                  {currentStats.operationalPercentage || "Currently mentoring"}
+                  {currentStats.operationalPercentage || "In clinical rotation"}
                 </span>
               </div>
             </div>
@@ -120,15 +111,15 @@ export default function MentorsPage() {
           </div>
         </div>
 
-        {/* CARD 3: PENDING MENTORS */}
+        {/* CARD 3: PENDING MENTEES */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Pending Mentors</p>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Pending Mentees</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.pendingCount || 16}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{currentStats.pendingOrientation}</span>
                 <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
-                  {currentStats.pendingStage || "Pending Review"}
+                  {currentStats.pendingStage || "Awaiting Assignment"}
                 </span>
               </div>
             </div>
@@ -141,43 +132,32 @@ export default function MentorsPage() {
           </div>
         </div>
 
-        {/* CARD 4: COMPLETION RATE */}
+        {/* CARD 4: AVERAGE SCORE */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Completion Rate</p>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Average Score</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.completionPercentage}%</span>
-                <span className="text-xs font-bold text-emerald-600 flex items-center">
-                  <ArrowUpRight className="h-3 w-3 inline" />
-                  {currentStats.completionTrend}
-                </span>
+                <span className="text-3xl font-extrabold text-gray-900">{currentStats.avgKnowledgeMastery}%</span>
+                <span className="text-xs font-bold text-emerald-600">{currentStats.cohortTrend}</span>
               </div>
             </div>
             <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-5 w-5" />
+              <Award className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
-            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-              <div
-                className="bg-[#194611] h-1.5 rounded-full transition-all duration-500"
-                style={{ width: `${currentStats.completionPercentage}%` }}
-              />
-            </div>
-            <div className="flex justify-end text-[11px] text-gray-500 font-medium">
-              <span>Target: {currentStats.completionTarget}%</span>
-            </div>
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="h-1 bg-purple-600 rounded-full w-24" />
           </div>
         </div>
       </div>
 
-      {/* 3. REUSABLE USERS TABLE (Role = "mentor") */}
+      {/* 3. REUSABLE USERS TABLE (Role = "mentee") */}
       <UsersTable
-        role="mentor"
-        data={mentorsList}
-        cohortLabel="Accredited Preceptor Registry • Cohort 2024-Q3"
-        totalCohortCount={currentStats.totalMentors}
+        role="mentee"
+        data={menteesList}
+        cohortLabel="Central Academic Registry Cohort 2024-Q3"
+        totalCohortCount={currentStats.totalMentees}
       />
     </div>
   );

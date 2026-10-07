@@ -1,7 +1,7 @@
 export type UserRole = "mentor" | "mentee" | "admin";
 
-export type MentorStatus = "active" | "inactive" | "on_leave";
-export type MenteeStatus = "active" | "pending_start" | "inactive";
+export type MentorStatus = "active" | "pending" | "inactive" | "on_leave";
+export type MenteeStatus = "active" | "pending" | "pending_start" | "inactive";
 
 export type ThematicArea =
   | "Pediatrics & Neo"
@@ -66,16 +66,30 @@ export type ClinicalUser = MentorUser | MenteeUser;
 export interface MentorSummaryStats {
   totalMentors: number;
   activeCount: number;
+  pendingCount: number;
   inactiveCount: number;
+  operationalPercentage?: string;
+  pendingStage?: string;
   quarterTrend: string;
-  partnerFacilities: number;
-  teachingHospitals: number;
-  clinicsCount: number;
-  activeMentees: number;
-  avgPerPreceptor: number;
-  loadStatus: "Optimal Load" | "High Load" | "Low Load";
+  partnerFacilities?: number;
+  teachingHospitals?: number;
+  clinicsCount?: number;
+  activeMentees?: number;
+  avgPerPreceptor?: number;
+  loadStatus?: "Optimal Load" | "High Load" | "Low Load";
   completionPercentage: number;
   completionTrend: string;
   completionTarget: number;
+}
+
+export interface MenteeSummaryStats {
+  totalMentees: number;
+  termTrend: string;
+  activeInRotation: number;
+  operationalPercentage: string;
+  pendingOrientation: number;
+  pendingStage: string;
+  avgKnowledgeMastery: number;
+  cohortTrend: string;
 }
 
