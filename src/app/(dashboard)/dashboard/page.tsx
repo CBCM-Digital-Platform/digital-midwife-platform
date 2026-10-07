@@ -6,24 +6,20 @@ export default async function DashboardPage() {
   const role = (session?.user as any)?.role;
   const userName = session?.user?.name || "User";
 
-  // 1. ADMIN DASHBOARD CONTENT
   if (role === "admin") {
     return (
       <div>
         <h1 className="text-3xl font-bold text-[#194611]">Admin Overview</h1>
         <p className="text-gray-500 mt-2">Manage users, resources, and system settings.</p>
-        {/* You will build the full Admin component here later */}
       </div>
     );
   }
 
-  // 2. MENTOR DASHBOARD CONTENT
   if (role === "mentor") {
     return (
       <div className="max-w-6xl">
         <h1 className="text-3xl font-bold text-[#194611] mb-8">Welcome back, Midwife {userName.split(" ")[0]}</h1>
-        
-        {/* Mentor Stats Cards */}
+
         <div className="grid grid-cols-4 gap-6 mb-8">
           {[
             { label: "TOTAL MENTEES", value: "6", trend: "+3 this month" },
@@ -42,7 +38,6 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        {/* Feed & Schedule Area */}
         <div className="grid grid-cols-3 gap-8">
           <div className="col-span-2 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
              <div className="flex justify-between items-center mb-6">
@@ -51,7 +46,7 @@ export default async function DashboardPage() {
              </div>
              <p className="text-sm text-gray-500">Activity feed will load here...</p>
           </div>
-          
+
           <div className="col-span-1 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
              <h2 className="text-xl font-semibold text-gray-900 mb-6">Today's Schedule</h2>
              <p className="text-sm text-gray-500">Timeline will load here...</p>
@@ -61,17 +56,15 @@ export default async function DashboardPage() {
     );
   }
 
-  // 3. MENTEE DASHBOARD CONTENT
   return (
     <div className="max-w-6xl">
       <h1 className="text-3xl font-bold text-[#194611] mb-6">Welcome back, {userName.split(" ")[0]}!</h1>
-      
-      {/* Mentee Curriculum Banner */}
+
       <div className="bg-[#194611] text-white p-8 rounded-2xl mb-8 flex justify-between items-center">
          <div>
             <p className="text-sm text-gray-300 mb-2">Active Clinical Pathway • Chapter 2 of 4</p>
             <h2 className="text-xl font-medium mb-4">You are currently completing Chapter 2: Intrapartum Care & Clinical Obstetric Skills.</h2>
-            <div className="flex items-center gap-4 text-sm bg-white/10 p-3 rounded-lg inline-flex">
+            <div className="inline-flex items-center gap-4 text-sm bg-white/10 p-3 rounded-lg">
                <span>NEXT UP IN MODULE 4</span>
                <span className="font-semibold">Lesson 2: Fundal Height & Palpation Assessment (75% Complete)</span>
             </div>

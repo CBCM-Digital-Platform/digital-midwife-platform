@@ -7,13 +7,10 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req });
   const path = req.nextUrl.pathname;
 
-  // 1. If the user is on an auth page...
   if (path.startsWith("/login") || path.startsWith("/forgot-password")) {
-    // ...and they are already logged in, bounce them to the dashboard
     if (token) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
-    // ...otherwise, let them log in
     return NextResponse.next();
   }
 
