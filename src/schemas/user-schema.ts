@@ -12,6 +12,7 @@ export const thematicAreasList = [
   "Critical Care",
 ] as const;
 
+
 export const userFormSchema = z
   .object({
     name: z.string().min(2, "Full name must be at least 2 characters"),
