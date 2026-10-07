@@ -2,8 +2,8 @@ import { NavItem, UserRole } from "@/types/navigation";
 
 export const adminNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
-  { name: "Mentors", href: "/users?role=mentor", icon: "mentor" },
-  { name: "Mentees", href: "/users?role=mentee", icon: "mentee" },
+  { name: "Mentors", href: "/mentors", icon: "mentor" },
+  { name: "Mentees", href: "/mentees", icon: "mentee" },
   { name: "Assignments", href: "/assignments", icon: "assignments" },
   { name: "Cycles", href: "/cycles", icon: "cycles" },
   { name: "Monitoring", href: "/activity-logs", icon: "monitoring" },
