@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { createAssignment } from "@/services/assignment-form.service";
-import type { AssignmentFormOptions, AssignmentType } from "@/types/assignment-form";
+import {
+    MAX_MENTEES_PER_ASSIGNMENT,
+    type AssignmentFormOptions,
+    type AssignmentType,
+} from "@/types/assignment-form";
 import MenteePicker from "./MenteePicker";
 import MentorPicker from "./MentorPicker";
 import ThematicAreaInput from "./ThematicAreaInput";
@@ -16,7 +20,7 @@ interface AddAssignmentFormProps {
 
 type FormErrors = Partial<
     Record<
-        "cycleId" | "thematicAreas" | "mentorIds" | "menteeId" | "startDate" | "endDate" | "override",
+        "cycleId" | "thematicAreas" | "mentorIds" | "menteeIds" | "startDate" | "endDate" | "override",
         string
     >
 >;
@@ -54,7 +58,7 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
     const [cycleId, setCycleId] = useState("");
     const [thematicAreas, setThematicAreas] = useState<string[]>([]);
     const [mentorIds, setMentorIds] = useState<string[]>([]);
-    const [menteeId, setMenteeId] = useState("");
+    const [menteeIds, setMenteeIds] = useState<string[]>([]);
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [notes, setNotes] = useState("");
@@ -63,11 +67,14 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState("");
 
-    const atCapacityMentors = useMemo(
-        () =>
-            options.mentors.filter((m) => mentorIds.includes(m.id) && m.currentLoad >= m.maxLoad),
-        [options.mentors, mentorIds],
-    );
+    // A selected mentor is "over capacity" when their current load plus the
+    // mentees in this assignment (at least 1) would go past their maximum.
+    const overloadedMentors = useMemo(() => {
+        const incoming = Math.max(menteeIds.length, 1);
+        return options.mentors.filter(
+            (m) => mentorIds.includes(m.id) && m.currentLoad + incoming > m.maxLoad,
+        );
+    }, [options.mentors, mentorIds, menteeIds.length]);
 
     function handleTypeChange(next: AssignmentType) {
         setType(next);
@@ -79,6 +86,14 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
         setMentorIds((ids) => {
             if (ids.includes(id)) return ids.filter((i) => i !== id);
             return type === "individual" ? [id] : [...ids, id];
+        });
+    }
+
+    function toggleMentee(id: string) {
+        setMenteeIds((ids) => {
+            if (ids.includes(id)) return ids.filter((i) => i !== id);
+            if (ids.length >= MAX_MENTEES_PER_ASSIGNMENT) return ids;
+            return [...ids, id];
         });
     }
 
@@ -97,14 +112,14 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
         if (!cycleId) next.cycleId = "Select a mentorship cycle.";
         if (thematicAreas.length === 0) next.thematicAreas = "Add at least one thematic area.";
         if (mentorIds.length === 0) next.mentorIds = "Select at least one mentor.";
-        if (!menteeId) next.menteeId = "Select a mentee.";
+        if (menteeIds.length === 0) next.menteeIds = "Select at least one mentee.";
         if (!startDate) next.startDate = "Choose a start date.";
         if (!endDate) next.endDate = "Choose an expected end date.";
         else if (startDate && endDate < startDate) {
             next.endDate = "The end date must be on or after the start date.";
         }
-        if (atCapacityMentors.length > 0 && !overrideReason.trim()) {
-            next.override = "Add a justification to assign a mentor who is at capacity.";
+        if (overloadedMentors.length > 0 && !overrideReason.trim()) {
+            next.override = "Add a justification to go over a mentor's capacity.";
         }
         return next;
     }
@@ -123,11 +138,11 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 cycleId,
                 thematicAreas,
                 mentorIds,
-                menteeId,
+                menteeIds,
                 startDate,
                 endDate,
                 notes: notes.trim(),
-                capacityOverrideReason: atCapacityMentors.length > 0 ? overrideReason.trim() : undefined,
+                capacityOverrideReason: overloadedMentors.length > 0 ? overrideReason.trim() : undefined,
             });
             router.push("/assignments");
         } catch {
@@ -217,14 +232,15 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                     />
                 </Field>
 
-                {atCapacityMentors.length > 0 && (
+                {overloadedMentors.length > 0 && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                         <p className="flex items-start gap-2">
                             <Info className="mt-0.5 size-4 shrink-0" />
                             <span>
-                                {atCapacityMentors.map((m) => m.name).join(", ")}{" "}
-                                {atCapacityMentors.length === 1 ? "has" : "have"} reached maximum mentee capacity.
-                                Select an alternative mentor or override with justification.
+                                {overloadedMentors.map((m) => m.name).join(", ")}{" "}
+                                {overloadedMentors.length === 1 ? "would exceed" : "would exceed"} the maximum
+                                mentee capacity with this assignment. Select an alternative mentor, reduce the
+                                mentees, or override with justification.
                             </span>
                         </p>
                         <textarea
@@ -240,12 +256,16 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                     </div>
                 )}
 
-                <Field label="Select Mentee" error={errors.menteeId}>
+                <Field
+                    label={`Select Mentees (up to ${MAX_MENTEES_PER_ASSIGNMENT})`}
+                    error={errors.menteeIds}
+                >
                     <MenteePicker
                         mentees={options.mentees}
-                        selectedId={menteeId}
-                        onSelect={setMenteeId}
-                        invalid={!!errors.menteeId}
+                        selectedIds={menteeIds}
+                        onToggle={toggleMentee}
+                        max={MAX_MENTEES_PER_ASSIGNMENT}
+                        invalid={!!errors.menteeIds}
                     />
                 </Field>
             </Section>

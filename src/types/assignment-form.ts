@@ -1,3 +1,6 @@
+/** Most mentees that can be added in a single assignment (and a mentor's max load). */
+export const MAX_MENTEES_PER_ASSIGNMENT = 3;
+
 export type AssignmentType = "individual" | "team";
 
 export interface MentorOption {
@@ -38,10 +41,10 @@ export interface NewAssignmentInput {
     cycleId: string;
     thematicAreas: string[];
     mentorIds: string[];
-    menteeId: string;
+    menteeIds: string[];
     startDate: string;
     endDate: string;
     notes: string;
-    /** Required when a mentor who is already at capacity is selected */
+    /** Required when a selected mentor would go over their maximum load */
     capacityOverrideReason?: string;
 }

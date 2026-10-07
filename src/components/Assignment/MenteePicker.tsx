@@ -7,18 +7,22 @@ import Avatar from "./Avatar";
 
 interface MenteePickerProps {
     mentees: MenteeOption[];
-    selectedId: string;
-    onSelect: (id: string) => void;
+    selectedIds: string[];
+    onToggle: (id: string) => void;
+    /** Maximum number of mentees that can be selected */
+    max: number;
     invalid?: boolean;
 }
 
 export default function MenteePicker({
     mentees,
-    selectedId,
-    onSelect,
+    selectedIds,
+    onToggle,
+    max,
     invalid = false,
 }: MenteePickerProps) {
     const [query, setQuery] = useState("");
+    const limitReached = selectedIds.length >= max;
 
     const visible = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -42,6 +46,11 @@ export default function MenteePicker({
                 />
             </div>
 
+            <p className="mt-2 text-xs text-gray-500">
+                {selectedIds.length} of {max} mentees selected
+                {limitReached && " (limit reached, deselect one to pick another)"}
+            </p>
+
             <ul className="mt-2 max-h-56 divide-y divide-gray-100 overflow-auto rounded-lg border border-gray-200">
                 {visible.length === 0 && (
                     <li className="px-4 py-6 text-center text-sm text-gray-500">
@@ -49,15 +58,17 @@ export default function MenteePicker({
                     </li>
                 )}
                 {visible.map((mentee) => {
-                    const selected = mentee.id === selectedId;
+                    const selected = selectedIds.includes(mentee.id);
+                    const disabled = !selected && limitReached;
                     return (
                         <li key={mentee.id}>
                             <button
                                 type="button"
                                 aria-pressed={selected}
-                                onClick={() => onSelect(mentee.id)}
+                                disabled={disabled}
+                                onClick={() => onToggle(mentee.id)}
                                 className={`flex w-full items-center gap-3 px-4 py-3 text-left ${selected ? "bg-green-50" : "hover:bg-gray-50"
-                                    }`}
+                                    } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
                             >
                                 <Avatar person={mentee} />
                                 <span className="flex-1">
