@@ -28,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     { name: "Clinical Skills", href: "/clinical-skills" },
     { name: "Mentors", href: "/mentors" },
     { name: "Profile", href: "/profile" },
+    { name: "Messages", href: "/messaging" },
     { name: "Progress", href: "/progress" },
     { name: "Clinical Assistant", href: "/ai-assistant" },
   ];
@@ -98,7 +99,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <div className="flex items-center gap-6 text-sm font-semibold text-[#194611]">
              {role === "mentor" && (
                 <>
-                  <Link href="/messages" className="hover:underline">Direct Messages</Link>
+                  <Link href="/messaging" className="hover:underline">Direct Messages</Link>
                   <Link href="/resources" className="hover:underline">Resource Library</Link>
                 </>
              )}
