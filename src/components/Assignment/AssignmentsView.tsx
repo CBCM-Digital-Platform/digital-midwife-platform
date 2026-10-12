@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Download, UserPlus } from "lucide-react";
 import type {
@@ -81,13 +81,13 @@ export default function AssignmentsView({ assignments, stats }: AssignmentsViewP
                         <Download className="size-4" />
                         Export Data
                     </button>
-                    <button
-                        type="button"
-                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#194611] px-4 text-sm font-medium text-white hover:bg-[#194611]/90"
-                    >
+                    <Link
+                        href="/assignments/new"
+                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#194611] px-4 text-sm font-medium text-white hover:bg-[#194611]/90">
                         <UserPlus className="size-4" />
                         Add New Assignment
-                    </button>
+                    </Link>
+
                 </div>
             </header>
 
@@ -103,8 +103,8 @@ export default function AssignmentsView({ assignments, stats }: AssignmentsViewP
                                 aria-selected={tab === t.id}
                                 onClick={() => setTab(t.id)}
                                 className={`-mb-px border-b-2 pb-3 text-sm font-medium ${tab === t.id
-                                        ? "border-[#194611] text-[#194611]"
-                                        : "border-transparent text-gray-500 hover:text-gray-800"
+                                    ? "border-[#194611] text-[#194611]"
+                                    : "border-transparent text-gray-500 hover:text-gray-800"
                                     }`}
                             >
                                 {t.label}{" "}

@@ -65,6 +65,7 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 required
+                suppressHydrationWarning
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="practitioner@midwifeconnect.com"
@@ -83,6 +84,7 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 required
+                suppressHydrationWarning
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -109,6 +111,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
+            suppressHydrationWarning
             className="w-full rounded-lg bg-emerald-800 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Signing in..." : "Sign in"}

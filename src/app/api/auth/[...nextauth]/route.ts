@@ -2,55 +2,97 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 export const authOptions: NextAuthOptions = {
-  // 1. Define how users log in
+  // 1. Configure authentication providers
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
       },
-      // This is where we intercept the login to mock the Node.js backend
       async authorize(credentials) {
-        if (credentials?.email === "admin@test.com" && credentials?.password === "password") {
-          return { id: "1", name: "System Admin", email: "admin@test.com", role: "admin" };
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Invalid credentials");
         }
-        if (credentials?.email === "mentor@test.com" && credentials?.password === "password") {
-          return { id: "2", name: "Test Mentor", email: "mentor@test.com", role: "mentor" };
+
+        // Construct backend endpoint using NEXT_PUBLIC_API_URL
+        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+        const endpoint = baseUrl.endsWith("/api/v1")
+          ? `${baseUrl}/auth/login`
+          : `${baseUrl}/api/v1/auth/login`;
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: credentials.email,
+            password: credentials.password,
+          }),
+        });
+
+        // If response is not ok (e.g., 401 Unauthorized), throw error for the login page
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null);
+          throw new Error(errorData?.message || "Invalid credentials");
         }
-        if (credentials?.email === "mentee@test.com" && credentials?.password === "password") {
-          return { id: "3", name: "Test Mentee", email: "mentee@test.com", role: "mentee" };
+
+        const data = await res.json();
+
+        // Extract user and token from standard response envelopes (data.user, data.data, or direct)
+        const payload = data?.data || data;
+        const userData = payload?.user || payload;
+        const accessToken = payload?.accessToken || payload?.token || data?.accessToken || data?.token;
+
+        if (!userData || !userData.email) {
+          throw new Error("Invalid credentials");
         }
-        
-        // Returning null tells NextAuth to reject the login
-        return null;
-      }
-    })
+
+        // Return user object along with the access token
+        return {
+          id: userData.id || userData._id || userData.userId || "1",
+          name:
+            userData.name ||
+            userData.fullName ||
+            `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
+            userData.email,
+          email: userData.email,
+          role: userData.role || "mentee",
+          accessToken,
+          ...userData,
+        };
+      },
+    }),
   ],
-  
-  // 2. Pass the "role" from the backend to the frontend
+
+  // 2. Persist role and access token across JWT and Session
   callbacks: {
-    // Step A: Put the role into the secure JWT (the VIP wristband)
+    // Step A: Store role and accessToken inside the JWT token
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as any).role;
+        token.accessToken = (user as any).accessToken;
+        token.id = (user as any).id;
       }
       return token;
     },
-    // Step B: Put the role into the session so your React components can read it
+    // Step B: Expose role and accessToken on session so client & server components can access them
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).role = token.role;
+        (session.user as any).id = token.id;
+        (session as any).accessToken = token.accessToken;
       }
       return session;
-    }
+    },
   },
 
-  // 3. Tell NextAuth to use your custom UI instead of its default pages
+  // 3. Custom sign-in route
   pages: {
     signIn: "/login",
   },
-  
+
   session: {
     strategy: "jwt",
   },
