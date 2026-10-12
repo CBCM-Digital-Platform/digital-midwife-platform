@@ -154,6 +154,8 @@ export async function apiClient<T = any>(
       errorData = await response.json();
       if (errorData?.message) {
         errorMessage = errorData.message;
+      } else if (errorData?.error?.message) {
+        errorMessage = errorData.error.message;
       } else if (errorData?.error) {
         errorMessage = typeof errorData.error === "string" ? errorData.error : JSON.stringify(errorData.error);
       }

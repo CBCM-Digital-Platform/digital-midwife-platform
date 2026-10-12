@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, UserPlus } from "lucide-react";
+import { AlertCircle, CheckCircle2, Plus, UserPlus, X } from "lucide-react";
 import { userFormSchema, UserFormData, thematicAreasList } from "@/schemas/user-schema";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
+import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api-client";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +19,7 @@ import {
 
 interface AddUserDialogProps {
   role: "mentor" | "mentee";
-  onUserCreated: (user: ClinicalUser) => void;
+  onUserCreated?: (user: ClinicalUser) => void;
   triggerButton?: React.ReactNode;
 }
 
@@ -77,8 +79,20 @@ function createNewUserFromForm(formData: UserFormData, role: "mentor" | "mentee"
   }
 }
 
+const FACILITY_OPTIONS = [
+  { id: 1, name: "St. Paul's Hospital (SPHMMC)" },
+  { id: 2, name: "Tikur Anbessa Specialized Hospital (TASH)" },
+  { id: 3, name: "Zewditu Memorial Hospital" },
+  { id: 4, name: "Yekatit 12 Hospital Medical College" },
+  { id: 5, name: "Gandhi Memorial Hospital" },
+  { id: 6, name: "Tirunesh Beijing General Hospital" },
+];
+
 export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDialogProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const {
     register,
@@ -89,45 +103,112 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
     resolver: zodResolver(userFormSchema),
     defaultValues: {
       role: role,
+      facility: "2",
+      phone: "+251911234567",
+      profession: "BSc Midwifery",
       thematicArea: "Maternal & Child",
       yearsOfExperience: role === "mentor" ? 5 : undefined,
     },
   });
 
-  const onSubmit = (formData: UserFormData) => {
-    const newUser = createNewUserFromForm(formData, role);
-    onUserCreated(newUser);
-    reset();
-    setOpen(false);
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) {
+      setSubmitError(null);
+    }
+  };
+
+  const onSubmit = async (formData: UserFormData) => {
+    setSubmitError(null);
+    try {
+      // Build exact payload schema expected by backend:
+      const payload = {
+        full_name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: "TemporaryPass1!",
+        role: role,
+        facility_id: Number(formData.facility) || 2,
+        phone: formData.phone?.trim() || "+251911234567",
+        highest_qualification: formData.profession?.trim() || "BSc Midwifery",
+        training_status: "in_training",
+        must_change_password: true,
+      };
+
+      const response = await apiClient.post<any>("/api/v1/users", payload);
+      const newUser = createNewUserFromForm(formData, role);
+
+      onUserCreated?.(newUser);
+      reset();
+      setOpen(false);
+      setToastMessage(
+        `${payload.full_name} was successfully registered as a ${role === "mentor" ? "Mentor" : "Mentee"}.`
+      );
+      router.refresh();
+    } catch (err: any) {
+      console.error("Failed to register user:", err);
+      const message =
+        err?.message ||
+        err?.data?.message ||
+        err?.data?.error?.message ||
+        "Failed to register clinician. Please verify details and try again.";
+      setSubmitError(message);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className="flex items-center gap-2 bg-[#194611] text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#14370d] transition shadow-sm">
-        {triggerButton ? (
-          triggerButton
-        ) : (
-          <>
-            <Plus className="h-4 w-4" />
-            <span>Add New {role === "mentor" ? "Mentor" : "Mentee"}</span>
-          </>
-        )}
-      </DialogTrigger>
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger className="flex items-center gap-2 bg-[#194611] text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#14370d] transition shadow-sm">
+          {triggerButton ? (
+            triggerButton
+          ) : (
+            <>
+              <Plus className="h-4 w-4" />
+              <span>Add New {role === "mentor" ? "Mentor" : "Mentee"}</span>
+            </>
+          )}
+        </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden bg-white border border-gray-100 shadow-2xl rounded-2xl">
-        <DialogHeader className="p-6 bg-gray-50/70 border-b border-gray-100">
-          <div className="flex items-center gap-2 text-[#194611] mb-1">
-            <UserPlus className="h-5 w-5" />
-            <DialogTitle className="text-xl font-bold text-gray-900">
-              Register New {role === "mentor" ? "Clinical Mentor" : "Mentee"}
-            </DialogTitle>
-          </div>
-          <DialogDescription className="text-xs text-gray-500">
-            Enter the clinician&apos;s credentials and facility assignment. This profile will be immediately listed in the registry.
-          </DialogDescription>
-        </DialogHeader>
+        <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden bg-white border border-gray-100 shadow-2xl rounded-2xl">
+          <DialogHeader className="p-6 bg-gray-50/70 border-b border-gray-100">
+            <div className="flex items-center gap-2 text-[#194611] mb-1">
+              <UserPlus className="h-5 w-5" />
+              <DialogTitle className="text-xl font-bold text-gray-900">
+                Register New {role === "mentor" ? "Clinical Mentor" : "Mentee"}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-gray-500">
+              Enter the clinician&apos;s credentials and facility assignment. This profile will be immediately listed in the registry.
+            </DialogDescription>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+            {/* Submission Error Alert */}
+            {submitError && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+                <div className="flex-1">
+                  <p className="font-semibold">Unable to register user</p>
+                  <p className="mt-0.5 text-red-700">{submitError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSubmitError(null)}
+                  className="text-red-500 hover:text-red-800 transition cursor-pointer"
+                  aria-label="Dismiss error"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           {/* Full Name & Email */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -174,30 +255,49 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 Affiliated Facility <span className="text-red-500">*</span>
               </label>
-              <input
+              <select
                 {...register("facility")}
-                placeholder="e.g. St. Paul Hospital"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-              />
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611] bg-white cursor-pointer"
+              >
+                {FACILITY_OPTIONS.map((fac) => (
+                  <option key={fac.id} value={fac.id}>
+                    {fac.name} (ID: {fac.id})
+                  </option>
+                ))}
+              </select>
               {errors.facility && <p className="text-red-500 text-xs mt-1">{errors.facility.message}</p>}
             </div>
           </div>
 
-          {/* Thematic Area */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Primary Thematic Area <span className="text-red-500">*</span>
-            </label>
-            <select
-              {...register("thematicArea")}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611] bg-white cursor-pointer"
-            >
-              {thematicAreasList.map((area: string) => (
-                <option key={area} value={area}>
-                  {area}
-                </option>
-              ))}
-            </select>
+          {/* Phone Number & Thematic Area */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Phone Number
+              </label>
+              <input
+                {...register("phone")}
+                type="tel"
+                placeholder="+251911234567"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Primary Thematic Area <span className="text-red-500">*</span>
+              </label>
+              <select
+                {...register("thematicArea")}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611] bg-white cursor-pointer"
+              >
+                {thematicAreasList.map((area: string) => (
+                  <option key={area} value={area}>
+                    {area}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* ROLE-CONDITIONAL FIELDS */}
@@ -262,5 +362,29 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* Success Toast Notification */}
+    {toastMessage && (
+      <div
+        role="status"
+        aria-live="polite"
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#194611] text-white shadow-2xl border border-emerald-800 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
+      >
+        <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+        <div className="text-sm">
+          <p className="font-semibold text-white">Success</p>
+          <p className="text-xs text-emerald-200">{toastMessage}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setToastMessage(null)}
+          className="ml-2 text-emerald-200 hover:text-white transition cursor-pointer"
+          aria-label="Close notification"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    )}
+  </>
   );
 }

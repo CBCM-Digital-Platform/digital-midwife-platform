@@ -19,7 +19,7 @@ export const userFormSchema = z
     email: z.string().email("Please enter a valid email address"),
     phone: z.string().optional(),
     role: z.enum(["mentor", "mentee"]),
-    facility: z.string().min(2, "Please specify a clinical facility"),
+    facility: z.string().min(1, "Please specify a clinical facility"),
     thematicArea: z.enum(thematicAreasList),
     profession: z.string().min(2, "Profession / Clinical specialization is required"),
     // Mentor specific

@@ -1,6 +1,4 @@
-"use client";
-
-import React, { useState } from "react";
+import React from "react";
 import {
   Users,
   Activity,
@@ -11,48 +9,18 @@ import {
 } from "lucide-react";
 import { UsersTable } from "@/components/User/UsersTable";
 import { AddUserDialog } from "@/components/User/AddUserDialog";
-import { mockMentors, mockMentorStats } from "@/lib/mock-users";
-import { ClinicalUser, MentorSummaryStats } from "@/types/user";
+import { getMentors } from "@/services/users.service";
 
-const defaultMentorStats: MentorSummaryStats = {
-  totalMentors: 148,
-  activeCount: 132,
-  pendingCount: 16,
-  inactiveCount: 0,
-  operationalPercentage: "89.2% active",
-  pendingStage: "Pending Review",
-  quarterTrend: "↑8% this quarter",
-  partnerFacilities: 12,
-  teachingHospitals: 9,
-  clinicsCount: 3,
-  activeMentees: 412,
-  avgPerPreceptor: 2.8,
-  loadStatus: "Optimal Load",
-  completionPercentage: 94.6,
-  completionTrend: "↑1.4%",
-  completionTarget: 92,
-};
+export default async function MentorsPage() {
+  const mentors = await getMentors();
 
-export default function MentorsPage() {
-  const [mentorsList, setMentorsList] = useState<ClinicalUser[]>(() => mockMentors || []);
-  const [stats, setStats] = useState<MentorSummaryStats>(() => mockMentorStats || defaultMentorStats);
-
-  const currentStats = stats || defaultMentorStats;
-
-  const handleMentorCreated = (newUser: ClinicalUser) => {
-    // Prepend the newly created mentor to the active list
-    setMentorsList((prev) => [newUser, ...prev]);
-
-    // Dynamically increment summary counters
-    setStats((prev) => {
-      const base = prev || defaultMentorStats;
-      return {
-        ...base,
-        totalMentors: base.totalMentors + 1,
-        activeCount: base.activeCount + 1,
-      };
-    });
-  };
+  const totalMentors = mentors.length;
+  const activeCount = mentors.filter((m) => m.status === "active").length;
+  const pendingCount = mentors.filter((m) => m.status === "pending").length;
+  const operationalPercentage =
+    totalMentors > 0
+      ? `${((activeCount / totalMentors) * 100).toFixed(1)}% active`
+      : "0% active";
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -71,14 +39,11 @@ export default function MentorsPage() {
             <span>Batch Import</span>
           </button>
 
-          <AddUserDialog
-            role="mentor"
-            onUserCreated={handleMentorCreated}
-          />
+          <AddUserDialog role="mentor" />
         </div>
       </div>
 
-      {/* 2. STAT SUMMARY CARDS (Clear, descriptive titles) */}
+      {/* 2. STAT SUMMARY CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* CARD 1: TOTAL MENTORS */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
@@ -86,8 +51,8 @@ export default function MentorsPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Mentors</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.totalMentors}</span>
-                <span className="text-xs font-bold text-emerald-600">{currentStats.quarterTrend}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{totalMentors}</span>
+                <span className="text-xs font-bold text-emerald-600">↑8% this quarter</span>
               </div>
             </div>
             <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
@@ -105,9 +70,9 @@ export default function MentorsPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Mentors</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.activeCount}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{activeCount}</span>
                 <span className="text-xs font-semibold text-gray-500">
-                  {currentStats.operationalPercentage || "Currently mentoring"}
+                  {operationalPercentage}
                 </span>
               </div>
             </div>
@@ -126,9 +91,9 @@ export default function MentorsPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Pending Mentors</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.pendingCount || 16}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{pendingCount}</span>
                 <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
-                  {currentStats.pendingStage || "Pending Review"}
+                  Pending Review
                 </span>
               </div>
             </div>
@@ -147,10 +112,10 @@ export default function MentorsPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Completion Rate</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.completionPercentage}%</span>
+                <span className="text-3xl font-extrabold text-gray-900">94.6%</span>
                 <span className="text-xs font-bold text-emerald-600 flex items-center">
                   <ArrowUpRight className="h-3 w-3 inline" />
-                  {currentStats.completionTrend}
+                  ↑1.4%
                 </span>
               </div>
             </div>
@@ -162,11 +127,11 @@ export default function MentorsPage() {
             <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
               <div
                 className="bg-[#194611] h-1.5 rounded-full transition-all duration-500"
-                style={{ width: `${currentStats.completionPercentage}%` }}
+                style={{ width: "94.6%" }}
               />
             </div>
             <div className="flex justify-end text-[11px] text-gray-500 font-medium">
-              <span>Target: {currentStats.completionTarget}%</span>
+              <span>Target: 92%</span>
             </div>
           </div>
         </div>
@@ -175,9 +140,9 @@ export default function MentorsPage() {
       {/* 3. REUSABLE USERS TABLE (Role = "mentor") */}
       <UsersTable
         role="mentor"
-        data={mentorsList}
+        data={mentors}
         cohortLabel="Accredited Preceptor Registry • Cohort 2024-Q3"
-        totalCohortCount={currentStats.totalMentors}
+        totalCohortCount={totalMentors}
       />
     </div>
   );
