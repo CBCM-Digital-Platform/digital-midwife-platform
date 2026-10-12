@@ -3,7 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
-import { setInitialPassword } from "@/api/auth";
+import { setInitialPassword } from "@/services/auth";
 
 export default function SetPasswordPage() {
   const router = useRouter();
