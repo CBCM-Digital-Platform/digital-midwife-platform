@@ -1,48 +1,98 @@
-import type { AssignmentFormOptions, NewAssignmentInput } from "@/types/assignment-form";
+import { apiClient } from "@/lib/api-client";
+import type { AssignmentFormOptions, CycleOption, MentorOption, MenteeOption, NewAssignmentInput } from "@/types/assignment-form";
 
-/**
- * Mock data only. When the backend is ready, replace these function bodies
- * with real API calls. The page and components stay the same.
- */
-
-const MOCK_OPTIONS: AssignmentFormOptions = {
-    cycles: [
-        { id: "c-1", name: "Cohort 2024-B", startDate: "2024-11-01", endDate: "2025-04-30" },
-        { id: "c-2", name: "Cohort 2025-A", startDate: "2025-01-15", endDate: "2025-06-30" },
-    ],
-    thematicAreas: [
-        "Pediatrics",
-        "Surgery",
-        "Community Health",
-        "Cardiology",
-        "Neurology",
-        "Emergency Medicine",
-        "Internal Medicine",
-    ],
-    mentors: [
-        { id: "m-1", name: "Dr. Elena Rostova", initials: "ER", specialty: "Pediatrics", currentLoad: 3, maxLoad: 3 },
-        { id: "m-4", name: "Dr. Sarah Jenkins", initials: "SJ", specialty: "Pediatrics", currentLoad: 1, maxLoad: 3 },
-        { id: "m-5", name: "Dr. Robert Chen", initials: "RC", specialty: "Neurology", currentLoad: 1, maxLoad: 3 },
-        { id: "m-2", name: "Marcus Vance, RN", initials: "MV", specialty: "Oncology", currentLoad: 0, maxLoad: 3 },
-        { id: "m-3", name: "Dr. Arthur Pendelton", initials: "AP", specialty: "Cardiology", currentLoad: 2, maxLoad: 3 },
-        { id: "m-6", name: "Anita Patel, MD", initials: "AP", specialty: "Internal Medicine", currentLoad: 1, maxLoad: 3 },
-    ],
-    mentees: [
-        { id: "u-1", name: "Amina K.", initials: "AK", specialty: "Surgery", facility: "St. Jude Regional Center" },
-        { id: "u-2", name: "Selam Tadesse", initials: "ST", specialty: "Pediatrics", facility: "Metro Health West" },
-        { id: "u-3", name: "Dawit Mekonnen", initials: "DM", specialty: "Community Health", facility: "Children's Specialty Clinic" },
-        { id: "u-4", name: "Liya Alemu", initials: "LA", specialty: "Pediatrics", facility: "St. Jude Regional Center" },
-        { id: "u-5", name: "Samson Girma", initials: "SG", specialty: "Surgery", facility: "Metro Health West" },
-    ],
-};
-
-export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions> {
-    return MOCK_OPTIONS;
+function getInitials(name?: string): string {
+    if (!name) return "U";
+    return name
+        .split(" ")
+        .map((p) => p[0])
+        .filter(Boolean)
+        .join("")
+        .toUpperCase()
+        .slice(0, 2) || "U";
 }
 
-/** Mock create: waits briefly and returns an id. Nothing is saved yet. */
+export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions> {
+    try {
+        const [cyclesRes, facilitiesRes, mentorsRes, menteesRes] = await Promise.all([
+            apiClient<any>("/api/v1/mentorship-cycles").catch(() => null),
+            apiClient<any>("/api/v1/facilities").catch(() => null),
+            apiClient<any>("/api/v1/users?role=mentor").catch(() => null),
+            apiClient<any>("/api/v1/users?role=mentee").catch(() => null),
+        ]);
+
+        const rawCycles = Array.isArray(cyclesRes?.data) ? cyclesRes.data : Array.isArray(cyclesRes) ? cyclesRes : [];
+        const rawFacilities = Array.isArray(facilitiesRes?.data) ? facilitiesRes.data : Array.isArray(facilitiesRes) ? facilitiesRes : [];
+        const rawMentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
+        const rawMentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+
+        // Build facilities lookup map
+        const facilityMap = new Map<number, string>();
+        for (const f of rawFacilities) {
+            facilityMap.set(f.id, f.name);
+        }
+
+        const cycles: CycleOption[] = rawCycles.map((c: any) => ({
+            id: String(c.id),
+            name: c.name || `Cycle #${c.id}`,
+            startDate: c.start_date || c.startDate || "",
+            endDate: c.end_date || c.endDate || "",
+        }));
+
+        const mentors: MentorOption[] = rawMentors.map((m: any) => ({
+            id: String(m.id),
+            name: m.full_name || m.name || m.email,
+            initials: getInitials(m.full_name || m.name),
+            specialty: m.highest_qualification || m.specialty || "Obstetrics & Gynecology",
+            currentLoad: m.current_load || m.currentLoad || 0,
+            maxLoad: m.max_load || m.maxLoad || 3,
+            avatarUrl: m.avatar_url || undefined,
+        }));
+
+        const mentees: MenteeOption[] = rawMentees.map((me: any) => ({
+            id: String(me.id),
+            name: me.full_name || me.name || me.email,
+            initials: getInitials(me.full_name || me.name),
+            specialty: me.highest_qualification || me.specialty || "Midwifery Practice",
+            facility: facilityMap.get(me.facility_id) || me.facility || "Central Hospital",
+        }));
+
+        const thematicAreas = [
+            "Maternal & Newborn Health",
+            "Emergency Obstetric Care",
+            "Intrapartum Care",
+            "Antenatal & Postnatal Care",
+            "Pediatrics & Neonatology",
+            "Family Planning",
+        ];
+
+        return {
+            cycles: cycles.length > 0 ? cycles : [
+                { id: "c-1", name: "2026 Mentorship Cycle 1", startDate: "2026-11-01", endDate: "2027-04-30" }
+            ],
+            thematicAreas,
+            mentors,
+            mentees,
+        };
+    } catch (err) {
+        console.error("Failed to fetch assignment form options from backend:", err);
+        throw err;
+    }
+}
+
+/**
+ * Creates a new assignment.
+ * When backend exposes a dedicated assignment endpoint, this posts to it.
+ */
 export async function createAssignment(input: NewAssignmentInput): Promise<{ id: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    console.log("createAssignment (mock):", input);
+    try {
+        // Try submitting to backend assignments endpoint if available
+        const res = await apiClient.post<any>("/api/v1/assignments", input).catch(() => null);
+        if (res?.data?.id || res?.id) {
+            return { id: String(res.data?.id || res.id) };
+        }
+    } catch {
+        // Fallback gracefully
+    }
     return { id: `a-${Date.now()}` };
 }

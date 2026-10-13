@@ -6,12 +6,12 @@ import type { MentorUser, MenteeUser, ClinicalUser, MentorSummaryStats, MenteeSu
  * Facility ID mapping for resolving backend facility_id numbers into human-readable facility names.
  */
 export const FACILITY_ID_MAP: Record<number | string, string> = {
-  1: "St. Paul's Hospital (SPHMMC)",
-  2: "Tikur Anbessa Specialized Hospital (TASH)",
-  3: "Zewditu Memorial Hospital",
-  4: "Yekatit 12 Hospital Medical College",
-  5: "Gandhi Memorial Hospital",
-  6: "Tirunesh Beijing General Hospital",
+  1: "Tirunesh Beijing General Hospital",
+  2: "Oda Bultu Hospital",
+  3: "St. Paul's Hospital (SPHMMC)",
+  4: "Tikur Anbessa Specialized Hospital (TASH)",
+  5: "Zewditu Memorial Hospital",
+  6: "Yekatit 12 Hospital Medical College",
 };
 
 /**

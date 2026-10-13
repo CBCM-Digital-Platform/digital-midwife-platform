@@ -8,7 +8,7 @@ import { UserRole } from "@/types/navigation";
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   // 1. Get the logged-in user session and role safely
   const session = await getServerSession(authOptions);
-  const role: UserRole = (session?.user as { role?: UserRole })?.role || "mentee";
+  const role: string = (session?.user as any)?.role || "mentee";
 
   return (
     <div className="flex h-screen w-full bg-[#f9fafb] overflow-hidden">

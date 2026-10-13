@@ -67,6 +67,7 @@ export const authOptions: NextAuthOptions = {
 
         // Return user object along with the access token and normalized role
         return {
+          ...userData,
           id: String(userData.id || userData._id || userData.userId || "1"),
           name,
           email: userData.email,
@@ -74,7 +75,6 @@ export const authOptions: NextAuthOptions = {
           rawRole: userData.role,
           accessToken,
           refreshToken,
-          ...userData,
         };
       },
     }),
@@ -85,8 +85,8 @@ export const authOptions: NextAuthOptions = {
     // Step A: Store role and accessToken inside the JWT token
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as any).role;
-        token.rawRole = (user as any).rawRole;
+        token.role = normalizeRole((user as any).role || (user as any).rawRole);
+        token.rawRole = (user as any).rawRole || (user as any).role;
         token.accessToken = (user as any).accessToken;
         token.refreshToken = (user as any).refreshToken;
         token.id = (user as any).id;
@@ -96,7 +96,7 @@ export const authOptions: NextAuthOptions = {
     // Step B: Expose role and accessToken on session so client & server components can access them
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).role = token.role;
+        (session.user as any).role = normalizeRole(token.role as string);
         (session.user as any).rawRole = token.rawRole;
         (session.user as any).id = token.id;
         (session.user as any).accessToken = token.accessToken;
