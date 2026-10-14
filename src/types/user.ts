@@ -12,7 +12,8 @@ export type ThematicArea =
   | "Infectious Diseases"
   | "Oncology"
   | "Cardiovascular"
-  | "Critical Care";
+  | "Critical Care"
+  | (string & {});
 
 export interface Facility {
   id: string;

@@ -18,7 +18,7 @@ function AuthErrorListener({ children }: { children: React.ReactNode }) {
     if ((session as any)?.error === "RefreshAccessTokenError" && !isSigningOut.current) {
       isSigningOut.current = true;
       console.warn("Session refresh token expired. Signing out.");
-      signOut({ callbackUrl: "/login", redirect: true });
+      signOut({ callbackUrl: "/login?error=SessionExpired", redirect: true });
     }
   }, [session, pathname]);
 

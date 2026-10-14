@@ -46,7 +46,7 @@ export const userFormSchema = z.object({
   // Account Creation
   username: z.string().min(3, "Username is required"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  force_password_change: z.boolean().default(true),
+  force_password_change: z.boolean(),
 });
 
 export type UserFormData = z.infer<typeof userFormSchema>;

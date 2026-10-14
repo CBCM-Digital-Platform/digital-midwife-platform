@@ -18,6 +18,13 @@ export default function LoginPage() {
     // Clear any dead or corrupted session tokens when arriving on the login page
     document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("error") === "SessionExpired") {
+        setError("Your session has expired. Please sign in again.");
+      }
+    }
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {

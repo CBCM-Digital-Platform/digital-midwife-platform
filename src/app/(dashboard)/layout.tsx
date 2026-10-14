@@ -10,9 +10,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // 1. Get the logged-in user session and role safely
   const session = await getServerSession(authOptions);
 
-  // If token refresh failed, redirect to login
-  if ((session as any)?.error === "RefreshAccessTokenError") {
-    redirect("/login");
+  // If token refresh failed or session is dead, redirect to login
+  if (!session || (session as any)?.error === "RefreshAccessTokenError") {
+    redirect("/login?error=SessionExpired");
   }
 
   const role: UserRole = (session?.user as { role?: UserRole })?.role || "mentee";
