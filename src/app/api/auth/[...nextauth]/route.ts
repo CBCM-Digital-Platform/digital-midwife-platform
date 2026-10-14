@@ -51,9 +51,11 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
 async function refreshAccessToken(token: any) {
   try {
     if (!token.refreshToken) {
-      console.warn("No refresh token available to rotate session token");
       return {
         ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: 0,
         error: "RefreshAccessTokenError",
       };
     }
@@ -76,9 +78,12 @@ async function refreshAccessToken(token: any) {
     const data = await res.json().catch(() => null);
 
     if (!res.ok || !data || data.success === false) {
-      console.error("Refresh token request rejected by backend:", res.status, data);
+      console.warn("Refresh token request rejected by backend:", res.status);
       return {
         ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: 0,
         error: "RefreshAccessTokenError",
       };
     }
@@ -89,9 +94,11 @@ async function refreshAccessToken(token: any) {
     const expiresIn = payload?.expiresIn || payload?.expires_in;
 
     if (!newAccessToken) {
-      console.error("Backend refresh succeeded but returned no accessToken:", data);
       return {
         ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: 0,
         error: "RefreshAccessTokenError",
       };
     }
@@ -107,6 +114,9 @@ async function refreshAccessToken(token: any) {
     console.error("Error refreshing access token:", error);
     return {
       ...token,
+      accessToken: undefined,
+      refreshToken: undefined,
+      accessTokenExpires: 0,
       error: "RefreshAccessTokenError",
     };
   }
@@ -223,10 +233,26 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
+      // If token already has a fatal error, do NOT retry refreshing in an infinite loop
+      if (token.error === "RefreshAccessTokenError") {
+        return token;
+      }
+
       // Return previous token if the access token has not expired yet (with 30-second margin)
       const expiresAt = Number(token.accessTokenExpires) || 0;
       if (expiresAt > 0 && Date.now() < expiresAt - 30 * 1000) {
         return token;
+      }
+
+      // If no refresh token is present, mark dead session immediately
+      if (!token.refreshToken) {
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          accessTokenExpires: 0,
+          error: "RefreshAccessTokenError",
+        };
       }
 
       // Access token has expired, rotate token using refresh token
