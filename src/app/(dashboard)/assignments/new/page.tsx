@@ -3,13 +3,14 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import AddAssignmentForm from "@/components/Assignment/AddAssignmentForm";
 import { getAssignmentFormOptions } from "@/services/assignment-form.service";
+import { isAdminRole } from "@/types/navigation";
 
 export default async function NewAssignmentPage() {
     const session = await getServerSession(authOptions);
     const role = (session?.user as { role?: string } | undefined)?.role;
 
     // Only admins can create assignments.
-    if (role !== "admin") redirect("/dashboard");
+    if (!isAdminRole(role)) redirect("/dashboard");
 
     const options = await getAssignmentFormOptions();
 

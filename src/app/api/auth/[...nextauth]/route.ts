@@ -1,6 +1,110 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
+/**
+ * Safely parses the expiration timestamp (in milliseconds) from either
+ * an expiresIn field or the JWT's decoded 'exp' claim.
+ */
+function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string): number {
+  if (expiresIn !== undefined && expiresIn !== null) {
+    const num = Number(expiresIn);
+    if (!isNaN(num) && num > 0) {
+      // If it's already a Unix timestamp in seconds (> year 2001)
+      if (num > 1_000_000_000) {
+        return num * 1000;
+      }
+      // Otherwise it is TTL duration in seconds from now
+      return Date.now() + num * 1000;
+    }
+  }
+
+  if (accessToken && typeof accessToken === "string") {
+    try {
+      const parts = accessToken.split(".");
+      if (parts.length === 3) {
+        const payloadJson = Buffer.from(parts[1], "base64").toString("utf-8");
+        const parsed = JSON.parse(payloadJson);
+        if (parsed.exp && typeof parsed.exp === "number") {
+          return parsed.exp * 1000;
+        }
+      }
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  // Fallback: 15 minutes TTL
+  return Date.now() + 15 * 60 * 1000;
+}
+
+/**
+ * Calls backend POST /api/v1/auth/refresh-token to rotate access token.
+ * If the request fails, attaches error: "RefreshAccessTokenError".
+ */
+async function refreshAccessToken(token: any) {
+  try {
+    if (!token.refreshToken) {
+      console.warn("No refresh token available to rotate session token");
+      return {
+        ...token,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+    const endpoint = baseUrl.endsWith("/api/v1")
+      ? `${baseUrl}/auth/refresh-token`
+      : `${baseUrl}/api/v1/auth/refresh-token`;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        refreshToken: token.refreshToken,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data || data.success === false) {
+      console.error("Refresh token request rejected by backend:", res.status, data);
+      return {
+        ...token,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    const payload = data?.data || data;
+    const newAccessToken = payload?.accessToken || payload?.token;
+    const newRefreshToken = payload?.refreshToken || payload?.refresh_token || token.refreshToken;
+    const expiresIn = payload?.expiresIn || payload?.expires_in;
+
+    if (!newAccessToken) {
+      console.error("Backend refresh succeeded but returned no accessToken:", data);
+      return {
+        ...token,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    return {
+      ...token,
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      accessTokenExpires: getAccessTokenExpires(newAccessToken, expiresIn),
+      error: undefined,
+    };
+  } catch (error) {
+    console.error("Error refreshing access token:", error);
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
+    };
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   // 1. Configure authentication providers
   providers: [
@@ -16,7 +120,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Construct backend endpoint using NEXT_PUBLIC_API_URL
-        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
         const endpoint = baseUrl.endsWith("/api/v1")
           ? `${baseUrl}/auth/login`
           : `${baseUrl}/api/v1/auth/login`;
@@ -35,7 +139,7 @@ export const authOptions: NextAuthOptions = {
         // If response is not ok (e.g., 401 Unauthorized), throw error for the login page
         if (!res.ok) {
           const errorData = await res.json().catch(() => null);
-          throw new Error(errorData?.message || "Invalid credentials");
+          throw new Error(errorData?.message || errorData?.error?.message || "Invalid credentials");
         }
 
         const data = await res.json();
@@ -44,13 +148,33 @@ export const authOptions: NextAuthOptions = {
         const payload = data?.data || data;
         const userData = payload?.user || payload;
         const accessToken = payload?.accessToken || payload?.token || data?.accessToken || data?.token;
+        const refreshToken =
+          payload?.refreshToken ||
+          payload?.refresh_token ||
+          data?.refreshToken ||
+          data?.refresh_token ||
+          userData?.refreshToken ||
+          userData?.refresh_token;
 
         if (!userData || !userData.email) {
           throw new Error("Invalid credentials");
         }
 
-        // Return user object along with the access token
+        // Extract facility ID if present
+        const facility_id =
+          userData.facility_id ??
+          userData.facilityId ??
+          userData.facility?.id ??
+          (userData.role === "facility_admin" ? 2 : undefined);
+
+        const accessTokenExpires = getAccessTokenExpires(
+          accessToken,
+          payload?.expiresIn || payload?.expires_in
+        );
+
+        // Return user object along with tokens and expiry
         return {
+          ...userData,
           id: userData.id || userData._id || userData.userId || "1",
           name:
             userData.name ||
@@ -59,31 +183,56 @@ export const authOptions: NextAuthOptions = {
             userData.email,
           email: userData.email,
           role: userData.role || "mentee",
+          facility_id,
           accessToken,
-          ...userData,
+          refreshToken,
+          accessTokenExpires,
         };
       },
     }),
   ],
 
-  // 2. Persist role and access token across JWT and Session
+  // 2. Persist role and access token across JWT and Session with refresh rotation
   callbacks: {
-    // Step A: Store role and accessToken inside the JWT token
+    // Step A: Store role, facility_id, and tokens inside the JWT token
     async jwt({ token, user }) {
+      // Initial sign in
       if (user) {
         token.role = (user as any).role;
         token.accessToken = (user as any).accessToken;
+        token.refreshToken = (user as any).refreshToken;
         token.id = (user as any).id;
+        token.facility_id =
+          (user as any).facility_id ??
+          (user as any).facilityId ??
+          (user as any).facility?.id;
+        token.facilityId = token.facility_id;
+        token.accessTokenExpires =
+          (user as any).accessTokenExpires || getAccessTokenExpires((user as any).accessToken);
+        token.error = undefined;
+        return token;
       }
-      return token;
+
+      // Return previous token if the access token has not expired yet (with 30-second margin)
+      const expiresAt = Number(token.accessTokenExpires) || 0;
+      if (expiresAt > 0 && Date.now() < expiresAt - 30 * 1000) {
+        return token;
+      }
+
+      // Access token has expired, rotate token using refresh token
+      return await refreshAccessToken(token);
     },
-    // Step B: Expose role and accessToken on session so client & server components can access them
+
+    // Step B: Expose role, facility_id, accessToken, and error state on session
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).role = token.role;
         (session.user as any).id = token.id;
+        (session.user as any).facility_id = token.facility_id;
+        (session.user as any).facilityId = token.facility_id;
         (session as any).accessToken = token.accessToken;
       }
+      (session as any).error = token.error;
       return session;
     },
   },

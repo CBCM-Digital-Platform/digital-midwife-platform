@@ -1,5 +1,4 @@
 import { apiClient } from "@/lib/api-client";
-import { mockMentors, mockMentees, mockMentorStats, mockMenteeStats } from "@/lib/mock-users";
 import type { MentorUser, MenteeUser, ClinicalUser, MentorSummaryStats, MenteeSummaryStats } from "@/types/user";
 
 /**
@@ -58,15 +57,26 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
 
   const thematicArea = raw.thematicArea || raw.thematic_area || "Maternal & Child";
 
-  const rawStatus = String(raw.status || raw.training_status || "active").toLowerCase();
-  const status =
-    rawStatus === "active" || rawStatus === "certified" || rawStatus === "graduated"
-      ? "active"
-      : rawStatus === "pending" || rawStatus === "in_training" || rawStatus === "pending_start"
-      ? "pending"
-      : rawStatus === "on_leave"
-      ? "on_leave"
-      : "active";
+  const rawStatus = String(raw.status || "").toLowerCase().trim();
+  const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
+
+  let status: "active" | "pending" | "inactive" | "on_leave" | "suspended" = "active";
+
+  if (rawStatus === "inactive" || rawStatus === "disabled" || rawStatus === "deactivated") {
+    status = "inactive";
+  } else if (rawStatus === "suspended") {
+    status = "suspended";
+  } else if (rawStatus === "on_leave") {
+    status = "on_leave";
+  } else if (rawStatus === "pending" || rawStatus === "pending_start" || rawStatus === "pending_review") {
+    status = "pending";
+  } else if (rawStatus === "active") {
+    status = "active";
+  } else if (rawTrainingStatus === "in_training" || rawTrainingStatus === "pending_start") {
+    status = "pending";
+  } else {
+    status = "active";
+  }
 
   const systemId =
     raw.systemId ||
@@ -119,58 +129,112 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
   }
 }
 
-export async function getMentors(): Promise<MentorUser[]> {
-  try {
-    const res = await apiClient<any>("/api/v1/users?role=mentor");
-    const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
-    if (Array.isArray(rawList) && rawList.length > 0) {
-      return rawList.map((u: any) => normalizeUser(u, "mentor")) as MentorUser[];
+/**
+ * Fetches mentors directly from backend API without mock fallbacks.
+ * Automatically respects facilityId for Facility Admins.
+ */
+export async function getMentors(facilityId?: number | string): Promise<MentorUser[]> {
+  let activeFacilityId = facilityId;
+  if (!activeFacilityId && typeof window === "undefined") {
+    try {
+      const { getServerSession } = await import("next-auth/next");
+      const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+      const session = await getServerSession(authOptions);
+      activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    } catch {
+      // Ignore session resolution failure
     }
-    return mockMentors;
-  } catch (error) {
-    console.warn("Failed to fetch mentors from backend API, falling back to mock dataset:", error);
-    return mockMentors;
   }
+
+  const query = new URLSearchParams({ role: "mentor" });
+  if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
+    query.set("facility_id", String(activeFacilityId));
+  }
+
+  const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
+  const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
+  return (rawList || []).map((u: any) => normalizeUser(u, "mentor")) as MentorUser[];
 }
 
-export async function getMentees(): Promise<MenteeUser[]> {
-  try {
-    const res = await apiClient<any>("/api/v1/users?role=mentee");
-    const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
-    if (Array.isArray(rawList) && rawList.length > 0) {
-      return rawList.map((u: any) => normalizeUser(u, "mentee")) as MenteeUser[];
+/**
+ * Fetches mentees directly from backend API without mock fallbacks.
+ * Automatically respects facilityId for Facility Admins.
+ */
+export async function getMentees(facilityId?: number | string): Promise<MenteeUser[]> {
+  let activeFacilityId = facilityId;
+  if (!activeFacilityId && typeof window === "undefined") {
+    try {
+      const { getServerSession } = await import("next-auth/next");
+      const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+      const session = await getServerSession(authOptions);
+      activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    } catch {
+      // Ignore session resolution failure
     }
-    return mockMentees;
-  } catch (error) {
-    console.warn("Failed to fetch mentees from backend API, falling back to mock dataset:", error);
-    return mockMentees;
   }
+
+  const query = new URLSearchParams({ role: "mentee" });
+  if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
+    query.set("facility_id", String(activeFacilityId));
+  }
+
+  const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
+  const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
+  return (rawList || []).map((u: any) => normalizeUser(u, "mentee")) as MenteeUser[];
 }
 
-export async function getMentorStats(): Promise<MentorSummaryStats> {
-  try {
-    const res = await apiClient<any>("/api/v1/users/stats?role=mentor");
-    if (res?.data || res?.stats) {
-      return (res.data || res.stats) as MentorSummaryStats;
-    }
-    return mockMentorStats;
-  } catch {
-    return mockMentorStats;
+export async function getMentorStats(facilityId?: number | string): Promise<MentorSummaryStats> {
+  const query = new URLSearchParams({ role: "mentor" });
+  if (facilityId !== undefined && facilityId !== null && String(facilityId).trim() !== "") {
+    query.set("facility_id", String(facilityId));
   }
+  const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
+  return (res?.data || res?.stats || res) as MentorSummaryStats;
 }
 
-export async function getMenteeStats(): Promise<MenteeSummaryStats> {
-  try {
-    const res = await apiClient<any>("/api/v1/users/stats?role=mentee");
-    if (res?.data || res?.stats) {
-      return (res.data || res.stats) as MenteeSummaryStats;
-    }
-    return mockMenteeStats;
-  } catch {
-    return mockMenteeStats;
+export async function getMenteeStats(facilityId?: number | string): Promise<MenteeSummaryStats> {
+  const query = new URLSearchParams({ role: "mentee" });
+  if (facilityId !== undefined && facilityId !== null && String(facilityId).trim() !== "") {
+    query.set("facility_id", String(facilityId));
   }
+  const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
+  return (res?.data || res?.stats || res) as MenteeSummaryStats;
 }
 
 export async function createUser(data: Partial<ClinicalUser>): Promise<ClinicalUser> {
   return apiClient.post<ClinicalUser>("/api/v1/users", data);
+}
+
+/**
+ * Fetches a single user by ID and normalizes into a strongly typed ClinicalUser model.
+ */
+export async function getUserById(id: string): Promise<ClinicalUser> {
+  const res = await apiClient.get<any>(`/api/v1/users/${id}`);
+  const raw = res?.data?.user || res?.data || res?.user || res;
+  return normalizeUser(raw, raw?.role || "mentee");
+}
+
+export interface ChangeUserStatusResult {
+  success: boolean;
+  message?: string;
+  user?: ClinicalUser;
+  status: string;
+}
+
+/**
+ * Updates a user's status via PATCH /api/v1/users/{id}/status.
+ */
+export async function changeUserStatus(
+  id: string,
+  status: string
+): Promise<ChangeUserStatusResult> {
+  const res = await apiClient.patch<any>(`/api/v1/users/${id}/status`, { status });
+  const raw = res?.data?.user || res?.data || res?.user;
+
+  return {
+    success: res?.success ?? true,
+    message: res?.message,
+    user: raw ? normalizeUser(raw, raw?.role || "mentee") : undefined,
+    status,
+  };
 }

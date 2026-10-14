@@ -1,12 +1,13 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { isAdminRole } from "@/types/navigation";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role;
   const userName = session?.user?.name || "User";
 
-  if (role === "admin") {
+  if (isAdminRole(role)) {
     return (
       <div>
         <h1 className="text-3xl font-bold text-[#194611]">Admin Overview</h1>

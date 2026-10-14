@@ -34,6 +34,8 @@ export const menteeNavLinks: NavItem[] = [
 export function getNavLinksByRole(role: UserRole): NavItem[] {
   switch (role) {
     case "admin":
+    case "super_admin":
+    case "facility_admin":
       return adminNavLinks;
     case "mentor":
       return mentorNavLinks;
