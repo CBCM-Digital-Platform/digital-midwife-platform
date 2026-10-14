@@ -152,10 +152,23 @@ export async function apiClient<T = any>(
 
     try {
       errorData = await response.json();
-      if (errorData?.message) {
-        errorMessage = errorData.message;
-      } else if (errorData?.error?.message) {
-        errorMessage = errorData.error.message;
+      const detailsList = errorData?.error?.details || errorData?.details;
+      let detailMsg = "";
+      if (Array.isArray(detailsList) && detailsList.length > 0) {
+        detailMsg = detailsList
+          .map((d: any) => d?.message || d?.msg || (typeof d === "string" ? d : JSON.stringify(d)))
+          .join(", ");
+      } else if (typeof detailsList === "string") {
+        detailMsg = detailsList;
+      }
+
+      const mainMsg = errorData?.error?.message || errorData?.message;
+      if (mainMsg && detailMsg) {
+        errorMessage = `${mainMsg}: ${detailMsg}`;
+      } else if (mainMsg) {
+        errorMessage = mainMsg;
+      } else if (detailMsg) {
+        errorMessage = detailMsg;
       } else if (errorData?.error) {
         errorMessage = typeof errorData.error === "string" ? errorData.error : JSON.stringify(errorData.error);
       }

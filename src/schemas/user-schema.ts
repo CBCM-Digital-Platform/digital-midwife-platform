@@ -1,51 +1,52 @@
 import { z } from "zod";
 
-export const thematicAreasList = [
-  "Pediatrics & Neo",
-  "Emergency Care",
-  "Maternal & Child",
-  "Surgery & Critical",
-  "Internal Medicine",
-  "Infectious Diseases",
-  "Oncology",
-  "Cardiovascular",
-  "Critical Care",
+export const genderOptions = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
 ] as const;
 
+export const highestQualificationsList = [
+  "BSc Midwifery",
+  "MSc Midwifery",
+  "Doctor of Medicine (MD)",
+  "Specialist in OB/GYN",
+  "MPH (Master of Public Health)",
+  "Diploma in Clinical Midwifery",
+  "PhD / Post-Doctorate",
+] as const;
 
-export const userFormSchema = z
-  .object({
-    name: z.string().min(2, "Full name must be at least 2 characters"),
-    email: z.string().email("Please enter a valid email address"),
-    phone: z.string().optional(),
-    role: z.enum(["mentor", "mentee"]),
-    facility: z.string().min(1, "Please specify a clinical facility"),
-    thematicArea: z.enum(thematicAreasList),
-    profession: z.string().min(2, "Profession / Clinical specialization is required"),
-    // Mentor specific
-    department: z.string().optional(),
-    yearsOfExperience: z.coerce.number().min(0).optional(),
-    // Mentee specific
-    cadreLevel: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.role === "mentor") {
-      if (!data.department || data.department.trim().length < 2) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Department or Clinical Unit is required for mentors",
-          path: ["department"],
-        });
-      }
-      if (data.yearsOfExperience === undefined || data.yearsOfExperience < 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Experience must be at least 1 year for mentors",
-          path: ["yearsOfExperience"],
-        });
-      }
-    }
-  });
+export const thematicAreasList = [
+  "Maternal & Child Health",
+  "Emergency Obstetric & Newborn Care (EmONC)",
+  "Pediatrics & Neonatal Care",
+  "Adolescent & Youth Sexual Reproductive Health (AYSRH)",
+  "Family Planning & Comprehensive Abortion Care",
+  "Infectious Diseases & PMTCT",
+  "Surgery & Critical Care",
+  "Internal Medicine",
+] as const;
+
+export const userFormSchema = z.object({
+  // Personal Information
+  full_name: z.string().min(2, "Full name must be at least 2 characters"),
+  gender: z.enum(["male", "female", "other"], {
+    errorMap: () => ({ message: "Please select gender" }),
+  }),
+  phone: z.string().min(9, "Phone number must be at least 9 characters"),
+  email: z.string().email("Please enter a valid email address"),
+
+  // Professional Information
+  profession: z.string().min(2, "Profession is required"),
+  highest_qualification: z.string().min(1, "Please select highest qualification"),
+  years_of_experience: z.coerce.number().min(0, "Years of experience is required"),
+  thematic_area: z.string().min(1, "Please select primary thematic area"),
+  primary_facility: z.string().optional(),
+
+  // Account Creation
+  username: z.string().min(3, "Username is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  force_password_change: z.boolean().default(true),
+});
 
 export type UserFormData = z.infer<typeof userFormSchema>;
-

@@ -5,14 +5,18 @@ import {
   Clock,
   CheckCircle2,
   UploadCloud,
-  ArrowUpRight,
 } from "lucide-react";
 import { UsersTable } from "@/components/User/UsersTable";
 import { AddUserDialog } from "@/components/User/AddUserDialog";
+import { UserStatsCards, StatCardProps } from "@/components/User/UserStatsCards";
 import { getMentors } from "@/services/users.service";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export default async function MentorsPage() {
-  const mentors = await getMentors();
+  const session = await getServerSession(authOptions);
+  const facilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+  const mentors = await getMentors(facilityId);
 
   const totalMentors = mentors.length;
   const activeCount = mentors.filter((m) => m.status === "active").length;
@@ -21,6 +25,50 @@ export default async function MentorsPage() {
     totalMentors > 0
       ? `${((activeCount / totalMentors) * 100).toFixed(1)}% active`
       : "0% active";
+
+  const stats: StatCardProps[] = [
+    {
+      title: "Total Mentors",
+      value: totalMentors,
+      trend: "↑8% this quarter",
+      icon: Users,
+      iconColor: "bg-blue-50 text-blue-600",
+      accentBarColor: "bg-[#194611]",
+      accentBarWidth: "w-24",
+    },
+    {
+      title: "Active Mentors",
+      value: activeCount,
+      subtext: operationalPercentage,
+      icon: Activity,
+      iconColor: "bg-emerald-50 text-emerald-600",
+      accentBarColor: "bg-emerald-600",
+      accentBarWidth: "w-28",
+    },
+    {
+      title: "Pending Mentors",
+      value: pendingCount,
+      badge: "Pending Review",
+      badgeColor: "bg-amber-100 text-amber-800",
+      icon: Clock,
+      iconColor: "bg-amber-50 text-amber-600",
+      accentBarColor: "bg-amber-500",
+      accentBarWidth: "w-20",
+    },
+    {
+      title: "Completion Rate",
+      value: "94.6%",
+      trend: "↑1.4%",
+      trendIcon: true,
+      icon: CheckCircle2,
+      iconColor: "bg-purple-50 text-purple-600",
+      progress: {
+        percentage: 94.6,
+        target: 92,
+        barColor: "bg-[#194611]",
+      },
+    },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -39,103 +87,12 @@ export default async function MentorsPage() {
             <span>Batch Import</span>
           </button>
 
-          <AddUserDialog role="mentor" />
+          <AddUserDialog role="mentor" facilityId={facilityId} />
         </div>
       </div>
 
-      {/* 2. STAT SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CARD 1: TOTAL MENTORS */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Mentors</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{totalMentors}</span>
-                <span className="text-xs font-bold text-emerald-600">↑8% this quarter</span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Users className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-[#194611] rounded-full w-24" />
-          </div>
-        </div>
-
-        {/* CARD 2: ACTIVE MENTORS */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Mentors</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{activeCount}</span>
-                <span className="text-xs font-semibold text-gray-500">
-                  {operationalPercentage}
-                </span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <Activity className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-emerald-600 rounded-full w-28" />
-          </div>
-        </div>
-
-        {/* CARD 3: PENDING MENTORS */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Pending Mentors</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{pendingCount}</span>
-                <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
-                  Pending Review
-                </span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <Clock className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-amber-500 rounded-full w-20" />
-          </div>
-        </div>
-
-        {/* CARD 4: COMPLETION RATE */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Completion Rate</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">94.6%</span>
-                <span className="text-xs font-bold text-emerald-600 flex items-center">
-                  <ArrowUpRight className="h-3 w-3 inline" />
-                  ↑1.4%
-                </span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
-            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-              <div
-                className="bg-[#194611] h-1.5 rounded-full transition-all duration-500"
-                style={{ width: "94.6%" }}
-              />
-            </div>
-            <div className="flex justify-end text-[11px] text-gray-500 font-medium">
-              <span>Target: 92%</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* 2. REUSABLE STAT SUMMARY CARDS */}
+      <UserStatsCards stats={stats} />
 
       {/* 3. REUSABLE USERS TABLE (Role = "mentor") */}
       <UsersTable

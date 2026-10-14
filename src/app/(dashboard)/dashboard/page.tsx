@@ -14,6 +14,7 @@ import {
   Award,
   ChevronRight,
 } from "lucide-react";
+import { isAdminRole } from "@/types/navigation";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -64,7 +65,6 @@ export default async function DashboardPage() {
     const totalClinicians = mentors.length + mentees.length;
     const activeMentors = mentors.filter((m) => m.status === "active").length || mentors.length;
     const activeMentees = mentees.filter((m) => m.status === "active").length || mentees.length;
-
     return (
       <div className="max-w-7xl mx-auto space-y-8">
         {/* HEADER SECTION */}
