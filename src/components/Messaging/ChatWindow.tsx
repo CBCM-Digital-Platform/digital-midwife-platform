@@ -16,7 +16,8 @@ import type { MessagingRole } from "@/hooks/useMessaging";
 export default function ChatWindow({ role }: { role: MessagingRole }) {
   const {
     selectedId,
-    setSelectedId,
+    conversations,
+    selectConversation,
     search,
     setSearch,
     filter,
@@ -36,6 +37,11 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
     visibleConversations,
     sendMessage,
     createConversation,
+    loading,
+    loadingMessages,
+    sending,
+    creating,
+    error,
   } = useMessaging(role);
 
   return (
@@ -77,20 +83,31 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
             <form onSubmit={createConversation} className="mt-3 flex gap-2">
               <input
                 autoFocus
+                type="number"
+                min="1"
+                step="1"
                 value={newContact}
                 onChange={(event) => setNewContact(event.target.value)}
-                aria-label={`Name of ${contactRole.toLowerCase()}`}
-                placeholder={`${contactRole} name`}
+                aria-label={`${contactRole} user ID`}
+                placeholder={`${contactRole} user ID`}
                 className="min-w-0 flex-1 rounded-md border border-[#dce2d5] px-3 py-2 text-sm outline-none focus:border-[#47793d]"
               />
               <button
                 type="submit"
-                disabled={!newContact.trim()}
+                disabled={!newContact.trim() || creating}
                 className="rounded-md bg-[#315f2a] px-3 text-sm text-white disabled:opacity-50"
               >
-                Start
+                {creating ? "Starting..." : "Start"}
               </button>
             </form>
+          )}
+          {error && (
+            <div
+              role="alert"
+              className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"
+            >
+              {error}
+            </div>
           )}
           <div className="mt-3 flex gap-2" aria-label="Filter conversations">
             {filters.map((item) => (
@@ -112,13 +129,17 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {visibleConversations.length ? (
+          {loading ? (
+            <p className="p-6 text-center text-sm text-[#758071]">
+              Loading conversations...
+            </p>
+          ) : visibleConversations.length ? (
             visibleConversations.map((conversation) => (
               <button
                 key={conversation.id}
                 type="button"
                 onClick={() => {
-                  setSelectedId(conversation.id);
+                  selectConversation(conversation.id);
                   setShowChat(true);
                 }}
                 className={`flex w-full gap-3 border-b border-[#edf0eb] p-4 text-left transition hover:bg-[#f7f8f4] ${
@@ -154,7 +175,9 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
             ))
           ) : (
             <p className="p-6 text-center text-sm text-[#758071]">
-              No conversations match your search.
+              {conversations.length
+                ? "No conversations match your search."
+                : "No conversations yet. Start one to send a message."}
             </p>
           )}
         </div>
@@ -165,6 +188,16 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
           showChat ? "flex" : "hidden md:flex"
         }`}
       >
+        {selectedConversation ? (
+          <>
+        {error && (
+          <div
+            role="alert"
+            className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 md:hidden"
+          >
+            {error}
+          </div>
+        )}
         <header className="flex items-center justify-between border-b border-[#e2e6df] px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -214,7 +247,11 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
           <div className="self-center rounded-full bg-[#edf1e8] px-3 py-1 text-[11px] text-[#697466]">
             Today
           </div>
-          {selectedConversation.messages.length ? (
+          {loadingMessages && !selectedConversation.messages.length ? (
+            <p className="self-center text-sm text-[#758071]">
+              Loading messages...
+            </p>
+          ) : selectedConversation.messages.length ? (
             selectedConversation.messages.map((message) => (
               <div
                 key={message.id}
@@ -256,20 +293,29 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
             onChange={(event) => setDraft(event.target.value)}
             aria-label="Type a message"
             placeholder="Type a message..."
+            disabled={sending}
             className="min-w-0 flex-1 rounded-full border border-[#dce2d5] px-4 py-3 text-sm outline-none transition focus:border-[#47793d]"
           />
           <button
             type="submit"
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || sending}
             aria-label="Send message"
             className="rounded-full bg-[#194611] p-3 text-white transition hover:bg-[#315f2a] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Send size={17} />
+            {sending ? <span className="text-xs">...</span> : <Send size={17} />}
           </button>
         </form>
         <p className="border-t border-[#f0f2ed] px-4 py-1.5 text-center text-[10px] text-[#899286]">
-          Frontend preview: messages are not sent to a server.
+          Messages are sent securely through CBCM.
         </p>
+          </>
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-[#758071]">
+            {loading
+              ? "Loading your conversations..."
+              : "Choose a conversation or start a new one."}
+          </div>
+        )}
       </div>
     </section>
   );

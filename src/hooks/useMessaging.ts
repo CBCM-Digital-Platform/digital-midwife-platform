@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import type { SubmitEvent } from "react";
 
 export type MessagingRole = "mentor" | "mentee";
@@ -20,166 +21,336 @@ export type Conversation = {
   lastMessageTime: string;
   initials: string;
   avatarColor: string;
-  unread?: boolean;
+  unread: boolean;
   online?: boolean;
   messages: ChatMessage[];
 };
 
-const mentorConversations: Conversation[] = [
-  {
-    id: 1,
-    name: "Sarah Jenkins",
-    subtitle: "Mentee · Clinical placement",
-    lastMessage: "I reviewed the postpartum care notes.",
-    lastMessageTime: "10:42 AM",
-    initials: "SJ",
-    avatarColor: "bg-amber-100 text-amber-900",
-    unread: true,
-    online: true,
-    messages: [
-      {
-        id: 1,
-        text: "Good morning. I am reviewing the postpartum care protocol before my simulation this afternoon.",
-        time: "10:15 AM",
-        sentByMe: false,
-      },
-      {
-        id: 2,
-        text: "Good morning, Sarah. Great preparation. Is there a particular step you would like to review?",
-        time: "10:20 AM",
-        sentByMe: true,
-      },
-      {
-        id: 3,
-        text: "I reviewed the postpartum care notes. Could we go over the follow-up checks together?",
-        time: "10:42 AM",
-        sentByMe: false,
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "David Chen",
-    subtitle: "Mentee · Learning cohort",
-    lastMessage: "Thank you for the guidance on the breech delivery simulation.",
-    lastMessageTime: "Yesterday",
-    initials: "DC",
-    avatarColor: "bg-sky-100 text-sky-900",
-    messages: [
-      {
-        id: 1,
-        text: "Thank you for the guidance on the breech delivery simulation.",
-        time: "Yesterday",
-        sentByMe: false,
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "Maria Jackson",
-    subtitle: "Mentee · Clinical placement",
-    lastMessage: "Can we reschedule tomorrow's session to 2 PM?",
-    lastMessageTime: "Monday",
-    initials: "MJ",
-    avatarColor: "bg-rose-100 text-rose-900",
-    messages: [
-      {
-        id: 1,
-        text: "Can we reschedule tomorrow's session to 2 PM?",
-        time: "Monday",
-        sentByMe: false,
-      },
-    ],
-  },
+type ApiPerson = {
+  id?: number | string;
+  fullName?: string;
+  full_name?: string;
+  firstName?: string;
+  first_name?: string;
+  lastName?: string;
+  last_name?: string;
+  name?: string;
+  role?: string;
+};
+
+type ApiMessage = {
+  id: number;
+  senderId?: number;
+  sender_id?: number;
+  content?: string;
+  text?: string;
+  sentAt?: string;
+  sent_at?: string;
+  createdAt?: string;
+  created_at?: string;
+};
+
+type ApiConversation = {
+  id: number;
+  participants?: ApiPerson[];
+  lastMessage?: ApiMessage | string | null;
+  last_message?: ApiMessage | string | null;
+  lastMessageAt?: string | null;
+  last_message_at?: string | null;
+  unreadCount?: number;
+  unread_count?: number;
+  messages?: ApiMessage[];
+};
+
+type ApiEnvelope<T> = {
+  success?: boolean;
+  data?: T;
+  message?: string;
+  error?: string | { message?: string };
+};
+
+const avatarColors = [
+  "bg-amber-100 text-amber-900",
+  "bg-sky-100 text-sky-900",
+  "bg-rose-100 text-rose-900",
+  "bg-emerald-100 text-emerald-900",
+  "bg-violet-100 text-violet-900",
+  "bg-lime-100 text-lime-900",
 ];
 
-const menteeConversations: Conversation[] = [
-  {
-    id: 1,
-    name: "Dr. Sarah Jenkins",
-    subtitle: "Clinical Mentor",
-    lastMessage: "I've reviewed your latest clinical notes. Well done.",
-    lastMessageTime: "10:42 AM",
-    initials: "SJ",
-    avatarColor: "bg-emerald-100 text-emerald-900",
-    unread: true,
-    online: true,
-    messages: [
-      {
-        id: 1,
-        text: "Hi, I am preparing for the clinical case review tomorrow. Could I ask you about the latest guidelines?",
-        time: "10:15 AM",
-        sentByMe: true,
-      },
-      {
-        id: 2,
-        text: "Of course. Send me the points you would like to discuss and we can review them together.",
-        time: "10:26 AM",
-        sentByMe: false,
-      },
-      {
-        id: 3,
-        text: "I've reviewed your latest clinical notes. Well done. We can go over your questions tomorrow.",
-        time: "10:42 AM",
-        sentByMe: false,
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "Dr. Emily Chen",
-    subtitle: "Clinical Mentor",
-    lastMessage: "Are we still on for the skills review tomorrow at 2 PM?",
-    lastMessageTime: "Yesterday",
-    initials: "EC",
-    avatarColor: "bg-violet-100 text-violet-900",
-    messages: [
-      {
-        id: 1,
-        text: "Are we still on for the skills review tomorrow at 2 PM?",
-        time: "Yesterday",
-        sentByMe: false,
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "Marcus Thorne",
-    subtitle: "Clinical Mentor",
-    lastMessage: "Could you clarify the neonatal resuscitation protocol?",
-    lastMessageTime: "Tuesday",
-    initials: "MT",
-    avatarColor: "bg-sky-100 text-sky-900",
-    messages: [
-      {
-        id: 1,
-        text: "Could you clarify the neonatal resuscitation protocol?",
-        time: "Tuesday",
-        sentByMe: true,
-      },
-    ],
-  },
-];
+function displayTime(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  if (date.toDateString() === new Date().toDateString()) {
+    return new Intl.DateTimeFormat([], {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat([], {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function personName(person?: ApiPerson) {
+  const firstName = person?.firstName ?? person?.first_name;
+  const lastName = person?.lastName ?? person?.last_name;
+  return (
+    person?.fullName ||
+    person?.full_name ||
+    person?.name ||
+    [firstName, lastName].filter(Boolean).join(" ") ||
+    "CBCM user"
+  );
+}
+
+function mapMessage(message: ApiMessage, currentUserId?: number): ChatMessage {
+  const senderId = message.senderId ?? message.sender_id;
+  return {
+    id: message.id,
+    text: message.content ?? message.text ?? "",
+    time: displayTime(
+      message.sentAt ?? message.sent_at ?? message.createdAt ?? message.created_at,
+    ),
+    sentByMe: currentUserId != null && senderId === currentUserId,
+  };
+}
+
+function mapConversation(
+  item: ApiConversation,
+  role: MessagingRole,
+  currentUserId?: number,
+): Conversation {
+  const participants = item.participants ?? [];
+  const otherPerson =
+    (currentUserId == null
+      ? undefined
+      : participants.find((person) => Number(person.id) !== currentUserId)) ??
+    participants.find((person) => person.role !== role) ??
+    participants[0];
+  const name = personName(otherPerson);
+  const lastMessage = item.lastMessage ?? item.last_message;
+  const lastMessageText =
+    typeof lastMessage === "string"
+      ? lastMessage
+      : lastMessage?.content ?? lastMessage?.text ?? "";
+  const lastMessageTime =
+    item.lastMessageAt ??
+    item.last_message_at ??
+    (typeof lastMessage === "object" && lastMessage
+      ? lastMessage.sentAt ?? lastMessage.sent_at
+      : undefined);
+
+  return {
+    id: item.id,
+    name,
+    subtitle: otherPerson?.role
+      ? otherPerson.role.charAt(0).toUpperCase() + otherPerson.role.slice(1)
+      : role === "mentor"
+        ? "Mentee"
+        : "Clinical Mentor",
+    lastMessage: lastMessageText,
+    lastMessageTime: displayTime(lastMessageTime),
+    initials: name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join(""),
+    avatarColor: avatarColors[Math.abs(item.id) % avatarColors.length],
+    unread: (item.unreadCount ?? item.unread_count ?? 0) > 0,
+    messages: (item.messages ?? []).map((message) =>
+      mapMessage(message, currentUserId),
+    ),
+  };
+}
+
+function errorMessage(result: ApiEnvelope<unknown> | null, status: number) {
+  if (typeof result?.message === "string") return result.message;
+  if (typeof result?.error === "string") return result.error;
+  if (result?.error?.message) return result.error.message;
+  return `Request failed (${status}).`;
+}
 
 export function useMessaging(role: MessagingRole) {
-  const [conversations, setConversations] = useState(
-    role === "mentor" ? mentorConversations : menteeConversations,
-  );
-  const [selectedId, setSelectedId] = useState(conversations[0].id);
+  const { data: session, status: sessionStatus } = useSession();
+  const accessToken = session?.accessToken;
+  const parsedUserId = Number(session?.user?.id);
+  const currentUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [draft, setDraft] = useState("");
   const [showChat, setShowChat] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [newContact, setNewContact] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedConversation =
-    conversations.find((conversation) => conversation.id === selectedId) ??
-    conversations[0];
   const otherRole = role === "mentor" ? "mentee" : "mentor";
   const filters = ["All", role === "mentor" ? "Mentees" : "Mentors"];
   const title = role === "mentor" ? "Direct Messages" : "Messages";
   const contactRole = role === "mentor" ? "Mentee" : "Clinical Mentor";
+
+  const apiRequest = useCallback(
+    async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
+      if (!apiUrl) {
+        throw new Error("NEXT_PUBLIC_API_URL is not configured.");
+      }
+      if (!accessToken) {
+        throw new Error("Your access token is missing. Please sign in again.");
+      }
+
+      const response = await fetch(`${apiUrl}${path}`, {
+        ...init,
+        headers: {
+          Accept: "application/json",
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
+          Authorization: `Bearer ${accessToken}`,
+          ...init.headers,
+        },
+      });
+
+      const responseText = await response.text();
+      let result: ApiEnvelope<T> | null = null;
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText) as ApiEnvelope<T>;
+        } catch {
+          if (response.ok) {
+            throw new Error("The backend returned an invalid JSON response.");
+          }
+        }
+      }
+
+      if (!response.ok || result?.success === false) {
+        throw new Error(errorMessage(result, response.status));
+      }
+
+      return (result && "data" in result ? result.data : result) as T;
+    },
+    [accessToken, apiUrl],
+  );
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const items = await apiRequest<ApiConversation[]>(
+        "/messages/conversations",
+      );
+      const mapped = items.map((item) =>
+        mapConversation(item, role, currentUserId),
+      );
+      setConversations(mapped);
+      setLoadingMessages(mapped.length > 0);
+      setSelectedId((previous) =>
+        previous != null && mapped.some((item) => item.id === previous)
+          ? previous
+          : (mapped[0]?.id ?? null),
+      );
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not load conversations.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [apiRequest, currentUserId, role]);
+
+  useEffect(() => {
+    if (sessionStatus !== "authenticated") return;
+
+    let active = true;
+    const load = async () => {
+      await Promise.resolve();
+      if (active) await loadConversations();
+    };
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [loadConversations, sessionStatus]);
+
+  const selectedConversation =
+    conversations.find((conversation) => conversation.id === selectedId) ?? null;
+
+  const loadConversation = useCallback(
+    async (conversationId: number) => {
+      try {
+        const item = await apiRequest<ApiConversation>(
+          `/messages/conversations/${conversationId}`,
+        );
+        const conversation = mapConversation(item, role, currentUserId);
+        setConversations((current) =>
+          current.map((existing) =>
+            existing.id === conversationId ? conversation : existing,
+          ),
+        );
+
+        try {
+          await apiRequest(
+            `/messages/conversations/${conversationId}/read`,
+            { method: "PATCH" },
+          );
+          setConversations((current) =>
+            current.map((existing) =>
+              existing.id === conversationId
+                ? { ...existing, unread: false }
+                : existing,
+            ),
+          );
+        } catch (err) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not mark messages as read.",
+          );
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not load this conversation.",
+        );
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [apiRequest, currentUserId, role],
+  );
+
+  useEffect(() => {
+    if (selectedId == null || sessionStatus !== "authenticated") return;
+
+    let active = true;
+    const load = async () => {
+      await Promise.resolve();
+      if (active) await loadConversation(selectedId);
+    };
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [loadConversation, selectedId, sessionStatus]);
+
+  function selectConversation(conversationId: number) {
+    if (conversationId !== selectedId) {
+      setLoadingMessages(true);
+      setError(null);
+    }
+    setSelectedId(conversationId);
+  }
 
   const visibleConversations = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -193,66 +364,89 @@ export function useMessaging(role: MessagingRole) {
     });
   }, [conversations, filter, otherRole, search]);
 
-  function sendMessage(event: SubmitEvent<HTMLFormElement>) {
+  async function sendMessage(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text) return;
+    if (!text || selectedId == null || sending) return;
 
-    const time = new Intl.DateTimeFormat([], {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date());
-
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === selectedId
-          ? {
-              ...conversation,
-              lastMessage: text,
-              lastMessageTime: time,
-              messages: [
-                ...conversation.messages,
-                { id: Date.now(), text, time, sentByMe: true },
-              ],
-            }
-          : conversation,
-      ),
-    );
-    setDraft("");
+    setSending(true);
+    setError(null);
+    try {
+      const message = await apiRequest<ApiMessage>(
+        `/messages/conversations/${selectedId}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ content: text }),
+        },
+      );
+      const mapped = mapMessage(message, currentUserId);
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === selectedId
+            ? {
+                ...conversation,
+                lastMessage: mapped.text,
+                lastMessageTime: mapped.time,
+                messages: [...conversation.messages, mapped],
+              }
+            : conversation,
+        ),
+      );
+      setDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send message.");
+    } finally {
+      setSending(false);
+    }
   }
 
-  function createConversation(event: SubmitEvent<HTMLFormElement>) {
+  async function createConversation(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    const name = newContact.trim();
-    if (!name) return;
+    const participantId = Number(newContact.trim());
+    if (!Number.isSafeInteger(participantId) || participantId <= 0) {
+      setError("Enter a valid numeric user ID to start a conversation.");
+      return;
+    }
 
-    const conversation: Conversation = {
-      id: Date.now(),
-      name,
-      subtitle: contactRole,
-      lastMessage: "Start a conversation",
-      lastMessageTime: "Now",
-      initials: name
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) => part[0].toUpperCase())
-        .join(""),
-      avatarColor: "bg-lime-100 text-lime-900",
-      online: false,
-      messages: [],
-    };
-
-    setConversations((current) => [conversation, ...current]);
-    setSelectedId(conversation.id);
-    setNewContact("");
-    setIsComposing(false);
-    setShowChat(true);
+    setCreating(true);
+    setError(null);
+    try {
+      const item = await apiRequest<ApiConversation>(
+        "/messages/conversations",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            participantIds: [participantId],
+            type: "direct",
+          }),
+        },
+      );
+      const conversation = mapConversation(item, role, currentUserId);
+      setConversations((current) => [
+        conversation,
+        ...current.filter((existing) => existing.id !== conversation.id),
+      ]);
+      setLoadingMessages(true);
+      if (selectedId === conversation.id) {
+        void loadConversation(conversation.id);
+      }
+      setSelectedId(conversation.id);
+      setNewContact("");
+      setIsComposing(false);
+      setShowChat(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not create conversation.",
+      );
+    } finally {
+      setCreating(false);
+    }
   }
 
   return {
     conversations,
     selectedId,
-    setSelectedId,
+    selectConversation,
     search,
     setSearch,
     filter,
@@ -272,5 +466,11 @@ export function useMessaging(role: MessagingRole) {
     visibleConversations,
     sendMessage,
     createConversation,
+    loadConversations,
+    loading,
+    loadingMessages,
+    sending,
+    creating,
+    error,
   };
 }
