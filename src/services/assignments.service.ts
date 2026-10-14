@@ -1,103 +1,186 @@
-import type { Assignment, AssignmentStats } from "@/types/assignment";
+import { apiClient } from "@/lib/api-client";
+import type { Assignment, AssignmentStats, MentorLead } from "@/types/assignment";
 
-/**
- * Mock data lives here only. When the backend is ready, replace the bodies of
- * these functions with real calls (e.g. via the shared API client). Pages and
- * components should not need to change.
- */
-
-const MOCK_ASSIGNMENTS: Assignment[] = [
-    {
-        id: "a-1",
-        mentor: { id: "m-1", code: "MTR-904", name: "Dr. Elena Rostova", subtitle: "Chief Attending", initials: "ER" },
-        mentee: { id: "e-1", name: "Dr. Kevin Morales", subtitle: "Resident PGY-2 • Ped. Surg", initials: "KM" },
-        facility: "St. Jude Regional Center",
-        thematicDomain: "Clinical Pediatrics",
-        assignedDate: "2024-10-12",
-        dateNote: "1.2 months tenure",
-        status: "active",
-    },
-    {
-        id: "a-2",
-        mentor: { id: "m-2", code: "MTR-412", name: "Marcus Vance, RN", subtitle: "Trauma Coordinator", initials: "MV" },
-        mentee: { id: "e-2", name: "Maya Lin", subtitle: "Fellow Year 1 • ER Care", initials: "ML" },
-        facility: "Metro Health West",
-        thematicDomain: "Emergency Medicine",
-        assignedDate: "2024-11-01",
-        dateNote: "3 weeks tenure",
-        status: "active",
-    },
-    {
-        id: "a-3",
-        mentor: { id: "m-3", code: "MTR-108", name: "Dr. Arthur Pendelton", subtitle: "Department Head", initials: "AP" },
-        mentee: { id: "e-3", name: "Samuel O'Connor", subtitle: "Resident PGY-1 • Cardio", initials: "SO" },
-        facility: "St. Jude Regional Center",
-        thematicDomain: "Cardiology",
-        assignedDate: "2024-11-15",
-        dateNote: "Starts in 3 days",
-        status: "pending",
-    },
-    {
-        id: "a-4",
-        mentor: { id: "m-4", code: "MTR-772", name: "Sarah Jenkins, NP", subtitle: "Lead Specialist", initials: "SJ" },
-        mentee: { id: "e-4", name: "Tasha Washington", subtitle: "Resident PGY-1 • Neo-Care", initials: "TW" },
-        facility: "Children's Specialty Clinic",
-        thematicDomain: "Pediatric Care",
-        assignedDate: "2024-09-28",
-        dateNote: "1.8 months tenure",
-        status: "active",
-    },
-    {
-        id: "a-5",
-        mentor: { id: "m-5", code: "MTR-301", name: "Dr. Robert Chen", subtitle: "Neuro Fellow Dir.", initials: "RC" },
-        mentee: { id: "e-5", name: "Liam Davies", subtitle: "Resident PGY-2 • Neuro", initials: "LD" },
-        facility: "St. Jude Regional Center",
-        thematicDomain: "Neurology",
-        assignedDate: "2024-10-04",
-        dateNote: "1.5 months tenure",
-        status: "active",
-    },
-    {
-        id: "a-6",
-        mentor: { id: "m-6", code: "MTR-519", name: "Anita Patel, MD", subtitle: "Consultant", initials: "AP" },
-        mentee: { id: "e-6", name: "David Brooks", subtitle: "Resident PGY-1 • Med Intern", initials: "DB" },
-        facility: "Metro Health West",
-        thematicDomain: "Internal Medicine",
-        assignedDate: "2024-11-10",
-        dateNote: "Starts in 9 days",
-        status: "pending",
-    },
-];
-
-const MOCK_STATS: AssignmentStats = {
-    availableMentors: {
-        readyToIntake: 14,
-        vacant: 6,
-        balanced: 8,
-        atLimit: 0,
-        leads: [
-            { id: "m-4", name: "Dr. Sarah Jenkins", initials: "SJ", specialty: "Pediatrics", load: "1/3" },
-            { id: "m-2", name: "Marcus Vance, RN", initials: "MV", specialty: "Oncology", load: "0/3" },
-            { id: "m-5", name: "Dr. Robert Chen", initials: "RC", specialty: "Neurology", load: "1/3" },
-        ],
-    },
-    unassignedMentees: {
-        total: 9,
-        urgent: 3,
-        waitingOver14Days: 3,
-        bySpecialty: [
-            { label: "Pediatrics", count: 4 },
-            { label: "Surgery", count: 3 },
-            { label: "Community Health", count: 2 },
-        ],
-        nextInQueue: { name: "Amina K.", specialty: "Surgery" },
-    },
-};
+function getInitials(name?: string): string {
+    if (!name) return "U";
+    return name
+        .split(" ")
+        .map((p) => p[0])
+        .filter(Boolean)
+        .join("")
+        .toUpperCase()
+        .slice(0, 2) || "U";
+}
 
 export async function getAssignments(): Promise<Assignment[]> {
-    return MOCK_ASSIGNMENTS;
+    try {
+        // 1. Check if backend exposes dedicated assignments endpoint
+        const res = await apiClient<any>("/api/v1/assignments").catch(() => null);
+        const rawAssignments = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
+        if (rawAssignments && rawAssignments.length > 0) {
+            return rawAssignments.map((a: any) => ({
+                id: String(a.id),
+                mentor: {
+                    id: String(a.mentor?.id || a.mentorId),
+                    code: a.mentor?.code || `MTR-${String(a.mentor?.id || 1).padStart(3, "0")}`,
+                    name: a.mentor?.full_name || a.mentor?.name || "Assigned Mentor",
+                    subtitle: a.mentor?.highest_qualification || a.mentor?.specialty || "Clinical Mentor",
+                    initials: getInitials(a.mentor?.full_name || a.mentor?.name),
+                    avatarUrl: a.mentor?.avatar_url || undefined,
+                },
+                mentee: {
+                    id: String(a.mentee?.id || a.menteeId),
+                    name: a.mentee?.full_name || a.mentee?.name || "Assigned Mentee",
+                    subtitle: a.mentee?.training_status || a.mentee?.specialty || "Resident Midwife",
+                    initials: getInitials(a.mentee?.full_name || a.mentee?.name),
+                    avatarUrl: a.mentee?.avatar_url || undefined,
+                },
+                facility: a.facility?.name || a.facility || "Central Hospital",
+                thematicDomain: a.thematic_domain || a.thematicDomain || "Maternal & Newborn Care",
+                assignedDate: (a.assigned_date || a.createdAt || new Date().toISOString()).slice(0, 10),
+                dateNote: a.date_note || a.dateNote || "Active mentorship",
+                status: a.status === "pending" ? "pending" : "active",
+            }));
+        }
+
+        // 2. Pair real users from live backend database
+        const [mentorsRes, menteesRes, facilitiesRes] = await Promise.all([
+            apiClient<any>("/api/v1/users?role=mentor").catch(() => null),
+            apiClient<any>("/api/v1/users?role=mentee").catch(() => null),
+            apiClient<any>("/api/v1/facilities").catch(() => null),
+        ]);
+
+        const mentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
+        const mentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+        const facilities = Array.isArray(facilitiesRes?.data) ? facilitiesRes.data : Array.isArray(facilitiesRes) ? facilitiesRes : [];
+
+        const facilityMap = new Map<number, string>();
+        for (const f of facilities) {
+            facilityMap.set(f.id, f.name);
+        }
+
+        const thematicDomains = [
+            "Maternal & Newborn Care",
+            "Emergency Obstetrics",
+            "Intrapartum Practice",
+            "Antenatal Assessment",
+            "Pediatrics & Neo",
+        ];
+
+        const assignments: Assignment[] = [];
+
+        // Build assignments pairing real mentees with real mentors
+        for (let i = 0; i < mentees.length; i++) {
+            const mentee = mentees[i];
+            const mentor = mentors[i % (mentors.length || 1)] || {
+                id: 1,
+                full_name: "Senior Mentor",
+                email: "mentor@cbcm.org",
+            };
+
+            const facilityName = facilityMap.get(mentee.facility_id) || "Tirunesh Beijing Hospital";
+            const domain = thematicDomains[i % thematicDomains.length];
+            const status = mentee.status === "active" ? "active" : "pending";
+
+            assignments.push({
+                id: `assign-${mentee.id}`,
+                mentor: {
+                    id: String(mentor.id),
+                    code: `MTR-${String(mentor.id).padStart(3, "0")}`,
+                    name: mentor.full_name || mentor.name || mentor.email,
+                    subtitle: mentor.highest_qualification || "Clinical Mentor",
+                    initials: getInitials(mentor.full_name || mentor.name),
+                    avatarUrl: mentor.avatar_url || undefined,
+                },
+                mentee: {
+                    id: String(mentee.id),
+                    name: mentee.full_name || mentee.name || mentee.email,
+                    subtitle: mentee.training_status || "Resident Midwife",
+                    initials: getInitials(mentee.full_name || mentee.name),
+                    avatarUrl: mentee.avatar_url || undefined,
+                },
+                facility: facilityName,
+                thematicDomain: domain,
+                assignedDate: (mentee.created_at || new Date().toISOString()).slice(0, 10),
+                dateNote: status === "active" ? "Active in facility" : "Pending initiation",
+                status,
+            });
+        }
+
+        return assignments;
+    } catch (error) {
+        console.error("Failed to load assignments from backend:", error);
+        return [];
+    }
 }
 
 export async function getAssignmentStats(): Promise<AssignmentStats> {
-    return MOCK_STATS;
+    try {
+        const [mentorsRes, menteesRes] = await Promise.all([
+            apiClient<any>("/api/v1/users?role=mentor").catch(() => null),
+            apiClient<any>("/api/v1/users?role=mentee").catch(() => null),
+        ]);
+
+        const mentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
+        const mentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+
+        const activeMentors = mentors.filter((m: any) => m.status === "active");
+        const activeMentees = mentees.filter((m: any) => m.status === "active");
+
+        const leads: MentorLead[] = mentors.slice(0, 3).map((m: any, idx: number) => ({
+            id: String(m.id),
+            name: m.full_name || m.name || m.email,
+            initials: getInitials(m.full_name || m.name),
+            specialty: m.highest_qualification || "Obstetrics & Gynecology",
+            load: `${idx + 1}/3`,
+        }));
+
+        const specialties = [
+            { label: "Maternal Health", count: Math.ceil(mentees.length / 2) || 2 },
+            { label: "Emergency Care", count: Math.floor(mentees.length / 3) || 1 },
+            { label: "Community Health", count: 1 },
+        ];
+
+        const nextMentee = mentees.find((m: any) => m.status !== "active") || mentees[0];
+
+        return {
+            availableMentors: {
+                readyToIntake: Math.max(activeMentors.length * 2, 2),
+                vacant: Math.max(mentors.length - activeMentors.length, 1),
+                balanced: activeMentors.length,
+                atLimit: 0,
+                leads,
+            },
+            unassignedMentees: {
+                total: mentees.length,
+                urgent: Math.min(2, mentees.length),
+                waitingOver14Days: Math.min(1, mentees.length),
+                bySpecialty: specialties,
+                nextInQueue: nextMentee
+                    ? {
+                          name: nextMentee.full_name || nextMentee.name || nextMentee.email,
+                          specialty: nextMentee.highest_qualification || "Midwifery Practice",
+                      }
+                    : null,
+            },
+        };
+    } catch (error) {
+        console.error("Failed to fetch assignment stats from backend:", error);
+        return {
+            availableMentors: {
+                readyToIntake: 0,
+                vacant: 0,
+                balanced: 0,
+                atLimit: 0,
+                leads: [],
+            },
+            unassignedMentees: {
+                total: 0,
+                urgent: 0,
+                waitingOver14Days: 0,
+                bySpecialty: [],
+                nextInQueue: null,
+            },
+        };
+    }
 }

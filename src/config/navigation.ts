@@ -31,14 +31,13 @@ export const menteeNavLinks: NavItem[] = [
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
 ];
 
-export function getNavLinksByRole(role: UserRole): NavItem[] {
-  switch (role) {
-    case "admin":
-      return adminNavLinks;
-    case "mentor":
-      return mentorNavLinks;
-    case "mentee":
-    default:
-      return menteeNavLinks;
+export function getNavLinksByRole(role?: string): NavItem[] {
+  const normalized = (role || "").toLowerCase().replace(/[-_\s]/g, "");
+  if (normalized.includes("admin")) {
+    return adminNavLinks;
   }
+  if (normalized.includes("mentor")) {
+    return mentorNavLinks;
+  }
+  return menteeNavLinks;
 }

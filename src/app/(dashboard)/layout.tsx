@@ -20,7 +20,6 @@ export default async function DashboardLayout({
 }) {
   const session = await getServerSession(authOptions);
 
-  // Safely read the custom role from the session.
   const rawRole = (session?.user as { role?: unknown } | undefined)?.role;
 
   const role: UserRole =

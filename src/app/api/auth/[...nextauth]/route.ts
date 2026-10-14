@@ -1,126 +1,162 @@
-
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://cbcm-backend-1.onrender.com/api/v1";
+type ApiRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is ApiRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeRole(role?: string): string {
+  if (!role) return "mentee";
+  const normalizedRole = role.toLowerCase().replace(/[-_\s]/g, "");
+  if (normalizedRole.includes("admin")) return "admin";
+  if (normalizedRole.includes("mentor")) return "mentor";
+  if (normalizedRole.includes("mentee")) return "mentee";
+  return role.toLowerCase();
+}
+
+function getApiEndpoint(): string {
+  const baseUrl = (
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://cbcm-backend-1.onrender.com/api/v1"
+  ).replace(/\/+$/, "");
+
+  return baseUrl.endsWith("/api/v1")
+    ? `${baseUrl}/auth/login`
+    : `${baseUrl}/api/v1/auth/login`;
+}
+
+function getString(...values: unknown[]): string | undefined {
+  return values.find(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+}
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-
   providers: [
     CredentialsProvider({
       name: "CBCM Credentials",
-
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
+        if (!credentials?.email || !credentials.password) {
+          throw new Error("Invalid credentials");
         }
 
         try {
-          const response = await fetch(`${API_URL}/auth/login`, {
+          const response = await fetch(getApiEndpoint(), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              email: credentials.email,
+              email: credentials.email.trim(),
               password: credentials.password,
             }),
           });
 
           if (!response.ok) {
-            return null;
+            const errorData: unknown = await response.json().catch(() => null);
+            const errorRecord = isRecord(errorData) ? errorData : undefined;
+            const nestedError = isRecord(errorRecord?.error)
+              ? errorRecord.error
+              : undefined;
+            throw new Error(
+              getString(errorRecord?.message, nestedError?.message) ||
+                "Invalid credentials",
+            );
           }
 
-          const result = await response.json();
-
-          if (
-            !result.success ||
-            !result.data?.accessToken ||
-            !result.data?.user
-          ) {
-            return null;
+          const responseData: unknown = await response.json();
+          if (!isRecord(responseData) || responseData.success === false) {
+            throw new Error("Invalid credentials");
           }
 
-          const { accessToken, refreshToken } = result.data;
-          const user = result.data.user;
+          const payload = isRecord(responseData.data)
+            ? responseData.data
+            : responseData;
+          const userData = isRecord(payload.user) ? payload.user : payload;
+          const email = getString(userData.email);
+          const accessToken = getString(
+            payload.accessToken,
+            payload.token,
+            responseData.accessToken,
+            responseData.token,
+          );
 
-          if (user.status !== "active") {
-            return null;
+          if (!email || !accessToken) {
+            throw new Error("Invalid credentials");
           }
+
+          if ("status" in userData && userData.status !== "active") {
+            throw new Error("Invalid credentials");
+          }
+
+          const role = getString(userData.role);
+          const firstName = getString(userData.firstName, userData.first_name);
+          const lastName = getString(userData.lastName, userData.last_name);
+          const name =
+            getString(userData.name, userData.fullName, userData.full_name) ||
+            [firstName, lastName].filter(Boolean).join(" ") ||
+            email;
+          const id =
+            getString(userData.id, userData._id, userData.userId) || email;
+          const refreshToken = getString(
+            payload.refreshToken,
+            responseData.refreshToken,
+          );
 
           return {
-            id: String(user.id),
-            name: user.full_name,
-            email: user.email,
-            role: user.role,
+            id: String(id),
+            name,
+            email,
+            role: normalizeRole(role),
+            rawRole: role,
             accessToken,
             refreshToken,
-            mustChangePassword: user.must_change_password,
+            mustChangePassword:
+              userData.mustChangePassword === true ||
+              userData.must_change_password === true,
           };
         } catch (error) {
           console.error("CBCM login request failed:", error);
-          return null;
+          throw error;
         }
       },
     }),
   ],
-
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        const authenticatedUser = user as typeof user & {
-          role?: string;
-          accessToken?: string;
-          refreshToken?: string;
-          mustChangePassword?: boolean;
-        };
-
-        token.role = authenticatedUser.role;
-        token.accessToken = authenticatedUser.accessToken;
-        token.refreshToken = authenticatedUser.refreshToken;
-        token.mustChangePassword =
-          authenticatedUser.mustChangePassword;
+        token.id = user.id;
+        token.role = normalizeRole(user.role);
+        token.rawRole = user.rawRole || user.role;
+        token.accessToken = user.accessToken;
+        token.refreshToken = user.refreshToken;
+        token.mustChangePassword = user.mustChangePassword;
       }
 
       return token;
     },
-
     async session({ session, token }) {
       if (session.user) {
-        const sessionUser = session.user as typeof session.user & {
-          id?: string;
-          role?: string;
-          mustChangePassword?: boolean;
-        };
-
-        sessionUser.id = token.sub;
-        sessionUser.role = token.role as string | undefined;
-        sessionUser.mustChangePassword =
-          token.mustChangePassword as boolean | undefined;
+        session.user.id = token.id || token.sub;
+        session.user.role = token.role;
+        session.user.rawRole = token.rawRole;
+        session.user.mustChangePassword = token.mustChangePassword;
+        session.user.accessToken = token.accessToken;
       }
-
-      // Make the access token available to client components if needed.
-      // Prefer server-side API calls for sensitive operations.
-      (session as typeof session & {
-        accessToken?: string;
-      }).accessToken = token.accessToken as string | undefined;
-
+      session.accessToken = token.accessToken;
       return session;
     },
   },
-
   pages: {
     signIn: "/login",
   },
-
   session: {
     strategy: "jwt",
   },

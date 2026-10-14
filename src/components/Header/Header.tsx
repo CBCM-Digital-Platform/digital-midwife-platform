@@ -3,14 +3,15 @@ import { Bell, Search, AlertCircle } from "lucide-react";
 import { UserRole } from "@/types/navigation";
 
 interface HeaderProps {
-  role: UserRole;
+  role?: string;
 }
 
 export function Header({ role }: HeaderProps) {
+  const isMentor = (role || "").toLowerCase().includes("mentor");
   return (
     <header className="h-20 bg-[#f9fafb] flex items-center justify-between px-8 border-b border-gray-100 shrink-0">
       <div className="flex items-center gap-6 text-sm font-semibold text-[#194611]">
-        {role === "mentor" && (
+        {isMentor && (
           <>
             <Link href="/messages" className="hover:underline">
               Direct Messages

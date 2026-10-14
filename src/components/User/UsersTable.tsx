@@ -67,6 +67,20 @@ export function UsersTable({
       header: role === "mentor" ? "MENTOR NAME & ID" : "MENTEE NAME & ID",
       cell: ({ row }) => {
         const user = row.original;
+        const name = user.name || (user as any).full_name || user.email || "Clinician";
+        const initials =
+          user.avatarInitials ||
+          name
+            .trim()
+            .split(" ")
+            .filter(Boolean)
+            .map((part: string) => part[0])
+            .slice(0, 2)
+            .join("")
+            .toUpperCase() ||
+          "CP";
+        const systemId = user.systemId || `ID-${user.id || "001"}`;
+
         return (
           <div className="flex items-center gap-3">
             <div
@@ -74,11 +88,11 @@ export function UsersTable({
                 user.avatarBgColor || "bg-gray-100 text-gray-700"
               }`}
             >
-              {user.avatarInitials}
+              {initials}
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-sm text-gray-900 leading-snug">{user.name}</span>
-              <span className="text-[11px] text-gray-500 font-mono tracking-wider">{user.systemId}</span>
+              <span className="font-bold text-sm text-gray-900 leading-snug">{name}</span>
+              <span className="text-[11px] text-gray-500 font-mono tracking-wider">{systemId}</span>
             </div>
           </div>
         );
@@ -91,20 +105,24 @@ export function UsersTable({
       header: "PROFESSION",
       cell: ({ row }) => {
         const user = row.original;
+        const profession =
+          user.profession ||
+          (user as any).highest_qualification ||
+          (user.role === "mentor" ? "Midwifery Preceptor" : "Resident Midwife");
         if (user.role === "mentor") {
           const mentor = user as MentorUser;
           return (
             <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{mentor.profession}</span>
-              <span className="text-xs text-gray-500 truncate mt-0.5">{mentor.department}</span>
+              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
+              <span className="text-xs text-gray-500 truncate mt-0.5">{mentor.department || "Clinical Unit"}</span>
             </div>
           );
         } else {
           const mentee = user as MenteeUser;
           return (
             <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{mentee.profession}</span>
-              <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel}</span>
+              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
+              <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel || "Clinical Midwifery"}</span>
             </div>
           );
         }
@@ -118,7 +136,7 @@ export function UsersTable({
       cell: ({ row }) => (
         <div className="flex items-center gap-1.5 text-xs text-gray-700 max-w-[200px]">
           <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-          <span className="font-medium truncate">{row.original.facility}</span>
+          <span className="font-medium truncate">{row.original.facility || "Regional Health Facility"}</span>
         </div>
       ),
     };
@@ -297,10 +315,10 @@ export function UsersTable({
       // Global search matches name, systemId, profession, or facility
       if (globalFilter.trim()) {
         const query = globalFilter.toLowerCase();
-        const matchesName = item.name.toLowerCase().includes(query);
-        const matchesId = item.systemId.toLowerCase().includes(query);
-        const matchesFacility = item.facility.toLowerCase().includes(query);
-        const matchesThematic = item.thematicArea.toLowerCase().includes(query);
+        const matchesName = (item.name || "").toLowerCase().includes(query);
+        const matchesId = (item.systemId || "").toLowerCase().includes(query);
+        const matchesFacility = (item.facility || "").toLowerCase().includes(query);
+        const matchesThematic = (item.thematicArea || "").toLowerCase().includes(query);
         if (!matchesName && !matchesId && !matchesFacility && !matchesThematic) {
           return false;
         }
@@ -360,13 +378,34 @@ export function UsersTable({
   });
 
   // Unique options for filters
-  const facilitiesList = useMemo(() => Array.from(new Set(data.map((d) => d.facility))), [data]);
-  const thematicList = useMemo(() => Array.from(new Set(data.map((d) => d.thematicArea))), [data]);
+  const facilitiesList = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          data
+            .map((d) => d?.facility)
+            .filter((f): f is string => Boolean(f && typeof f === "string" && f.trim()))
+        )
+      ),
+    [data]
+  );
+  const thematicList = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          data
+            .map((d) => d?.thematicArea)
+            .filter((t): t is NonNullable<typeof t> => Boolean(t))
+        )
+      ),
+    [data]
+  );
   const mentorsList = useMemo(() => {
     if (role !== "mentee") return [];
     const mentors = new Set<string>();
     (data as MenteeUser[]).forEach((m) => {
-      if (m.assignedMentor?.name) mentors.add(m.assignedMentor.name);
+      const name = m?.assignedMentor?.name;
+      if (name && typeof name === "string" && name.trim()) mentors.add(name.trim());
     });
     return Array.from(mentors);
   }, [data, role]);
@@ -426,8 +465,8 @@ export function UsersTable({
             className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none cursor-pointer shadow-sm"
           >
             <option value="all">All Facilities</option>
-            {facilitiesList.map((f) => (
-              <option key={f} value={f}>
+            {facilitiesList.map((f, idx) => (
+              <option key={`facility-${f}-${idx}`} value={f}>
                 {f}
               </option>
             ))}
@@ -443,8 +482,8 @@ export function UsersTable({
             className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none cursor-pointer shadow-sm"
           >
             <option value="all">All Thematic Areas</option>
-            {thematicList.map((t) => (
-              <option key={t} value={t}>
+            {thematicList.map((t, idx) => (
+              <option key={`thematic-${t}-${idx}`} value={t}>
                 {t}
               </option>
             ))}
@@ -476,8 +515,8 @@ export function UsersTable({
               className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none cursor-pointer shadow-sm"
             >
               <option value="all">All Mentors</option>
-              {mentorsList.map((m) => (
-                <option key={m} value={m}>
+              {mentorsList.map((m, idx) => (
+                <option key={`mentor-${m}-${idx}`} value={m}>
                   {m}
                 </option>
               ))}

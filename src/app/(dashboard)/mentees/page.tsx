@@ -1,6 +1,4 @@
-"use client";
-
-import React, { useState } from "react";
+import React from "react";
 import {
   Users,
   Activity,
@@ -10,40 +8,25 @@ import {
 } from "lucide-react";
 import { UsersTable } from "@/components/User/UsersTable";
 import { AddUserDialog } from "@/components/User/AddUserDialog";
-import { mockMentees, mockMenteeStats } from "@/lib/mock-users";
-import { ClinicalUser, MenteeSummaryStats } from "@/types/user";
+import { getMentees } from "@/services/users.service";
 
-const defaultMenteeStats: MenteeSummaryStats = {
-  totalMentees: 142,
-  termTrend: "↑8% this term",
-  activeInRotation: 118,
-  operationalPercentage: "In clinical rotation",
-  pendingOrientation: 14,
-  pendingStage: "Awaiting Assignment",
-  avgKnowledgeMastery: 84.2,
-  cohortTrend: "+2.4% vs cohort",
-};
+export default async function MenteesPage() {
+  const mentees = await getMentees();
 
-export default function MenteesPage() {
-  const [menteesList, setMenteesList] = useState<ClinicalUser[]>(() => mockMentees || []);
-  const [stats, setStats] = useState<MenteeSummaryStats>(() => mockMenteeStats || defaultMenteeStats);
-
-  const currentStats = stats || defaultMenteeStats;
-
-  const handleMenteeCreated = (newUser: ClinicalUser) => {
-    // Prepend newly created mentee to the list
-    setMenteesList((prev) => [newUser, ...prev]);
-
-    // Dynamically update counter badges
-    setStats((prev) => {
-      const base = prev || defaultMenteeStats;
-      return {
-        ...base,
-        totalMentees: base.totalMentees + 1,
-        pendingOrientation: base.pendingOrientation + 1,
-      };
-    });
-  };
+  const totalMentees = mentees.length;
+  const activeCount = mentees.filter((m) => m.status === "active").length;
+  const pendingCount = mentees.filter((m) => m.status === "pending" || m.status === "pending_start").length;
+  const operationalPercentage =
+    totalMentees > 0
+      ? `${((activeCount / totalMentees) * 100).toFixed(1)}% in rotation`
+      : "0% in rotation";
+  const avgKnowledgeMastery =
+    totalMentees > 0
+      ? (
+          mentees.reduce((acc, m) => acc + (m.knowledgeScore || 0), 0) /
+          totalMentees
+        ).toFixed(1)
+      : "84.2";
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -62,14 +45,11 @@ export default function MenteesPage() {
             <span>Batch Import</span>
           </button>
 
-          <AddUserDialog
-            role="mentee"
-            onUserCreated={handleMenteeCreated}
-          />
+          <AddUserDialog role="mentee" />
         </div>
       </div>
 
-      {/* 2. STAT SUMMARY CARDS (Clear, descriptive titles) */}
+      {/* 2. STAT SUMMARY CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* CARD 1: TOTAL MENTEES */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
@@ -77,8 +57,8 @@ export default function MenteesPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Mentees</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.totalMentees}</span>
-                <span className="text-xs font-bold text-emerald-600">{currentStats.termTrend}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{totalMentees}</span>
+                <span className="text-xs font-bold text-emerald-600">↑8% this term</span>
               </div>
             </div>
             <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
@@ -96,9 +76,9 @@ export default function MenteesPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Mentees</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.activeInRotation}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{activeCount}</span>
                 <span className="text-xs font-semibold text-gray-500">
-                  {currentStats.operationalPercentage || "In clinical rotation"}
+                  {operationalPercentage}
                 </span>
               </div>
             </div>
@@ -117,9 +97,9 @@ export default function MenteesPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Pending Mentees</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.pendingOrientation}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{pendingCount}</span>
                 <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
-                  {currentStats.pendingStage || "Awaiting Assignment"}
+                  Awaiting Assignment
                 </span>
               </div>
             </div>
@@ -138,8 +118,8 @@ export default function MenteesPage() {
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Average Score</p>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{currentStats.avgKnowledgeMastery}%</span>
-                <span className="text-xs font-bold text-emerald-600">{currentStats.cohortTrend}</span>
+                <span className="text-3xl font-extrabold text-gray-900">{avgKnowledgeMastery}%</span>
+                <span className="text-xs font-bold text-emerald-600">+2.4% vs cohort</span>
               </div>
             </div>
             <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
@@ -155,9 +135,9 @@ export default function MenteesPage() {
       {/* 3. REUSABLE USERS TABLE (Role = "mentee") */}
       <UsersTable
         role="mentee"
-        data={menteesList}
+        data={mentees}
         cohortLabel="Central Academic Registry Cohort 2024-Q3"
-        totalCohortCount={currentStats.totalMentees}
+        totalCohortCount={totalMentees}
       />
     </div>
   );

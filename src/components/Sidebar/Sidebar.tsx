@@ -6,11 +6,14 @@ import { getNavLinksByRole } from "@/config/navigation";
 import { UserRole } from "@/types/navigation";
 
 interface SidebarProps {
-  role: UserRole;
+  role: string;
 }
 
 export function Sidebar({ role }: SidebarProps) {
   const navLinks = getNavLinksByRole(role);
+  const normalized = (role || "").toLowerCase();
+  const isMentor = normalized.includes("mentor");
+  const isAdmin = normalized.includes("admin");
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between h-full shrink-0">
@@ -33,12 +36,12 @@ export function Sidebar({ role }: SidebarProps) {
 
       {/* Bottom Sidebar Actions */}
       <div className="p-4 border-t border-gray-100 flex flex-col gap-1 text-sm text-gray-600">
-        {role === "mentor" && (
+        {isMentor && (
           <Link href="/support" className="px-4 py-2.5 hover:bg-gray-50 rounded-lg transition-colors">
             Support
           </Link>
         )}
-        {role !== "admin" && (
+        {!isAdmin && (
           <Link href="/settings" className="px-4 py-2.5 hover:bg-gray-50 rounded-lg transition-colors">
             Settings
           </Link>
