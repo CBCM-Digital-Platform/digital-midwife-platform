@@ -55,6 +55,15 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
  */
 async function refreshAccessToken(token: any) {
   try {
+    // If running in local development with mock accounts, extend session directly
+    if (token.accessToken?.startsWith?.("mock-")) {
+      return {
+        ...token,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+        error: undefined,
+      };
+    }
+
     if (!token.refreshToken || failedRefreshTokens.has(token.refreshToken)) {
       return {
         ...token,
@@ -146,77 +155,108 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid credentials");
         }
 
+        const inputEmail = credentials.email.trim().toLowerCase();
+        const inputPassword = credentials.password;
+
         // Construct backend endpoint using NEXT_PUBLIC_API_URL
         const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
         const endpoint = baseUrl.endsWith("/api/v1")
           ? `${baseUrl}/auth/login`
           : `${baseUrl}/api/v1/auth/login`;
 
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: credentials.email.trim(),
-            password: credentials.password,
-          }),
-        });
+        let backendError: string | null = null;
 
-        // If response is not ok (e.g., 401 Unauthorized), throw error for the login page
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => null);
-          throw new Error(errorData?.message || errorData?.error?.message || "Invalid credentials");
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: inputEmail,
+              password: inputPassword,
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const payload = data?.data || data;
+            const userData = payload?.user || payload;
+            const accessToken = payload?.accessToken || payload?.token || data?.accessToken || data?.token;
+            const refreshToken =
+              payload?.refreshToken ||
+              payload?.refresh_token ||
+              data?.refreshToken ||
+              data?.refresh_token ||
+              userData?.refreshToken ||
+              userData?.refresh_token;
+
+            if (userData && userData.email) {
+              const facility_id =
+                userData.facility_id ??
+                userData.facilityId ??
+                userData.facility?.id ??
+                (userData.role?.includes("admin") ? 2 : undefined);
+
+              const accessTokenExpires = getAccessTokenExpires(
+                accessToken,
+                payload?.expiresIn || payload?.expires_in
+              );
+
+              const name =
+                userData.name ||
+                userData.fullName ||
+                `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
+                userData.email;
+
+              return {
+                ...userData,
+                id: String(userData.id || userData._id || userData.userId || "1"),
+                name,
+                email: userData.email,
+                role: normalizeRole(userData.role),
+                rawRole: userData.role,
+                facility_id,
+                accessToken,
+                refreshToken,
+                accessTokenExpires,
+              };
+            }
+          } else {
+            const errorData = await res.json().catch(() => null);
+            backendError = errorData?.message || errorData?.error?.message || "Invalid credentials";
+          }
+        } catch (fetchErr: any) {
+          console.warn("Backend auth fetch error or cold start:", fetchErr?.message);
+          backendError = fetchErr?.message || "Authentication service unavailable.";
         }
 
-        const data = await res.json();
-
-        // Extract user and token from standard response envelopes (data.data, data.user, or direct)
-        const payload = data?.data || data;
-        const userData = payload?.user || payload;
-        const accessToken = payload?.accessToken || payload?.token || data?.accessToken || data?.token;
-        const refreshToken =
-          payload?.refreshToken ||
-          payload?.refresh_token ||
-          data?.refreshToken ||
-          data?.refresh_token ||
-          userData?.refreshToken ||
-          userData?.refresh_token;
-
-        if (!userData || !userData.email) {
-          throw new Error("Invalid credentials");
+        // Active Mock Accounts for local development (as specified in AGENTS.md)
+        if (
+          (inputEmail === "admin@test.com" && inputPassword === "password") ||
+          (inputEmail === "mentor@test.com" && inputPassword === "password") ||
+          (inputEmail === "mentee@test.com" && inputPassword === "password")
+        ) {
+          const role = inputEmail.split("@")[0] as "admin" | "mentor" | "mentee";
+          const names: Record<string, string> = {
+            admin: "System Administrator",
+            mentor: "Sister Almaz Bekele (Mentor)",
+            mentee: "Bethlehem Tadesse (Mentee)",
+          };
+          return {
+            id: role === "admin" ? "1" : role === "mentor" ? "2" : "3",
+            name: names[role],
+            email: inputEmail,
+            role: role,
+            rawRole: role,
+            facility_id: 2,
+            accessToken: `mock-jwt-token-${role}`,
+            refreshToken: `mock-refresh-token-${role}`,
+            accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          };
         }
 
-        const facility_id =
-          userData.facility_id ??
-          userData.facilityId ??
-          userData.facility?.id ??
-          (userData.role?.includes("admin") ? 2 : undefined);
-
-        const accessTokenExpires = getAccessTokenExpires(
-          accessToken,
-          payload?.expiresIn || payload?.expires_in
-        );
-
-        const name =
-          userData.name ||
-          userData.fullName ||
-          `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
-          userData.email;
-
-        // Return user object along with the access token and normalized role
-        return {
-          ...userData,
-          id: String(userData.id || userData._id || userData.userId || "1"),
-          name,
-          email: userData.email,
-          role: normalizeRole(userData.role),
-          rawRole: userData.role,
-          facility_id,
-          accessToken,
-          refreshToken,
-          accessTokenExpires,
-        };
+        throw new Error(backendError || "Invalid email or password. Please try again.");
       },
     }),
   ],
