@@ -11,6 +11,11 @@ function normalizeRole(role?: string): string {
 }
 
 /**
+ * Cache of known failed/revoked refresh tokens to prevent duplicate HTTP calls in concurrent requests.
+ */
+const failedRefreshTokens = new Set<string>();
+
+/**
  * Safely parses the expiration timestamp (in milliseconds) from either
  * an expiresIn field or the JWT's decoded 'exp' claim.
  */
@@ -50,12 +55,12 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
  */
 async function refreshAccessToken(token: any) {
   try {
-    if (!token.refreshToken) {
+    if (!token.refreshToken || failedRefreshTokens.has(token.refreshToken)) {
       return {
         ...token,
         accessToken: undefined,
         refreshToken: undefined,
-        accessTokenExpires: 0,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
         error: "RefreshAccessTokenError",
       };
     }
@@ -79,11 +84,12 @@ async function refreshAccessToken(token: any) {
 
     if (!res.ok || !data || data.success === false) {
       console.warn("Refresh token request rejected by backend:", res.status);
+      failedRefreshTokens.add(token.refreshToken);
       return {
         ...token,
         accessToken: undefined,
         refreshToken: undefined,
-        accessTokenExpires: 0,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
         error: "RefreshAccessTokenError",
       };
     }
@@ -94,11 +100,12 @@ async function refreshAccessToken(token: any) {
     const expiresIn = payload?.expiresIn || payload?.expires_in;
 
     if (!newAccessToken) {
+      failedRefreshTokens.add(token.refreshToken);
       return {
         ...token,
         accessToken: undefined,
         refreshToken: undefined,
-        accessTokenExpires: 0,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
         error: "RefreshAccessTokenError",
       };
     }
@@ -112,11 +119,14 @@ async function refreshAccessToken(token: any) {
     };
   } catch (error) {
     console.error("Error refreshing access token:", error);
+    if (token?.refreshToken) {
+      failedRefreshTokens.add(token.refreshToken);
+    }
     return {
       ...token,
       accessToken: undefined,
       refreshToken: undefined,
-      accessTokenExpires: 0,
+      accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
       error: "RefreshAccessTokenError",
     };
   }
@@ -233,9 +243,15 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      // If token already has a fatal error, do NOT retry refreshing in an infinite loop
-      if (token.error === "RefreshAccessTokenError") {
-        return token;
+      // If token already has a fatal error or is known failed, do NOT retry refreshing
+      if (token.error === "RefreshAccessTokenError" || (token.refreshToken && failedRefreshTokens.has(token.refreshToken as string))) {
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          error: "RefreshAccessTokenError",
+        };
       }
 
       // Return previous token if the access token has not expired yet (with 30-second margin)
@@ -250,7 +266,7 @@ export const authOptions: NextAuthOptions = {
           ...token,
           accessToken: undefined,
           refreshToken: undefined,
-          accessTokenExpires: 0,
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
           error: "RefreshAccessTokenError",
         };
       }
