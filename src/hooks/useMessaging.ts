@@ -7,7 +7,7 @@ import type { SubmitEvent } from "react";
 export type MessagingRole = "mentor" | "mentee";
 
 export type ChatMessage = {
-  id: number;
+  id: number | string;
   text: string;
   time: string;
   sentByMe: boolean;
@@ -39,9 +39,12 @@ type ApiPerson = {
 };
 
 type ApiMessage = {
-  id: number;
-  senderId?: number;
-  sender_id?: number;
+  id: number | string;
+  senderId?: number | string;
+  sender_id?: number | string;
+  userId?: number | string;
+  user_id?: number | string;
+  sender?: ApiPerson;
   content?: string;
   text?: string;
   sentAt?: string;
@@ -108,8 +111,20 @@ function personName(person?: ApiPerson) {
   );
 }
 
-function mapMessage(message: ApiMessage, currentUserId?: number): ChatMessage {
-  const senderId = message.senderId ?? message.sender_id;
+function normalizeUserId(id?: number | string | null) {
+  if (id == null) return undefined;
+  const normalizedId = String(id).trim();
+  return normalizedId || undefined;
+}
+
+function mapMessage(message: ApiMessage, currentUserId?: string): ChatMessage {
+  const senderId = normalizeUserId(
+    message.senderId ??
+      message.sender_id ??
+      message.userId ??
+      message.user_id ??
+      message.sender?.id,
+  );
   return {
     id: message.id,
     text: message.content ?? message.text ?? "",
@@ -123,13 +138,15 @@ function mapMessage(message: ApiMessage, currentUserId?: number): ChatMessage {
 function mapConversation(
   item: ApiConversation,
   role: MessagingRole,
-  currentUserId?: number,
+  currentUserId?: string,
 ): Conversation {
   const participants = item.participants ?? [];
   const otherPerson =
     (currentUserId == null
       ? undefined
-      : participants.find((person) => Number(person.id) !== currentUserId)) ??
+      : participants.find(
+          (person) => normalizeUserId(person.id) !== currentUserId,
+        )) ??
     participants.find((person) => person.role !== role) ??
     participants[0];
   const name = personName(otherPerson);
@@ -178,8 +195,7 @@ function errorMessage(result: ApiEnvelope<unknown> | null, status: number) {
 export function useMessaging(role: MessagingRole) {
   const { data: session, status: sessionStatus } = useSession();
   const accessToken = session?.accessToken;
-  const parsedUserId = Number(session?.user?.id);
-  const currentUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined;
+  const currentUserId = normalizeUserId(session?.user?.id);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -193,6 +209,9 @@ export function useMessaging(role: MessagingRole) {
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [messageActionId, setMessageActionId] = useState<number | string | null>(
+    null,
+  );
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -379,7 +398,7 @@ export function useMessaging(role: MessagingRole) {
           body: JSON.stringify({ content: text }),
         },
       );
-      const mapped = mapMessage(message, currentUserId);
+      const mapped = { ...mapMessage(message, currentUserId), sentByMe: true };
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === selectedId
@@ -397,6 +416,91 @@ export function useMessaging(role: MessagingRole) {
       setError(err instanceof Error ? err.message : "Could not send message.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function editMessage(
+    conversationId: number,
+    messageId: number | string,
+    text: string,
+  ) {
+    const content = text.trim();
+    if (!content || messageActionId != null) return false;
+
+    setMessageActionId(messageId);
+    setError(null);
+    try {
+      await apiRequest(
+        `/messages/conversations/${conversationId}/messages/${messageId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ content }),
+        },
+      );
+      setConversations((current) =>
+        current.map((conversation) => {
+          if (conversation.id !== conversationId) return conversation;
+          const messages = conversation.messages.map((message) =>
+            message.id === messageId ? { ...message, text: content } : message,
+          );
+          const wasLastMessage =
+            conversation.messages.at(-1)?.id === messageId;
+          return {
+            ...conversation,
+            messages,
+            ...(wasLastMessage ? { lastMessage: content } : {}),
+          };
+        }),
+      );
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not edit message.");
+      return false;
+    } finally {
+      setMessageActionId(null);
+    }
+  }
+
+  async function deleteMessage(
+    conversationId: number,
+    messageId: number | string,
+  ) {
+    if (messageActionId != null) return false;
+
+    setMessageActionId(messageId);
+    setError(null);
+    try {
+      await apiRequest(
+        `/messages/conversations/${conversationId}/messages/${messageId}`,
+        { method: "DELETE" },
+      );
+      setConversations((current) =>
+        current.map((conversation) => {
+          if (conversation.id !== conversationId) return conversation;
+          const wasLastMessage =
+            conversation.messages.at(-1)?.id === messageId;
+          const messages = conversation.messages.filter(
+            (message) => message.id !== messageId,
+          );
+          const latestMessage = messages.at(-1);
+          return {
+            ...conversation,
+            messages,
+            ...(wasLastMessage
+              ? {
+                  lastMessage: latestMessage?.text ?? "",
+                  lastMessageTime: latestMessage?.time ?? "",
+                }
+              : {}),
+          };
+        }),
+      );
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete message.");
+      return false;
+    } finally {
+      setMessageActionId(null);
     }
   }
 
@@ -465,6 +569,9 @@ export function useMessaging(role: MessagingRole) {
     contactRole,
     visibleConversations,
     sendMessage,
+    editMessage,
+    deleteMessage,
+    messageActionId,
     createConversation,
     loadConversations,
     loading,

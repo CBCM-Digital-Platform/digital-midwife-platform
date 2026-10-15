@@ -33,6 +33,15 @@ function getString(...values: unknown[]): string | undefined {
   );
 }
 
+function getIdentifier(...values: unknown[]): string | undefined {
+  const value = values.find(
+    (candidate) =>
+      (typeof candidate === "string" && candidate.trim().length > 0) ||
+      (typeof candidate === "number" && Number.isFinite(candidate)),
+  );
+  return value == null ? undefined : String(value).trim();
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   providers: [
@@ -104,7 +113,12 @@ export const authOptions: NextAuthOptions = {
             [firstName, lastName].filter(Boolean).join(" ") ||
             email;
           const id =
-            getString(userData.id, userData._id, userData.userId) || email;
+            getIdentifier(
+              userData.id,
+              userData._id,
+              userData.userId,
+              userData.user_id,
+            ) || email;
           const refreshToken = getString(
             payload.refreshToken,
             responseData.refreshToken,

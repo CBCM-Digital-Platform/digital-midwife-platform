@@ -1,14 +1,19 @@
 "use client";
 
+import { useState, type FormEvent } from "react";
 import {
+  Check,
   ChevronLeft,
   Info,
   MessageSquarePlus,
   MoreHorizontal,
+  Pencil,
   Phone,
   Search,
   Send,
+  Trash2,
   Video,
+  X,
 } from "lucide-react";
 import { useMessaging } from "@/hooks/useMessaging";
 import type { MessagingRole } from "@/hooks/useMessaging";
@@ -36,6 +41,9 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
     contactRole,
     visibleConversations,
     sendMessage,
+    editMessage,
+    deleteMessage,
+    messageActionId,
     createConversation,
     loading,
     loadingMessages,
@@ -253,29 +261,17 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
             </p>
           ) : selectedConversation.messages.length ? (
             selectedConversation.messages.map((message) => (
-              <div
+              <MessageBubble
                 key={message.id}
-                className={`flex max-w-[85%] flex-col gap-1 sm:max-w-[75%] ${
-                  message.sentByMe ? "self-end" : "self-start"
-                }`}
-              >
-                <p
-                  className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    message.sentByMe
-                      ? "rounded-br-sm bg-[#315f2a] text-white"
-                      : "rounded-bl-sm border border-[#e0e5dc] bg-white text-[#30392e]"
-                  }`}
-                >
-                  {message.text}
-                </p>
-                <time
-                  className={`text-[10px] text-[#7b8577] ${
-                    message.sentByMe ? "text-right" : ""
-                  }`}
-                >
-                  {message.time}
-                </time>
-              </div>
+                message={message}
+                busy={messageActionId === message.id}
+                onEdit={(text) =>
+                  editMessage(selectedConversation.id, message.id, text)
+                }
+                onDelete={() =>
+                  deleteMessage(selectedConversation.id, message.id)
+                }
+              />
             ))
           ) : (
             <p className="self-center rounded-full bg-[#edf1e8] px-3 py-1 text-xs text-[#697466]">
@@ -318,6 +314,155 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
         )}
       </div>
     </section>
+  );
+}
+
+function MessageBubble({
+  message,
+  busy,
+  onEdit,
+  onDelete,
+}: {
+  message: {
+    id: number | string;
+    text: string;
+    time: string;
+    sentByMe: boolean;
+  };
+  busy: boolean;
+  onEdit: (text: string) => Promise<boolean>;
+  onDelete: () => Promise<boolean>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [draft, setDraft] = useState(message.text);
+
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const content = draft.trim();
+    if (!content) return;
+    if (await onEdit(content)) {
+      setIsEditing(false);
+      setShowActions(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (window.confirm("Delete this message? This cannot be undone.")) {
+      await onDelete();
+    }
+  }
+
+  return (
+    <div
+      className={`flex w-fit max-w-[85%] flex-col gap-1 sm:max-w-[75%] ${
+        message.sentByMe ? "self-end" : "self-start"
+      }`}
+    >
+      <div className="relative w-fit max-w-full">
+        {isEditing ? (
+          <form
+            onSubmit={saveEdit}
+            className="min-w-56 rounded-2xl border border-[#dce2d5] bg-white p-3"
+          >
+            <textarea
+              autoFocus
+              aria-label="Edit message"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              disabled={busy}
+              rows={Math.min(Math.max(draft.split("\n").length, 2), 6)}
+              className="w-full resize-y rounded-md border border-[#e0e5dc] p-2 text-sm text-[#30392e] outline-none focus:border-[#47793d]"
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                aria-label="Cancel editing"
+                disabled={busy}
+                onClick={() => {
+                  setDraft(message.text);
+                  setIsEditing(false);
+                }}
+                className="rounded-md p-1.5 text-[#697466] hover:bg-[#f1f5ed] disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
+              <button
+                type="submit"
+                aria-label="Save edited message"
+                disabled={
+                  !draft.trim() || draft.trim() === message.text || busy
+                }
+                className="rounded-md p-1.5 text-[#315f2a] hover:bg-[#f1f5ed] disabled:opacity-50"
+              >
+                {busy ? (
+                  <span className="px-1 text-xs">...</span>
+                ) : (
+                  <Check size={16} />
+                )}
+              </button>
+            </div>
+          </form>
+        ) : message.sentByMe ? (
+          <button
+            type="button"
+            aria-label="Your message. Click to show edit and delete actions."
+            aria-expanded={showActions}
+            onClick={() => setShowActions((current) => !current)}
+            className="block w-fit max-w-full break-words whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#315f2a] px-4 py-3 text-left text-sm leading-relaxed text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315f2a]"
+          >
+            {message.text}
+          </button>
+        ) : (
+          <p className="block w-fit max-w-full break-words whitespace-pre-wrap rounded-2xl rounded-bl-sm border border-[#e0e5dc] bg-white px-4 py-3 text-sm leading-relaxed text-[#30392e]">
+            {message.text}
+          </p>
+        )}
+        {message.sentByMe && showActions && !isEditing && (
+          <div
+            role="toolbar"
+            aria-label="Message actions"
+            className="absolute bottom-full right-0 z-20 mb-2 flex items-center gap-1 rounded-lg border border-[#d7ddd2] bg-white p-1 shadow-lg"
+          >
+            <button
+              type="button"
+              aria-label="Edit message"
+              title="Edit message"
+              disabled={busy}
+              onClick={() => {
+                setDraft(message.text);
+                setIsEditing(true);
+                setShowActions(false);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-md text-[#315f2a] transition hover:bg-[#edf1e8] focus-visible:outline-2 focus-visible:outline-[#315f2a] disabled:opacity-50"
+            >
+              <Pencil size={18} strokeWidth={2.25} />
+            </button>
+            <button
+              type="button"
+              aria-label="Delete message"
+              title="Delete message"
+              disabled={busy}
+              onClick={() => void confirmDelete()}
+              className="flex h-9 w-9 items-center justify-center rounded-md text-[#a83228] transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-[#a83228] disabled:opacity-50"
+            >
+              {busy ? (
+                <span className="text-xs">...</span>
+              ) : (
+                <Trash2 size={18} strokeWidth={2.25} />
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+      <time
+        className={`text-[10px] text-[#7b8577] ${
+          message.sentByMe ? "text-right" : ""
+        }`}
+      >
+        {message.time}
+      </time>
+    </div>
   );
 }
 
