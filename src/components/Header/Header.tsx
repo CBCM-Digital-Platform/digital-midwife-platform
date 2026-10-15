@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Bell, AlertCircle } from "lucide-react";
-import { UserRole } from "@/types/navigation";
 
 interface HeaderProps {
   role?: string;
@@ -13,7 +12,7 @@ export function Header({ role }: HeaderProps) {
       <div className="flex items-center gap-6 text-sm font-semibold text-[#194611]">
         {isMentor && (
           <>
-            <Link href="/messages" className="hover:underline">
+            <Link href="/messaging" className="hover:underline">
               Direct Messages
             </Link>
             <Link href="/resources" className="hover:underline">

@@ -16,6 +16,7 @@ export const mentorNavLinks: NavItem[] = [
   { name: "Mentees", href: "/mentees", icon: "mentee" },
   { name: "Facilities", href: "/facilities", icon: "facilities" },
   { name: "Assignments", href: "/assignments", icon: "assignments" },
+  { name: "Direct Messages", href: "/messaging", icon: "messages" },
   { name: "Resources", href: "/resources", icon: "resources" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
   { name: "Sessions", href: "/sessions", icon: "sessions" },
@@ -27,6 +28,7 @@ export const menteeNavLinks: NavItem[] = [
   { name: "Clinical Skills", href: "/clinical-skills", icon: "clinical-skills" },
   { name: "Mentors", href: "/mentors", icon: "mentor" },
   { name: "Profile", href: "/profile", icon: "profile" },
+  { name: "Messages", href: "/messaging", icon: "messages" },
   { name: "Progress", href: "/progress", icon: "progress" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
 ];
