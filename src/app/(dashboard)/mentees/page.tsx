@@ -8,10 +8,15 @@ import {
 } from "lucide-react";
 import { UsersTable } from "@/components/User/UsersTable";
 import { AddUserDialog } from "@/components/User/AddUserDialog";
+import { UserStatsCards, StatCardProps } from "@/components/User/UserStatsCards";
 import { getMentees } from "@/services/users.service";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export default async function MenteesPage() {
-  const mentees = await getMentees();
+  const session = await getServerSession(authOptions);
+  const facilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+  const mentees = await getMentees(facilityId);
 
   const totalMentees = mentees.length;
   const activeCount = mentees.filter((m) => m.status === "active").length;
@@ -27,6 +32,46 @@ export default async function MenteesPage() {
           totalMentees
         ).toFixed(1)
       : "84.2";
+
+  const stats: StatCardProps[] = [
+    {
+      title: "Total Mentees",
+      value: totalMentees,
+      trend: "↑8% this term",
+      icon: Users,
+      iconColor: "bg-blue-50 text-blue-600",
+      accentBarColor: "bg-[#194611]",
+      accentBarWidth: "w-24",
+    },
+    {
+      title: "Active Mentees",
+      value: activeCount,
+      subtext: operationalPercentage,
+      icon: Activity,
+      iconColor: "bg-emerald-50 text-emerald-600",
+      accentBarColor: "bg-emerald-600",
+      accentBarWidth: "w-28",
+    },
+    {
+      title: "Pending Mentees",
+      value: pendingCount,
+      badge: "Awaiting Assignment",
+      badgeColor: "bg-amber-100 text-amber-800",
+      icon: Clock,
+      iconColor: "bg-amber-50 text-amber-600",
+      accentBarColor: "bg-amber-500",
+      accentBarWidth: "w-20",
+    },
+    {
+      title: "Average Score",
+      value: `${avgKnowledgeMastery}%`,
+      trend: "+2.4% vs cohort",
+      icon: Award,
+      iconColor: "bg-purple-50 text-purple-600",
+      accentBarColor: "bg-purple-600",
+      accentBarWidth: "w-24",
+    },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -45,92 +90,12 @@ export default async function MenteesPage() {
             <span>Batch Import</span>
           </button>
 
-          <AddUserDialog role="mentee" />
+          <AddUserDialog role="mentee" facilityId={facilityId} />
         </div>
       </div>
 
-      {/* 2. STAT SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CARD 1: TOTAL MENTEES */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Mentees</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{totalMentees}</span>
-                <span className="text-xs font-bold text-emerald-600">↑8% this term</span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Users className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-[#194611] rounded-full w-24" />
-          </div>
-        </div>
-
-        {/* CARD 2: ACTIVE MENTEES */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Mentees</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{activeCount}</span>
-                <span className="text-xs font-semibold text-gray-500">
-                  {operationalPercentage}
-                </span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <Activity className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-emerald-600 rounded-full w-28" />
-          </div>
-        </div>
-
-        {/* CARD 3: PENDING MENTEES */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Pending Mentees</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{pendingCount}</span>
-                <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
-                  Awaiting Assignment
-                </span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <Clock className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-amber-500 rounded-full w-20" />
-          </div>
-        </div>
-
-        {/* CARD 4: AVERAGE SCORE */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Average Score</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-gray-900">{avgKnowledgeMastery}%</span>
-                <span className="text-xs font-bold text-emerald-600">+2.4% vs cohort</span>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Award className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="h-1 bg-purple-600 rounded-full w-24" />
-          </div>
-        </div>
-      </div>
+      {/* 2. REUSABLE STAT SUMMARY CARDS */}
+      <UserStatsCards stats={stats} />
 
       {/* 3. REUSABLE USERS TABLE (Role = "mentee") */}
       <UsersTable

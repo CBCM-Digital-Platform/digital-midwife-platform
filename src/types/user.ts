@@ -1,7 +1,7 @@
-export type UserRole = "mentor" | "mentee" | "admin";
+export type UserRole = "mentor" | "mentee" | "admin" | "super_admin" | "facility_admin";
 
-export type MentorStatus = "active" | "pending" | "inactive" | "on_leave";
-export type MenteeStatus = "active" | "pending" | "pending_start" | "inactive";
+export type MentorStatus = "active" | "pending" | "inactive" | "on_leave" | "suspended";
+export type MenteeStatus = "active" | "pending" | "pending_start" | "inactive" | "suspended";
 
 export type ThematicArea =
   | "Pediatrics & Neo"
@@ -12,7 +12,8 @@ export type ThematicArea =
   | "Infectious Diseases"
   | "Oncology"
   | "Cardiovascular"
-  | "Critical Care";
+  | "Critical Care"
+  | (string & {});
 
 export interface Facility {
   id: string;

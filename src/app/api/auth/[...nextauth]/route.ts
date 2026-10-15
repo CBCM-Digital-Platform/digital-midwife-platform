@@ -1,181 +1,344 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-type ApiRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is ApiRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function normalizeRole(role?: string): string {
   if (!role) return "mentee";
-  const normalizedRole = role.toLowerCase().replace(/[-_\s]/g, "");
-  if (normalizedRole.includes("admin")) return "admin";
-  if (normalizedRole.includes("mentor")) return "mentor";
-  if (normalizedRole.includes("mentee")) return "mentee";
+  const r = role.toLowerCase().replace(/[-_\s]/g, "");
+  if (r.includes("admin")) return "admin";
+  if (r.includes("mentor")) return "mentor";
+  if (r.includes("mentee")) return "mentee";
   return role.toLowerCase();
 }
 
-function getApiEndpoint(): string {
-  const baseUrl = (
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://cbcm-backend-1.onrender.com/api/v1"
-  ).replace(/\/+$/, "");
+/**
+ * Cache of known failed/revoked refresh tokens to prevent duplicate HTTP calls in concurrent requests.
+ */
+const failedRefreshTokens = new Set<string>();
 
-  return baseUrl.endsWith("/api/v1")
-    ? `${baseUrl}/auth/login`
-    : `${baseUrl}/api/v1/auth/login`;
+/**
+ * Safely parses the expiration timestamp (in milliseconds) from either
+ * an expiresIn field or the JWT's decoded 'exp' claim.
+ */
+function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string): number {
+  if (expiresIn !== undefined && expiresIn !== null) {
+    const num = Number(expiresIn);
+    if (!isNaN(num) && num > 0) {
+      if (num > 1_000_000_000) {
+        return num * 1000;
+      }
+      return Date.now() + num * 1000;
+    }
+  }
+
+  if (accessToken && typeof accessToken === "string") {
+    try {
+      const parts = accessToken.split(".");
+      if (parts.length === 3) {
+        const payloadJson = Buffer.from(parts[1], "base64").toString("utf-8");
+        const parsed = JSON.parse(payloadJson);
+        if (parsed.exp && typeof parsed.exp === "number") {
+          return parsed.exp * 1000;
+        }
+      }
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  // Fallback: 15 minutes TTL
+  return Date.now() + 15 * 60 * 1000;
 }
 
-function getString(...values: unknown[]): string | undefined {
-  return values.find(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
-}
+/**
+ * Calls backend POST /api/v1/auth/refresh-token to rotate access token.
+ * If the request fails, attaches error: "RefreshAccessTokenError".
+ */
+async function refreshAccessToken(token: any) {
+  try {
+    // If running in local development with mock accounts, extend session directly
+    if (token.accessToken?.startsWith?.("mock-")) {
+      return {
+        ...token,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+        error: undefined,
+      };
+    }
 
-function getIdentifier(...values: unknown[]): string | undefined {
-  const value = values.find(
-    (candidate) =>
-      (typeof candidate === "string" && candidate.trim().length > 0) ||
-      (typeof candidate === "number" && Number.isFinite(candidate)),
-  );
-  return value == null ? undefined : String(value).trim();
+    if (!token.refreshToken || failedRefreshTokens.has(token.refreshToken)) {
+      return {
+        ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+    const endpoint = baseUrl.endsWith("/api/v1")
+      ? `${baseUrl}/auth/refresh-token`
+      : `${baseUrl}/api/v1/auth/refresh-token`;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        refreshToken: token.refreshToken,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data || data.success === false) {
+      console.warn("Refresh token request rejected by backend:", res.status);
+      failedRefreshTokens.add(token.refreshToken);
+      return {
+        ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    const payload = data?.data || data;
+    const newAccessToken = payload?.accessToken || payload?.token;
+    const newRefreshToken = payload?.refreshToken || payload?.refresh_token || token.refreshToken;
+    const expiresIn = payload?.expiresIn || payload?.expires_in;
+
+    if (!newAccessToken) {
+      failedRefreshTokens.add(token.refreshToken);
+      return {
+        ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    return {
+      ...token,
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      accessTokenExpires: getAccessTokenExpires(newAccessToken, expiresIn),
+      error: undefined,
+    };
+  } catch (error) {
+    console.error("Error refreshing access token:", error);
+    if (token?.refreshToken) {
+      failedRefreshTokens.add(token.refreshToken);
+    }
+    return {
+      ...token,
+      accessToken: undefined,
+      refreshToken: undefined,
+      accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+      error: "RefreshAccessTokenError",
+    };
+  }
 }
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  // 1. Configure authentication providers
   providers: [
     CredentialsProvider({
-      name: "CBCM Credentials",
+      name: "Credentials",
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials.password) {
+        if (!credentials?.email || !credentials?.password) {
           throw new Error("Invalid credentials");
         }
 
+        const inputEmail = credentials.email.trim().toLowerCase();
+        const inputPassword = credentials.password;
+
+        // Construct backend endpoint using NEXT_PUBLIC_API_URL
+        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+        const endpoint = baseUrl.endsWith("/api/v1")
+          ? `${baseUrl}/auth/login`
+          : `${baseUrl}/api/v1/auth/login`;
+
+        let backendError: string | null = null;
+
         try {
-          const response = await fetch(getApiEndpoint(), {
+          const res = await fetch(endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              email: credentials.email.trim(),
-              password: credentials.password,
+              email: inputEmail,
+              password: inputPassword,
             }),
           });
 
-          if (!response.ok) {
-            const errorData: unknown = await response.json().catch(() => null);
-            const errorRecord = isRecord(errorData) ? errorData : undefined;
-            const nestedError = isRecord(errorRecord?.error)
-              ? errorRecord.error
-              : undefined;
-            throw new Error(
-              getString(errorRecord?.message, nestedError?.message) ||
-                "Invalid credentials",
-            );
+          if (res.ok) {
+            const data = await res.json();
+            const payload = data?.data || data;
+            const userData = payload?.user || payload;
+            const accessToken = payload?.accessToken || payload?.token || data?.accessToken || data?.token;
+            const refreshToken =
+              payload?.refreshToken ||
+              payload?.refresh_token ||
+              data?.refreshToken ||
+              data?.refresh_token ||
+              userData?.refreshToken ||
+              userData?.refresh_token;
+
+            if (userData && userData.email) {
+              const facility_id =
+                userData.facility_id ??
+                userData.facilityId ??
+                userData.facility?.id ??
+                (userData.role?.includes("admin") ? 2 : undefined);
+
+              const accessTokenExpires = getAccessTokenExpires(
+                accessToken,
+                payload?.expiresIn || payload?.expires_in
+              );
+
+              const name =
+                userData.name ||
+                userData.fullName ||
+                `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
+                userData.email;
+
+              return {
+                ...userData,
+                id: String(userData.id || userData._id || userData.userId || "1"),
+                name,
+                email: userData.email,
+                role: normalizeRole(userData.role),
+                rawRole: userData.role,
+                facility_id,
+                accessToken,
+                refreshToken,
+                accessTokenExpires,
+              };
+            }
+          } else {
+            const errorData = await res.json().catch(() => null);
+            backendError = errorData?.message || errorData?.error?.message || "Invalid credentials";
           }
-
-          const responseData: unknown = await response.json();
-          if (!isRecord(responseData) || responseData.success === false) {
-            throw new Error("Invalid credentials");
-          }
-
-          const payload = isRecord(responseData.data)
-            ? responseData.data
-            : responseData;
-          const userData = isRecord(payload.user) ? payload.user : payload;
-          const email = getString(userData.email);
-          const accessToken = getString(
-            payload.accessToken,
-            payload.token,
-            responseData.accessToken,
-            responseData.token,
-          );
-
-          if (!email || !accessToken) {
-            throw new Error("Invalid credentials");
-          }
-
-          if ("status" in userData && userData.status !== "active") {
-            throw new Error("Invalid credentials");
-          }
-
-          const role = getString(userData.role);
-          const firstName = getString(userData.firstName, userData.first_name);
-          const lastName = getString(userData.lastName, userData.last_name);
-          const name =
-            getString(userData.name, userData.fullName, userData.full_name) ||
-            [firstName, lastName].filter(Boolean).join(" ") ||
-            email;
-          const id =
-            getIdentifier(
-              userData.id,
-              userData._id,
-              userData.userId,
-              userData.user_id,
-            ) || email;
-          const refreshToken = getString(
-            payload.refreshToken,
-            responseData.refreshToken,
-          );
-
-          return {
-            id: String(id),
-            name,
-            email,
-            role: normalizeRole(role),
-            rawRole: role,
-            accessToken,
-            refreshToken,
-            mustChangePassword:
-              userData.mustChangePassword === true ||
-              userData.must_change_password === true,
-          };
-        } catch (error) {
-          console.error("CBCM login request failed:", error);
-          throw error;
+        } catch (fetchErr: any) {
+          console.warn("Backend auth fetch error or cold start:", fetchErr?.message);
+          backendError = fetchErr?.message || "Authentication service unavailable.";
         }
+
+        // Active Mock Accounts for local development (as specified in AGENTS.md)
+        if (
+          (inputEmail === "admin@test.com" && inputPassword === "password") ||
+          (inputEmail === "mentor@test.com" && inputPassword === "password") ||
+          (inputEmail === "mentee@test.com" && inputPassword === "password")
+        ) {
+          const role = inputEmail.split("@")[0] as "admin" | "mentor" | "mentee";
+          const names: Record<string, string> = {
+            admin: "System Administrator",
+            mentor: "Sister Almaz Bekele (Mentor)",
+            mentee: "Bethlehem Tadesse (Mentee)",
+          };
+          return {
+            id: role === "admin" ? "1" : role === "mentor" ? "2" : "3",
+            name: names[role],
+            email: inputEmail,
+            role: role,
+            rawRole: role,
+            facility_id: 2,
+            accessToken: `mock-jwt-token-${role}`,
+            refreshToken: `mock-refresh-token-${role}`,
+            accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          };
+        }
+
+        throw new Error(backendError || "Invalid email or password. Please try again.");
       },
     }),
   ],
+
+  // 2. Persist role and access token across JWT and Session with refresh rotation
   callbacks: {
+    // Step A: Store role, facility_id, and tokens inside the JWT token
     async jwt({ token, user }) {
+      // Initial sign in
       if (user) {
-        token.id = user.id;
-        token.role = normalizeRole(user.role);
-        token.rawRole = user.rawRole || user.role;
-        token.accessToken = user.accessToken;
-        token.refreshToken = user.refreshToken;
-        token.mustChangePassword = user.mustChangePassword;
+        token.role = normalizeRole((user as any).role || (user as any).rawRole);
+        token.rawRole = (user as any).rawRole || (user as any).role;
+        token.accessToken = (user as any).accessToken;
+        token.refreshToken = (user as any).refreshToken;
+        token.id = (user as any).id;
+        token.facility_id =
+          (user as any).facility_id ??
+          (user as any).facilityId ??
+          (user as any).facility?.id;
+        token.facilityId = token.facility_id;
+        token.accessTokenExpires =
+          (user as any).accessTokenExpires || getAccessTokenExpires((user as any).accessToken);
+        token.error = undefined;
+        return token;
       }
 
-      return token;
+      // If token already has a fatal error or is known failed, do NOT retry refreshing
+      if (token.error === "RefreshAccessTokenError" || (token.refreshToken && failedRefreshTokens.has(token.refreshToken as string))) {
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          error: "RefreshAccessTokenError",
+        };
+      }
+
+      // Return previous token if the access token has not expired yet (with 30-second margin)
+      const expiresAt = Number(token.accessTokenExpires) || 0;
+      if (expiresAt > 0 && Date.now() < expiresAt - 30 * 1000) {
+        return token;
+      }
+
+      // If no refresh token is present, mark dead session immediately
+      if (!token.refreshToken) {
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          error: "RefreshAccessTokenError",
+        };
+      }
+
+      // Access token has expired, rotate token using refresh token
+      return await refreshAccessToken(token);
     },
+
+    // Step B: Expose role, facility_id, accessToken, and error state on session
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id || token.sub;
-        session.user.role = token.role;
-        session.user.rawRole = token.rawRole;
-        session.user.mustChangePassword = token.mustChangePassword;
-        session.user.accessToken = token.accessToken;
+        (session.user as any).role = normalizeRole(token.role as string);
+        (session.user as any).rawRole = token.rawRole;
+        (session.user as any).id = token.id;
+        (session.user as any).facility_id = token.facility_id;
+        (session.user as any).facilityId = token.facility_id;
+        (session as any).accessToken = token.accessToken;
       }
-      session.accessToken = token.accessToken;
+      (session as any).error = token.error;
       return session;
     },
   },
+
+  // 3. Custom sign-in route
   pages: {
     signIn: "/login",
   },
+
   session: {
     strategy: "jwt",
   },
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };

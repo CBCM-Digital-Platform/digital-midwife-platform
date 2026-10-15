@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { Bell, Search, AlertCircle } from "lucide-react";
-import { UserRole } from "@/types/navigation";
+import { Bell, AlertCircle } from "lucide-react";
 
 interface HeaderProps {
   role?: string;
@@ -13,7 +12,7 @@ export function Header({ role }: HeaderProps) {
       <div className="flex items-center gap-6 text-sm font-semibold text-[#194611]">
         {isMentor && (
           <>
-            <Link href="/messages" className="hover:underline">
+            <Link href="/messaging" className="hover:underline">
               Direct Messages
             </Link>
             <Link href="/resources" className="hover:underline">
@@ -24,16 +23,8 @@ export function Header({ role }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search mentees, resources..."
-            className="pl-10 pr-4 py-2.5 rounded-full border border-gray-200 text-sm w-72 focus:outline-none focus:border-[#194611] bg-white"
-          />
-        </div>
         <Bell className="h-5 w-5 text-gray-600 cursor-pointer hover:text-[#194611] transition" />
-        <button className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-red-700 transition">
+        <button className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-red-700 transition cursor-pointer">
           <AlertCircle className="h-4 w-4" /> Emergency Support
         </button>
       </div>

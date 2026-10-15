@@ -3,11 +3,28 @@
 import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2, Plus, UserPlus, X } from "lucide-react";
-import { userFormSchema, UserFormData, thematicAreasList } from "@/schemas/user-schema";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Plus,
+  UserPlus,
+  X,
+  Key,
+  RefreshCw,
+  Copy,
+  Check,
+} from "lucide-react";
+import {
+  userFormSchema,
+  UserFormData,
+  genderOptions,
+  highestQualificationsList,
+  thematicAreasList,
+} from "@/schemas/user-schema";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
+import { FACILITY_ID_MAP } from "@/services/users.service";
 import {
   Dialog,
   DialogContent,
@@ -16,40 +33,104 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 interface AddUserDialogProps {
   role: "mentor" | "mentee";
+  facilityId?: number | string;
   onUserCreated?: (user: ClinicalUser) => void;
   triggerButton?: React.ReactNode;
 }
 
-// Helper outside the component to guarantee pure rendering
-function createNewUserFromForm(formData: UserFormData, role: "mentor" | "mentee"): ClinicalUser {
-  const nameParts = formData.name.trim().split(" ");
+/**
+ * Generates a secure random temporary password (12 characters, mixed case, numbers, symbol).
+ */
+export function generateSecurePassword(length = 12): string {
+  const uppers = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lowers = "abcdefghijkmnopqrstuvwxyz";
+  const numbers = "23456789";
+  const symbols = "!@#$%&*";
+
+  const guaranteed = [
+    uppers[Math.floor(Math.random() * uppers.length)],
+    lowers[Math.floor(Math.random() * lowers.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    symbols[Math.floor(Math.random() * symbols.length)],
+  ];
+
+  const allChars = uppers + lowers + numbers + symbols;
+  const remaining: string[] = [];
+  for (let i = 0; i < length - 4; i++) {
+    remaining.push(allChars[Math.floor(Math.random() * allChars.length)]);
+  }
+
+  return [...guaranteed, ...remaining]
+    .sort(() => Math.random() - 0.5)
+    .join("");
+}
+
+/**
+ * Auto-generates a clean username based on full name and role (e.g., "John Doe" -> "mentor.jdoe").
+ */
+export function generateUsername(fullName: string, role: "mentor" | "mentee"): string {
+  if (!fullName || !fullName.trim()) return "";
+
+  // Strip honorary prefixes like Dr., Sister, Brother, Prof., Mr., etc.
+  const cleanName = fullName
+    .replace(/^(dr|dr\.|sister|brother|prof|prof\.|mr|mr\.|mrs|mrs\.|ms|ms\.)\s+/i, "")
+    .trim();
+
+  const parts = cleanName
+    .toLowerCase()
+    .split(/\s+/)
+    .map((p) => p.replace(/[^a-z0-9]/g, ""))
+    .filter(Boolean);
+
+  if (parts.length === 0) return `${role}.user`;
+  if (parts.length === 1) return `${role}.${parts[0]}`;
+
+  const firstInitial = parts[0][0];
+  const lastName = parts[parts.length - 1];
+  return `${role}.${firstInitial}${lastName}`;
+}
+
+// Helper outside the component to create a local optimistic ClinicalUser model
+function createNewUserFromForm(
+  formData: UserFormData,
+  role: "mentor" | "mentee",
+  activeFacilityId?: number | string
+): ClinicalUser {
+  const nameParts = formData.full_name.trim().split(" ");
   const initials =
     nameParts.length >= 2
       ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-      : formData.name.substring(0, 2).toUpperCase();
+      : formData.full_name.substring(0, 2).toUpperCase();
 
   const timestamp = Date.now();
   const randomSuffix = Math.floor(100 + Math.random() * 900);
   const systemId = role === "mentor" ? `MEN-2024-${randomSuffix}` : `MNT-2024-${randomSuffix}`;
+  const facilityName =
+    (activeFacilityId !== undefined && FACILITY_ID_MAP[Number(activeFacilityId)]) ||
+    formData.primary_facility ||
+    "Regional Health Facility";
 
   if (role === "mentor") {
     const newMentor: MentorUser = {
       id: `mentor-${timestamp}`,
       systemId,
-      name: formData.name,
+      name: formData.full_name,
       email: formData.email,
       phone: formData.phone,
       role: "mentor",
       avatarInitials: initials,
       avatarBgColor: "bg-emerald-100 text-emerald-800",
       profession: formData.profession,
-      department: formData.department || "General Clinical Preceptorship",
-      facility: formData.facility,
-      thematicArea: formData.thematicArea,
-      yearsOfExperience: formData.yearsOfExperience || 1,
+      department: formData.thematic_area,
+      facility: facilityName,
+      thematicArea: formData.thematic_area,
+      yearsOfExperience: Number(formData.years_of_experience) || 1,
       assignedMenteesCount: 0,
       status: "active",
     };
@@ -58,16 +139,16 @@ function createNewUserFromForm(formData: UserFormData, role: "mentor" | "mentee"
     const newMentee: MenteeUser = {
       id: `mentee-${timestamp}`,
       systemId,
-      name: formData.name,
+      name: formData.full_name,
       email: formData.email,
       phone: formData.phone,
       role: "mentee",
       avatarInitials: initials,
       avatarBgColor: "bg-blue-100 text-blue-800",
       profession: formData.profession,
-      cadreLevel: formData.cadreLevel || "Junior Midwife Resident",
-      facility: formData.facility,
-      thematicArea: formData.thematicArea,
+      cadreLevel: formData.highest_qualification,
+      facility: facilityName,
+      thematicArea: formData.thematic_area,
       assignedMentor: {
         status: "pending_review",
       },
@@ -79,38 +160,72 @@ function createNewUserFromForm(formData: UserFormData, role: "mentor" | "mentee"
   }
 }
 
-const FACILITY_OPTIONS = [
-  { id: 1, name: "St. Paul's Hospital (SPHMMC)" },
-  { id: 2, name: "Tikur Anbessa Specialized Hospital (TASH)" },
-  { id: 3, name: "Zewditu Memorial Hospital" },
-  { id: 4, name: "Yekatit 12 Hospital Medical College" },
-  { id: 5, name: "Gandhi Memorial Hospital" },
-  { id: 6, name: "Tirunesh Beijing General Hospital" },
-];
-
-export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDialogProps) {
+export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }: AddUserDialogProps) {
   const router = useRouter();
+  const effectiveFacilityId = facilityId ?? 2;
+  const defaultFacilityName =
+    (effectiveFacilityId !== undefined && FACILITY_ID_MAP[Number(effectiveFacilityId)]) ||
+    "Tikur Anbessa Specialized Hospital (TASH)";
+
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedPassword, setCopiedPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    getValues,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<UserFormData>({
     resolver: zodResolver(userFormSchema),
     defaultValues: {
-      role: role,
-      facility: "2",
+      full_name: "",
+      gender: "female",
       phone: "+251911234567",
-      profession: "BSc Midwifery",
-      thematicArea: "Maternal & Child",
-      yearsOfExperience: role === "mentor" ? 5 : undefined,
+      email: "",
+      profession: role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife",
+      highest_qualification: "BSc Midwifery",
+      years_of_experience: role === "mentor" ? 5 : 2,
+      thematic_area: "Maternal & Child Health",
+      primary_facility: defaultFacilityName,
+      username: "",
+      password: "",
+      force_password_change: true,
     },
   });
 
+  // Keep facility name synchronized
+  useEffect(() => {
+    if (defaultFacilityName) {
+      setValue("primary_facility", defaultFacilityName);
+    }
+  }, [defaultFacilityName, setValue]);
+
+  // Generate initial credentials on mount / open
+  useEffect(() => {
+    if (open) {
+      const initialPassword = generateSecurePassword();
+      setValue("password", initialPassword, { shouldValidate: true });
+      const currentName = getValues("full_name");
+      if (currentName) {
+        setValue("username", generateUsername(currentName, role), { shouldValidate: true });
+      }
+    }
+  }, [open, role, setValue, getValues]);
+
+  // Auto-generate username from full_name
+  const watchedFullName = watch("full_name");
+  useEffect(() => {
+    if (watchedFullName) {
+      setValue("username", generateUsername(watchedFullName, role), { shouldValidate: true });
+    }
+  }, [watchedFullName, role, setValue]);
+
+  // Auto-dismiss toast
   useEffect(() => {
     if (!toastMessage) return;
     const timer = setTimeout(() => {
@@ -126,24 +241,48 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
     }
   };
 
+  const handleRegeneratePassword = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const newPass = generateSecurePassword();
+    setValue("password", newPass, { shouldValidate: true, shouldDirty: true });
+  };
+
+  const handleCopyPassword = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const currentPassword = getValues("password");
+    if (currentPassword) {
+      try {
+        await navigator.clipboard.writeText(currentPassword);
+        setCopiedPassword(true);
+        setTimeout(() => setCopiedPassword(false), 2000);
+      } catch {
+        // Fallback if clipboard API is restricted
+      }
+    }
+  };
+
+  const forcePasswordChange = watch("force_password_change");
+
   const onSubmit = async (formData: UserFormData) => {
     setSubmitError(null);
     try {
-      // Build exact payload schema expected by backend:
+      const assignedFacilityId = Number(effectiveFacilityId) || 2;
+
+      // Construct clean payload strictly adhering to the backend's allowed fields
       const payload = {
-        full_name: formData.name.trim(),
+        full_name: formData.full_name.trim(),
         email: formData.email.trim().toLowerCase(),
-        password: "TemporaryPass1!",
+        phone: formData.phone.trim(),
         role: role,
-        facility_id: Number(formData.facility) || 2,
-        phone: formData.phone?.trim() || "+251911234567",
-        highest_qualification: formData.profession?.trim() || "BSc Midwifery",
+        facility_id: assignedFacilityId,
+        highest_qualification: formData.highest_qualification || formData.profession.trim(),
+        password: formData.password,
+        must_change_password: Boolean(formData.force_password_change),
         training_status: "in_training",
-        must_change_password: true,
       };
 
-      const response = await apiClient.post<any>("/api/v1/users", payload);
-      const newUser = createNewUserFromForm(formData, role);
+      await apiClient.post<any>("/api/v1/users", payload);
+      const newUser = createNewUserFromForm(formData, role, assignedFacilityId);
 
       onUserCreated?.(newUser);
       reset();
@@ -166,7 +305,7 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogTrigger className="flex items-center gap-2 bg-[#194611] text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#14370d] transition shadow-sm">
+        <DialogTrigger className="flex items-center gap-2 bg-[#194611] text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#14370d] transition shadow-xs cursor-pointer">
           {triggerButton ? (
             triggerButton
           ) : (
@@ -177,8 +316,8 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
           )}
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden bg-white border border-gray-100 shadow-2xl rounded-2xl">
-          <DialogHeader className="p-6 bg-gray-50/70 border-b border-gray-100">
+        <DialogContent className="sm:max-w-[620px] max-h-[92vh] overflow-y-auto p-0 bg-white border border-gray-100 shadow-2xl rounded-2xl">
+          <DialogHeader className="p-6 bg-gray-50/80 border-b border-gray-100 sticky top-0 z-10 backdrop-blur-xs">
             <div className="flex items-center gap-2 text-[#194611] mb-1">
               <UserPlus className="h-5 w-5" />
               <DialogTitle className="text-xl font-bold text-gray-900">
@@ -186,11 +325,11 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
               </DialogTitle>
             </div>
             <DialogDescription className="text-xs text-gray-500">
-              Enter the clinician&apos;s credentials and facility assignment. This profile will be immediately listed in the registry.
+              Provide clinical credentials and auto-generated system credentials. The account will be immediately provisioned.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-5">
             {/* Submission Error Alert */}
             {submitError && (
               <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs">
@@ -209,182 +348,294 @@ export function AddUserDialog({ role, onUserCreated, triggerButton }: AddUserDia
                 </button>
               </div>
             )}
-          {/* Full Name & Email */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Full Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                {...register("name")}
-                placeholder="e.g. Dr. Abebe Tessema"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-              />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Email Address <span className="text-red-500">*</span>
-              </label>
-              <input
-                {...register("email")}
-                type="email"
-                placeholder="clinician@hospital.org"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-              />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
-            </div>
-          </div>
-
-          {/* Profession & Facility */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Profession / Title <span className="text-red-500">*</span>
-              </label>
-              <input
-                {...register("profession")}
-                placeholder={role === "mentor" ? "e.g. Chief of Obstetrics" : "e.g. Resident Midwife"}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-              />
-              {errors.profession && <p className="text-red-500 text-xs mt-1">{errors.profession.message}</p>}
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Affiliated Facility <span className="text-red-500">*</span>
-              </label>
-              <select
-                {...register("facility")}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611] bg-white cursor-pointer"
-              >
-                {FACILITY_OPTIONS.map((fac) => (
-                  <option key={fac.id} value={fac.id}>
-                    {fac.name} (ID: {fac.id})
-                  </option>
-                ))}
-              </select>
-              {errors.facility && <p className="text-red-500 text-xs mt-1">{errors.facility.message}</p>}
-            </div>
-          </div>
-
-          {/* Phone Number & Thematic Area */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Phone Number
-              </label>
-              <input
-                {...register("phone")}
-                type="tel"
-                placeholder="+251911234567"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Primary Thematic Area <span className="text-red-500">*</span>
-              </label>
-              <select
-                {...register("thematicArea")}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611] bg-white cursor-pointer"
-              >
-                {thematicAreasList.map((area: string) => (
-                  <option key={area} value={area}>
-                    {area}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* ROLE-CONDITIONAL FIELDS */}
-          {role === "mentor" ? (
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Department / Unit <span className="text-red-500">*</span>
-                </label>
-                <input
-                  {...register("department")}
-                  placeholder="e.g. Maternal & Fetal Health"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-                />
-                {errors.department && <p className="text-red-500 text-xs mt-1">{errors.department.message}</p>}
+            {/* 1. PERSONAL INFORMATION */}
+            <div className="space-y-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                Personal Information
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Full Name */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Full Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    {...register("full_name")}
+                    placeholder="e.g. Dr. Abebe Tessema"
+                  />
+                  {errors.full_name && (
+                    <p className="text-red-500 text-xs mt-1">{errors.full_name.message}</p>
+                  )}
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Years of Experience <span className="text-red-500">*</span>
-                </label>
-                <input
-                  {...register("yearsOfExperience")}
-                  type="number"
-                  min="1"
-                  placeholder="e.g. 10"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-                />
-                {errors.yearsOfExperience && (
-                  <p className="text-red-500 text-xs mt-1">{errors.yearsOfExperience.message}</p>
-                )}
+                {/* Gender */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Gender <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    {...register("gender")}
+                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer"
+                  >
+                    {genderOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.gender && (
+                    <p className="text-red-500 text-xs mt-1">{errors.gender.message}</p>
+                  )}
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Phone Number <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    {...register("phone")}
+                    type="tel"
+                    placeholder="+251911234567"
+                  />
+                  {errors.phone && (
+                    <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>
+                  )}
+                </div>
+
+                {/* Email */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Email Address <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    {...register("email")}
+                    type="email"
+                    placeholder="clinician@hospital.org"
+                  />
+                  {errors.email && (
+                    <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
+                  )}
+                </div>
               </div>
             </div>
-          ) : (
-            <div className="pt-2 border-t border-gray-100">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Cadre / Cohort Level</label>
-              <input
-                {...register("cadreLevel")}
-                placeholder="e.g. PGY-2 Clinical Midwifery"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#194611]/20 focus:border-[#194611]"
-              />
+
+            {/* 2. PROFESSIONAL INFORMATION */}
+            <div className="space-y-3 pt-3 border-t border-gray-100">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                Professional Information
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Profession */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Profession <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    {...register("profession")}
+                    placeholder={role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife"}
+                  />
+                  {errors.profession && (
+                    <p className="text-red-500 text-xs mt-1">{errors.profession.message}</p>
+                  )}
+                </div>
+
+                {/* Highest Qualification */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Highest Qualification <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    {...register("highest_qualification")}
+                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer"
+                  >
+                    {highestQualificationsList.map((qual) => (
+                      <option key={qual} value={qual}>
+                        {qual}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.highest_qualification && (
+                    <p className="text-red-500 text-xs mt-1">{errors.highest_qualification.message}</p>
+                  )}
+                </div>
+
+                {/* Years of Experience */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Years of Experience <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    {...register("years_of_experience")}
+                    type="number"
+                    min="0"
+                    placeholder="5"
+                  />
+                  {errors.years_of_experience && (
+                    <p className="text-red-500 text-xs mt-1">{errors.years_of_experience.message}</p>
+                  )}
+                </div>
+
+                {/* Thematic Area */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Primary Thematic Area <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    {...register("thematic_area")}
+                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer"
+                  >
+                    {thematicAreasList.map((area) => (
+                      <option key={area} value={area}>
+                        {area}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.thematic_area && (
+                    <p className="text-red-500 text-xs mt-1">{errors.thematic_area.message}</p>
+                  )}
+                </div>
+
+                {/* Primary Facility (Autofill, read-only) */}
+                <div className="sm:col-span-2">
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Primary Facility
+                  </Label>
+                  <Input
+                    {...register("primary_facility")}
+                    readOnly
+                    disabled
+                    className="w-full bg-gray-50 text-gray-600 cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Autofilled with your assigned administrative facility
+                  </p>
+                </div>
+              </div>
             </div>
-          )}
 
-          {/* Form Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 bg-[#194611] text-white rounded-lg text-sm font-semibold hover:bg-[#14370d] transition shadow-sm disabled:opacity-50"
-            >
-              {isSubmitting ? "Registering..." : `Register ${role === "mentor" ? "Mentor" : "Mentee"}`}
-            </button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+            {/* 3. ACCOUNT CREATION (DYNAMIC CREDENTIALS) */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3.5">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-700">
+                <Key className="h-4 w-4 text-[#194611]" />
+                <span>Account Creation & Credentials</span>
+              </div>
 
-    {/* Success Toast Notification */}
-    {toastMessage && (
-      <div
-        role="status"
-        aria-live="polite"
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#194611] text-white shadow-2xl border border-emerald-800 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
-      >
-        <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-        <div className="text-sm">
-          <p className="font-semibold text-white">Success</p>
-          <p className="text-xs text-emerald-200">{toastMessage}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setToastMessage(null)}
-          className="ml-2 text-emerald-200 hover:text-white transition cursor-pointer"
-          aria-label="Close notification"
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Username (Disabled / Read-only) */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Generated Username
+                  </Label>
+                  <Input
+                    {...register("username")}
+                    readOnly
+                    disabled
+                    className="w-full bg-gray-100 text-gray-700 font-mono text-xs cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Auto-derived from full name</p>
+                </div>
+
+                {/* Password with Regenerate & Copy */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Temporary Password
+                  </Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      {...register("password")}
+                      type="text"
+                      className="flex-1 font-mono text-xs font-medium text-gray-800 bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRegeneratePassword}
+                      title="Regenerate secure password"
+                      className="p-2 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 transition cursor-pointer"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyPassword}
+                      title="Copy password to clipboard"
+                      className="p-2 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 text-gray-600 hover:text-[#194611] transition cursor-pointer"
+                    >
+                      {copiedPassword ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Force Password Change Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-gray-200">
+                <div className="space-y-0.5">
+                  <Label htmlFor="force-password-change" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Force Password Change
+                  </Label>
+                  <p className="text-[11px] text-gray-500">
+                    Require clinician to set a new password on their first sign-in
+                  </p>
+                </div>
+                <Switch
+                  id="force-password-change"
+                  checked={forcePasswordChange}
+                  onCheckedChange={(checked) => setValue("force_password_change", Boolean(checked))}
+                />
+              </div>
+            </div>
+
+            {/* Form Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-5 py-2 bg-[#194611] text-white rounded-lg text-sm font-semibold hover:bg-[#14370d] transition shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmitting ? "Registering..." : `Register ${role === "mentor" ? "Mentor" : "Mentee"}`}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Toast Notification */}
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#194611] text-white shadow-2xl border border-emerald-800 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
         >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    )}
-  </>
+          <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+          <div className="text-sm">
+            <p className="font-semibold text-white">Success</p>
+            <p className="text-xs text-emerald-200">{toastMessage}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="ml-2 text-emerald-200 hover:text-white transition cursor-pointer"
+            aria-label="Close notification"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </>
   );
 }

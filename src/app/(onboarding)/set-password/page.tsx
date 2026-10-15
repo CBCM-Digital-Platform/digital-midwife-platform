@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { setInitialPassword } from "@/services/auth";
 
-export default function SetPasswordPage() {
+function SetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token"); // present if this came from an emailed invite link
@@ -132,5 +132,13 @@ export default function SetPasswordPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function SetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-8 text-gray-500">Loading...</div>}>
+      <SetPasswordForm />
+    </Suspense>
   );
 }
