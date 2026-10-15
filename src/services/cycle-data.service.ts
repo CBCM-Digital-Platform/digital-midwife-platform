@@ -1,4 +1,6 @@
-import type { Cycle } from "@/types/cycle";
+import { apiClient } from "@/lib/api-client";
+import { ENDPOINTS } from "@/services/endpoints";
+import type { Cycle, CycleStatus, CycleFacility, CycleThematicArea } from "@/types/cycle";
 import type { CreateCycleInput, Facility } from "@/types/newCycle";
 
 const MOCK_CYCLES: Cycle[] = [
@@ -51,26 +53,299 @@ const MOCK_CYCLES: Cycle[] = [
 ];
 
 const MOCK_FACILITIES: Facility[] = [
-    { id: "f1", name: "Tirunesh Beijing Hospital" },
-    { id: "f2", name: "St. Paul's Hospital" },
-    { id: "f3", name: "Yekatit 12 Hospital" },
-    { id: "f4", name: "Zewditu Memorial Hospital" },
-    { id: "f5", name: "Gandhi Memorial Hospital" },
+    { id: "1", name: "Tirunesh Beijing General Hospital" },
+    { id: "2", name: "Oda Bultu Hospital" },
+    { id: "3", name: "St. Paul's Hospital (SPHMMC)" },
+    { id: "4", name: "Tikur Anbessa Specialized Hospital (TASH)" },
+    { id: "5", name: "Zewditu Memorial Hospital" },
+    { id: "6", name: "Yekatit 12 Hospital Medical College" },
 ];
 
-// TODO: replace with a fetch to the backend cycles endpoint
-export async function getCycles(): Promise<Cycle[]> {
-    return MOCK_CYCLES;
+/**
+ * Normalizes backend cycle status into the frontend CycleStatus enum.
+ */
+function normalizeCycleStatus(rawStatus?: string): CycleStatus {
+    switch (rawStatus?.toLowerCase()) {
+        case "active":
+            return "ACTIVE";
+        case "planned":
+            return "PLANNING";
+        case "draft":
+            return "DRAFT";
+        case "completed":
+            return "COMPLETED";
+        case "cancelled":
+            return "CANCELLED";
+        default:
+            return "PLANNING";
+    }
 }
 
-// TODO: replace with a fetch to the backend facilities endpoint
+/**
+ * Calculates estimated progress based on cycle status and elapsed date window.
+ */
+function calculateCycleProgress(status: CycleStatus, startDate?: string, endDate?: string): number {
+    if (status === "COMPLETED") return 100;
+    if (status === "CANCELLED") return 0;
+    if (status === "DRAFT") return 10;
+    if (status === "PLANNING") return 25;
+
+    if (startDate && endDate) {
+        const start = new Date(startDate).getTime();
+        const end = new Date(endDate).getTime();
+        const now = Date.now();
+
+        if (now <= start) return 5;
+        if (now >= end) return 95;
+        const total = end - start;
+        const elapsed = now - start;
+        return Math.min(95, Math.max(5, Math.round((elapsed / total) * 100)));
+    }
+
+    return 50;
+}
+
+/**
+ * Fetches all mentorship cycles from the backend API,
+ * with parallel enrichment of facility assignments.
+ */
+export async function getCycles(options?: { status?: string; page?: number; limit?: number }): Promise<Cycle[]> {
+    try {
+        const params: Record<string, string | number> = {
+            limit: options?.limit ?? 50,
+            page: options?.page ?? 1,
+        };
+        if (options?.status) {
+            params.status = options.status.toLowerCase();
+        }
+
+        const res = await apiClient<any>(ENDPOINTS.CYCLES.BASE, { params });
+        const rawCycles = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
+
+        if (!rawCycles || rawCycles.length === 0) {
+            return MOCK_CYCLES;
+        }
+
+        // Enrich cycles with their assigned facilities in parallel
+        const enrichedCycles = await Promise.all(
+            rawCycles.map(async (raw: any): Promise<Cycle> => {
+                const cycleId = String(raw.id);
+                const status = normalizeCycleStatus(raw.status);
+
+                // Fetch facilities assigned to this cycle
+                let facilitiesCount = 0;
+                let facilityList: CycleFacility[] = [];
+                try {
+                    const facRes = await apiClient<any>(ENDPOINTS.CYCLES.FACILITIES(raw.id)).catch(() => null);
+                    const rawFacs = Array.isArray(facRes?.data) ? facRes.data : Array.isArray(facRes) ? facRes : [];
+                    facilitiesCount = rawFacs.length;
+                    facilityList = rawFacs.map((f: any) => ({
+                        id: Number(f.id),
+                        name: f.name,
+                        type: f.type,
+                        region: f.region,
+                    }));
+                } catch {
+                    facilitiesCount = 0;
+                }
+
+                const startDate = raw.start_date || raw.startDate || new Date().toISOString().slice(0, 10);
+                const endDate = raw.end_date || raw.endDate || new Date().toISOString().slice(0, 10);
+                const progress = calculateCycleProgress(status, startDate, endDate);
+
+                return {
+                    id: cycleId,
+                    name: raw.name || `Mentorship Cycle ${cycleId}`,
+                    status,
+                    startDate,
+                    endDate,
+                    facilities: facilitiesCount,
+                    mentors: Number(raw.mentors_count || raw.mentors || 0),
+                    mentees: Number(raw.mentees_count || raw.mentees || 0),
+                    progress,
+                    assignmentsLinked: Number(raw.assignments_count || raw.assignmentsLinked || 0),
+                    averageScore: Number(raw.average_score || raw.averageScore || 0),
+                    milestones: [],
+                    rawStatus: raw.status,
+                    facilityList,
+                    createdAt: raw.created_at,
+                    updatedAt: raw.updated_at,
+                };
+            })
+        );
+
+        return enrichedCycles;
+    } catch (error) {
+        console.warn("Failed to fetch cycles from backend API, falling back to mock dataset:", error);
+        return MOCK_CYCLES;
+    }
+}
+
+/**
+ * Fetches a single cycle by its ID along with its assigned facilities and thematic areas.
+ */
+export async function getCycleById(id: string | number): Promise<Cycle | null> {
+    try {
+        const [cycleRes, facRes, areaRes] = await Promise.all([
+            apiClient<any>(ENDPOINTS.CYCLES.DETAIL(id)),
+            apiClient<any>(ENDPOINTS.CYCLES.FACILITIES(id)).catch(() => null),
+            apiClient<any>(ENDPOINTS.CYCLES.THEMATIC_AREAS(id)).catch(() => null),
+        ]);
+
+        const raw = cycleRes?.data || cycleRes;
+        if (!raw || !raw.id) return null;
+
+        const facilityList: CycleFacility[] = (Array.isArray(facRes?.data) ? facRes.data : []).map((f: any) => ({
+            id: Number(f.id),
+            name: f.name,
+            type: f.type,
+            region: f.region,
+        }));
+
+        const thematicAreaList: CycleThematicArea[] = (Array.isArray(areaRes?.data) ? areaRes.data : []).map((a: any) => ({
+            id: Number(a.id),
+            code: a.code,
+            name: a.name,
+        }));
+
+        const status = normalizeCycleStatus(raw.status);
+        const startDate = raw.start_date || raw.startDate || new Date().toISOString().slice(0, 10);
+        const endDate = raw.end_date || raw.endDate || new Date().toISOString().slice(0, 10);
+
+        return {
+            id: String(raw.id),
+            name: raw.name,
+            status,
+            startDate,
+            endDate,
+            facilities: facilityList.length,
+            mentors: Number(raw.mentors_count || 0),
+            mentees: Number(raw.mentees_count || 0),
+            progress: calculateCycleProgress(status, startDate, endDate),
+            assignmentsLinked: Number(raw.assignments_count || 0),
+            averageScore: Number(raw.average_score || 0),
+            milestones: [],
+            rawStatus: raw.status,
+            facilityList,
+            thematicAreaList,
+            createdAt: raw.created_at,
+            updatedAt: raw.updated_at,
+        };
+    } catch (error) {
+        console.error(`Failed to fetch cycle ${id}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Fetches the master list of clinical facilities from the backend API.
+ */
 export async function getFacilities(): Promise<Facility[]> {
-    return MOCK_FACILITIES;
+    try {
+        const res = await apiClient<any>(`${ENDPOINTS.FACILITIES.BASE}?limit=100`);
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+
+        if (list.length > 0) {
+            return list.map((f: any) => ({
+                id: String(f.id),
+                name: f.name || `Facility #${f.id}`,
+            }));
+        }
+
+        return MOCK_FACILITIES;
+    } catch (error) {
+        console.warn("Failed to fetch facilities from backend API, using fallback list:", error);
+        return MOCK_FACILITIES;
+    }
 }
 
-// TODO: replace with a POST to the backend cycles endpoint
+/**
+ * Creates a new mentorship cycle in the backend and links selected facilities.
+ */
 export async function createCycle(input: CreateCycleInput): Promise<{ id: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 600)); // fake network delay
-    console.log("Create cycle (mock):", input);
-    return { id: crypto.randomUUID() };
+    // 1. Backend POST /api/v1/mentorship-cycles has strict schema: { name, start_date?, end_date? }
+    const payload: { name: string; start_date?: string | null; end_date?: string | null } = {
+        name: input.name.trim(),
+    };
+
+    if (input.startDate) {
+        payload.start_date = input.startDate;
+    }
+    if (input.endDate) {
+        payload.end_date = input.endDate;
+    }
+
+    const cycleRes = await apiClient<any>(ENDPOINTS.CYCLES.BASE, {
+        method: "POST",
+        body: payload,
+    });
+
+    const createdCycle = cycleRes?.data || cycleRes;
+    const cycleId = createdCycle?.id ? String(createdCycle.id) : null;
+
+    if (!cycleId) {
+        throw new Error("Cycle creation did not return a valid cycle ID.");
+    }
+
+    // 2. Link selected facilities via POST /api/v1/mentorship-cycles/{cycleId}/facilities
+    if (Array.isArray(input.facilityIds) && input.facilityIds.length > 0) {
+        await Promise.allSettled(
+            input.facilityIds.map(async (facId) => {
+                const numericId = Number(facId);
+                if (!isNaN(numericId) && numericId > 0) {
+                    return apiClient(ENDPOINTS.CYCLES.FACILITIES(cycleId), {
+                        method: "POST",
+                        body: { facility_id: numericId },
+                    });
+                }
+            })
+        );
+    }
+
+    // 3. If dates are provided, optionally transition status from draft to planned
+    if (input.startDate && input.endDate) {
+        await apiClient(ENDPOINTS.CYCLES.STATUS(cycleId), {
+            method: "PATCH",
+            body: { status: "planned" },
+        }).catch((err) => {
+            console.warn("Cycle status transition to planned was skipped:", err?.message);
+        });
+    }
+
+    return { id: cycleId };
+}
+
+/**
+ * Transitions a cycle's lifecycle status.
+ * Allowed backend transitions:
+ * draft -> planned | cancelled
+ * planned -> active | cancelled
+ * active -> completed | cancelled
+ */
+export async function transitionCycleStatus(
+    id: string | number,
+    status: "draft" | "planned" | "active" | "completed" | "cancelled"
+): Promise<any> {
+    return apiClient(ENDPOINTS.CYCLES.STATUS(id), {
+        method: "PATCH",
+        body: { status },
+    });
+}
+
+/**
+ * Updates basic cycle metadata (name, dates).
+ */
+export async function updateCycle(
+    id: string | number,
+    data: { name?: string; startDate?: string; endDate?: string }
+): Promise<any> {
+    const body: any = {};
+    if (data.name) body.name = data.name.trim();
+    if (data.startDate) body.start_date = data.startDate;
+    if (data.endDate) body.end_date = data.endDate;
+
+    return apiClient(ENDPOINTS.CYCLES.DETAIL(id), {
+        method: "PATCH",
+        body,
+    });
 }

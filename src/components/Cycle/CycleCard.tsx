@@ -22,9 +22,9 @@ interface Props {
 }
 
 export default function CycleCard({ cycle, selected, onSelect }: Props) {
-    const completed = cycle.status === "COMPLETED";
-    const progressLabel = cycle.status === "PLANNING" ? "Readiness" : "Progress";
-    const barColor = cycle.status === "PLANNING" ? "bg-yellow-400" : "bg-[#0B5D3B]";
+    const isTerminal = cycle.status === "COMPLETED" || cycle.status === "CANCELLED";
+    const progressLabel = cycle.status === "PLANNING" || cycle.status === "DRAFT" ? "Readiness" : "Progress";
+    const barColor = cycle.status === "PLANNING" || cycle.status === "DRAFT" ? "bg-amber-400" : "bg-[#0B5D3B]";
 
     return (
         <article
@@ -38,7 +38,7 @@ export default function CycleCard({ cycle, selected, onSelect }: Props) {
                 }
             }}
             className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition ${selected ? "border-2 border-[#0B5D3B]" : "border-gray-200 hover:border-gray-300"
-                } ${completed ? "opacity-70" : ""}`}
+                } ${isTerminal ? "opacity-70" : ""}`}
         >
             <div className="flex items-start justify-between gap-3">
                 <div>
@@ -61,7 +61,7 @@ export default function CycleCard({ cycle, selected, onSelect }: Props) {
                 </div>
             </div>
 
-            {!completed && (
+            {!isTerminal && (
                 <>
                     <div className="mt-4 grid grid-cols-3 gap-3">
                         {[

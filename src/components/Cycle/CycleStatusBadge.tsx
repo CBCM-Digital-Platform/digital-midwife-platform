@@ -3,7 +3,9 @@ import type { CycleStatus } from "@/types/cycle";
 const STYLES: Record<CycleStatus, string> = {
     ACTIVE: "bg-green-100 text-green-800",
     PLANNING: "bg-amber-100 text-amber-700",
+    DRAFT: "bg-blue-100 text-blue-700",
     COMPLETED: "bg-gray-100 text-gray-600",
+    CANCELLED: "bg-rose-100 text-rose-700",
 };
 
 export default function CycleStatusBadge({ status }: { status: CycleStatus }) {

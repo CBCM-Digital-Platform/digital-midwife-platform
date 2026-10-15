@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ClipboardList, TrendingUp, X } from "lucide-react";
 import type { Cycle } from "@/types/cycle";
 import CycleStatusBadge from "./CycleStatusBadge";
@@ -76,12 +77,12 @@ export default function CycleSnapshot({ cycle, onClose }: Props) {
                 </div>
             )}
 
-            <button
-                type="button"
-                className="mt-6 rounded-lg bg-[#0B5D3B] px-5 py-2 text-sm font-medium text-white hover:bg-[#094d31]"
+            <Link
+                href={`/cycles/${cycle.id}`}
+                className="mt-6 inline-block text-center rounded-lg bg-[#0B5D3B] px-5 py-2 text-sm font-medium text-white hover:bg-[#094d31]"
             >
                 View Details
-            </button>
+            </Link>
         </aside>
     );
 }

@@ -1,10 +1,23 @@
-export type CycleStatus = "ACTIVE" | "PLANNING" | "COMPLETED";
+export type CycleStatus = "ACTIVE" | "PLANNING" | "COMPLETED" | "DRAFT" | "CANCELLED";
 
 export interface CycleMilestone {
     id: string;
     title: string;
     when: string;
     done: boolean;
+}
+
+export interface CycleFacility {
+    id: number;
+    name: string;
+    type?: string;
+    region?: string;
+}
+
+export interface CycleThematicArea {
+    id: number;
+    code: string;
+    name: string;
 }
 
 export interface Cycle {
@@ -20,4 +33,9 @@ export interface Cycle {
     assignmentsLinked: number;
     averageScore: number; // 0-100
     milestones: CycleMilestone[];
+    rawStatus?: string;
+    facilityList?: CycleFacility[];
+    thematicAreaList?: CycleThematicArea[];
+    createdAt?: string;
+    updatedAt?: string;
 }

@@ -66,8 +66,16 @@ function buildUrl(endpoint: string, params?: Record<string, string | number | bo
   if (/^https?:\/\//i.test(endpoint)) {
     fullUrl = endpoint;
   } else {
-    const rawBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/+$/, "");
-    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const rawBase = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1").replace(/\/+$/, "");
+    let cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+    // Prevent duplicate `/api/v1` or `/api` if base URL already ends with it
+    if (rawBase.endsWith("/api/v1") && cleanEndpoint.startsWith("/api/v1/")) {
+      cleanEndpoint = cleanEndpoint.substring(7);
+    } else if (rawBase.endsWith("/api") && cleanEndpoint.startsWith("/api/")) {
+      cleanEndpoint = cleanEndpoint.substring(4);
+    }
+
     fullUrl = `${rawBase}${cleanEndpoint}`;
   }
 

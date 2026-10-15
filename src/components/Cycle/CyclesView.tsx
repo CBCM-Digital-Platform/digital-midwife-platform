@@ -52,7 +52,9 @@ export default function CyclesView({ cycles }: { cycles: Cycle[] }) {
                             <option value="ALL">All Statuses</option>
                             <option value="ACTIVE">Active</option>
                             <option value="PLANNING">Planning</option>
+                            <option value="DRAFT">Draft</option>
                             <option value="COMPLETED">Completed</option>
+                            <option value="CANCELLED">Cancelled</option>
                         </select>
                     </label>
 
