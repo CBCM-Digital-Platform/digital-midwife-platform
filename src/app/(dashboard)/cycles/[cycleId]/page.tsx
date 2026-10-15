@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, Calendar, CheckCircle2, Layers, Users } from "lucide-react";
+import { ArrowLeft, Building2, Calendar, CheckCircle2, Layers } from "lucide-react";
 import { getCycleById } from "@/services/cycle-data.service";
 import CycleStatusBadge from "@/components/Cycle/CycleStatusBadge";
 

@@ -3,7 +3,7 @@ import Image from "next/image";
 import { LogOut } from "lucide-react";
 import { SidebarNav } from "./SidebarNav";
 import { getNavLinksByRole } from "@/config/navigation";
-import { UserRole } from "@/types/navigation";
+import { UserRole, isAdminRole } from "@/types/navigation";
 
 interface SidebarProps {
   role: string;
@@ -11,9 +11,8 @@ interface SidebarProps {
 
 export function Sidebar({ role }: SidebarProps) {
   const navLinks = getNavLinksByRole(role);
-  const normalized = (role || "").toLowerCase();
-  const isMentor = normalized.includes("mentor");
-  const isAdmin = normalized.includes("admin");
+  const isAdmin = isAdminRole(role);
+  const isMentor = (role || "").toLowerCase().includes("mentor");
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between h-full shrink-0">

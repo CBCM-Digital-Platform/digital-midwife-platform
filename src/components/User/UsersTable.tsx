@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ColumnDef,
   flexRender,
@@ -11,18 +12,37 @@ import {
   SortingState,
 } from "@tanstack/react-table";
 import {
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
   ChevronDown,
   Clock,
   Download,
+  Eye,
   Filter,
   Link2Off,
+  Loader2,
   MapPin,
   MoreVertical,
   RotateCcw,
   Search,
   SlidersHorizontal,
+  X,
+  XCircle,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
+import { changeUserStatus } from "@/services/users.service";
+import { UserDetailDialog } from "@/components/User/UserDetailDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface UsersTableProps {
   role: "mentor" | "mentee";
@@ -52,12 +72,84 @@ export function UsersTable({
   cohortLabel = "Central Academic Registry Cohort 2024-Q3",
   totalCohortCount,
 }: UsersTableProps) {
+  const router = useRouter();
+  const [usersData, setUsersData] = useState<ClinicalUser[]>(data);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [selectedThematicArea, setSelectedThematicArea] = useState<string>("all");
   const [selectedFacility, setSelectedFacility] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedMentor, setSelectedMentor] = useState<string>("all");
+
+  // User detail dialog & action dropdown state
+  const [selectedUserForDetail, setSelectedUserForDetail] = useState<ClinicalUser | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [activeMenuUserId, setActiveMenuUserId] = useState<string | null>(null);
+  const [updatingStatusUserId, setUpdatingStatusUserId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Alert dialog confirmation state for destructive status changes
+  const [confirmStatusAction, setConfirmStatusAction] = useState<{
+    user: ClinicalUser;
+    targetStatus: "inactive" | "suspended";
+  } | null>(null);
+
+  // Sync state if props change
+  useEffect(() => {
+    setUsersData(data);
+  }, [data]);
+
+  // Click outside to close action menu
+  useEffect(() => {
+    if (!activeMenuUserId) return;
+    const handleClickOutside = () => setActiveMenuUserId(null);
+    window.addEventListener("click", handleClickOutside);
+    return () => window.removeEventListener("click", handleClickOutside);
+  }, [activeMenuUserId]);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  const handleUpdateStatus = async (user: ClinicalUser, newStatus: string) => {
+    setActiveMenuUserId(null);
+    setUpdatingStatusUserId(String(user.id));
+    setToastMessage(null);
+
+    try {
+      const res = await changeUserStatus(String(user.id), newStatus);
+      if (res.success) {
+        setUsersData((prev) =>
+          prev.map((u) => (String(u.id) === String(user.id) ? ({ ...u, status: newStatus as any } as ClinicalUser) : u))
+        );
+        setToastMessage({
+          type: "success",
+          text: `Status for ${user.name || "user"} successfully changed to "${newStatus}".`,
+        });
+        router.refresh();
+      } else {
+        setToastMessage({
+          type: "error",
+          text: res.message || "Failed to update status on server.",
+        });
+      }
+    } catch (err: any) {
+      setToastMessage({
+        type: "error",
+        text: err?.message || "Failed to update status.",
+      });
+    } finally {
+      setUpdatingStatusUserId(null);
+    }
+  };
+
+  const handleOpenDetail = (user: ClinicalUser) => {
+    setSelectedUserForDetail(user);
+    setIsDetailOpen(true);
+  };
 
   // 1. DYNAMIC COLUMNS ENGINE (Based on role)
   const columns = useMemo<ColumnDef<ClinicalUser>[]>(() => {
@@ -82,16 +174,22 @@ export function UsersTable({
         const systemId = user.systemId || `ID-${user.id || "001"}`;
 
         return (
-          <div className="flex items-center gap-3">
+          <div
+            onClick={() => handleOpenDetail(user)}
+            className="flex items-center gap-3 cursor-pointer group"
+            title="Click to view full profile"
+          >
             <div
-              className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+              className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 group-hover:ring-2 group-hover:ring-[#194611]/30 transition ${
                 user.avatarBgColor || "bg-gray-100 text-gray-700"
               }`}
             >
               {initials}
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-sm text-gray-900 leading-snug">{name}</span>
+              <span className="font-bold text-sm text-gray-900 group-hover:text-[#194611] transition leading-snug">
+                {name}
+              </span>
               <span className="text-[11px] text-gray-500 font-mono tracking-wider">{systemId}</span>
             </div>
           </div>
@@ -261,19 +359,27 @@ export function UsersTable({
         const status = row.original.status;
         const isActive = status === "active";
         const isPending = status === "pending" || status === "pending_start";
+        const isSuspended = (status as string) === "suspended";
+        const isOnLeave = status === "on_leave";
 
         const dotColor = isActive
           ? "bg-emerald-500"
           : isPending
           ? "bg-amber-500"
+          : isSuspended
+          ? "bg-red-500"
+          : isOnLeave
+          ? "bg-blue-500"
           : "bg-gray-400";
 
         const label =
           isPending
             ? "Pending"
-            : status === "on_leave"
+            : isOnLeave
             ? "On Leave"
-            : status === "active"
+            : isSuspended
+            ? "Suspended"
+            : isActive
             ? "Active"
             : "Inactive";
 
@@ -290,15 +396,106 @@ export function UsersTable({
     const actionsCol: ColumnDef<ClinicalUser> = {
       id: "actions",
       header: "",
-      cell: ({ row }) => (
-        <button
-          onClick={() => onEditUser?.(row.original)}
-          className="p-1 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-700 transition"
-          aria-label="Row options"
-        >
-          <MoreVertical className="h-4 w-4" />
-        </button>
-      ),
+      cell: ({ row }) => {
+        const user = row.original;
+        const isMenuOpen = activeMenuUserId === user.id;
+        const isUpdating = updatingStatusUserId === user.id;
+
+        return (
+          <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => {
+                setActiveMenuUserId((prev) => (prev === user.id ? null : user.id));
+              }}
+              disabled={isUpdating}
+              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                isMenuOpen
+                  ? "bg-gray-100 border-gray-300 text-gray-800"
+                  : "border-transparent hover:bg-gray-100 text-gray-400 hover:text-gray-700"
+              }`}
+              aria-label="Row options"
+              title="Actions"
+            >
+              {isUpdating ? (
+                <Loader2 className="h-4 w-4 animate-spin text-[#194611]" />
+              ) : (
+                <MoreVertical className="h-4 w-4" />
+              )}
+            </button>
+
+            {isMenuOpen && (
+              <div className="absolute right-0 mt-1 w-44 rounded-xl bg-white shadow-xl border border-gray-200 z-50 py-1 divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveMenuUserId(null);
+                      handleOpenDetail(user);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-gray-500" />
+                    <span>View Profile</span>
+                  </button>
+                </div>
+
+                <div className="py-1">
+                  <div className="px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Change Status
+                  </div>
+                  <button
+                    type="button"
+                    disabled={user.status === "active"}
+                    onClick={() => handleUpdateStatus(user, "active")}
+                    className={`w-full text-left px-3.5 py-1.5 text-xs font-medium flex items-center gap-2 transition cursor-pointer ${
+                      user.status === "active"
+                        ? "text-emerald-700 bg-emerald-50 font-semibold"
+                        : "text-gray-700 hover:bg-emerald-50 hover:text-emerald-700"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Set Active</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={user.status === "inactive"}
+                    onClick={() => {
+                      setActiveMenuUserId(null);
+                      setConfirmStatusAction({ user, targetStatus: "inactive" });
+                    }}
+                    className={`w-full text-left px-3.5 py-1.5 text-xs font-medium flex items-center gap-2 transition cursor-pointer ${
+                      user.status === "inactive"
+                        ? "text-gray-700 bg-gray-100 font-semibold"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    <XCircle className="h-3.5 w-3.5 text-gray-500" />
+                    <span>Set Inactive</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={(user.status as string) === "suspended"}
+                    onClick={() => {
+                      setActiveMenuUserId(null);
+                      setConfirmStatusAction({ user, targetStatus: "suspended" });
+                    }}
+                    className={`w-full text-left px-3.5 py-1.5 text-xs font-medium flex items-center gap-2 transition cursor-pointer ${
+                      (user.status as string) === "suspended"
+                        ? "text-red-700 bg-red-50 font-semibold"
+                        : "text-gray-700 hover:bg-red-50 hover:text-red-700"
+                    }`}
+                  >
+                    <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                    <span>Set Suspended</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      },
     };
 
     // Composition based on role (clean table without selection checkbox)
@@ -307,11 +504,11 @@ export function UsersTable({
     } else {
       return [identityCol, professionCol, facilityCol, assignedMentorCol, thematicAreaCol, knowledgeScoreCol, statusCol, actionsCol];
     }
-  }, [role, onEditUser]);
+  }, [role, onEditUser, activeMenuUserId, updatingStatusUserId]);
 
   // 2. CLIENT-SIDE FILTERING (Text search & dropdowns)
   const filteredData = useMemo(() => {
-    return data.filter((item) => {
+    return usersData.filter((item) => {
       // Global search matches name, systemId, profession, or facility
       if (globalFilter.trim()) {
         const query = globalFilter.toLowerCase();
@@ -335,12 +532,8 @@ export function UsersTable({
       }
 
       // Status filter
-      if (selectedStatus !== "all") {
-        if (selectedStatus === "pending") {
-          if (item.status !== "pending" && item.status !== "pending_start") return false;
-        } else if (item.status !== selectedStatus) {
-          return false;
-        }
+      if (selectedStatus !== "all" && item.status !== selectedStatus) {
+        return false;
       }
 
       // Mentor filter (for mentee role)
@@ -357,7 +550,7 @@ export function UsersTable({
 
       return true;
     });
-  }, [data, globalFilter, selectedThematicArea, selectedFacility, selectedStatus, selectedMentor, role]);
+  }, [usersData, globalFilter, selectedThematicArea, selectedFacility, selectedStatus, selectedMentor, role]);
 
   // 3. TANSTACK TABLE INSTANCE
   const table = useReactTable({
@@ -382,38 +575,39 @@ export function UsersTable({
     () =>
       Array.from(
         new Set(
-          data
+          usersData
             .map((d) => d?.facility)
             .filter((f): f is string => Boolean(f && typeof f === "string" && f.trim()))
         )
       ),
-    [data]
+    [usersData]
   );
   const thematicList = useMemo(
     () =>
       Array.from(
         new Set(
-          data
+          usersData
             .map((d) => d?.thematicArea)
             .filter((t): t is NonNullable<typeof t> => Boolean(t))
         )
       ),
-    [data]
+    [usersData]
   );
   const mentorsList = useMemo(() => {
     if (role !== "mentee") return [];
     const mentors = new Set<string>();
-    (data as MenteeUser[]).forEach((m) => {
+    (usersData as MenteeUser[]).forEach((m) => {
       const name = m?.assignedMentor?.name;
       if (name && typeof name === "string" && name.trim()) mentors.add(name.trim());
     });
     return Array.from(mentors);
-  }, [data, role]);
+  }, [usersData, role]);
 
-  const totalDisplayCount = totalCohortCount || data.length;
+  const totalDisplayCount = totalCohortCount || usersData.length;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+    <>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
       {/* 1. TOP SEARCH & EXPORT TOOLBAR */}
       <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
         {/* Search Bar */}
@@ -457,23 +651,6 @@ export function UsersTable({
           <span>Filter by:</span>
         </div>
 
-        {/* Facilities Filter */}
-        <div className="relative">
-          <select
-            value={selectedFacility}
-            onChange={(e) => setSelectedFacility(e.target.value)}
-            className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none cursor-pointer shadow-sm"
-          >
-            <option value="all">All Facilities</option>
-            {facilitiesList.map((f, idx) => (
-              <option key={`facility-${f}-${idx}`} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-        </div>
-
         {/* Thematic Areas Filter */}
         <div className="relative">
           <select
@@ -500,8 +677,8 @@ export function UsersTable({
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
-            <option value="pending">Pending</option>
             <option value="inactive">Inactive</option>
+            <option value="suspended">Suspended</option>
           </select>
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
         </div>
@@ -647,5 +824,127 @@ export function UsersTable({
         </div>
       </div>
     </div>
+
+    {/* 6. USER DETAIL DIALOG (Calls getUserById & changeUserStatus) */}
+    <UserDetailDialog
+      user={selectedUserForDetail}
+      open={isDetailOpen}
+      onOpenChange={setIsDetailOpen}
+      onStatusUpdated={(userId, newStatus) => {
+        setUsersData((prev) =>
+          prev.map((u) => (String(u.id) === String(userId) ? ({ ...u, status: newStatus as any } as ClinicalUser) : u))
+        );
+        setToastMessage({
+          type: "success",
+          text: `Status updated to "${newStatus}".`,
+        });
+        router.refresh();
+      }}
+    />
+
+    {/* 7. STATUS CONFIRMATION ALERT DIALOG */}
+    <AlertDialog
+      open={Boolean(confirmStatusAction)}
+      onOpenChange={(open) => {
+        if (!open) setConfirmStatusAction(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div
+              className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${
+                confirmStatusAction?.targetStatus === "suspended"
+                  ? "bg-red-100 text-red-600"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {confirmStatusAction?.targetStatus === "suspended" ? (
+                <AlertCircle className="h-5 w-5" />
+              ) : (
+                <XCircle className="h-5 w-5" />
+              )}
+            </div>
+            <AlertDialogTitle>
+              {confirmStatusAction?.targetStatus === "suspended"
+                ? `Suspend ${confirmStatusAction?.user.name}?`
+                : `Deactivate ${confirmStatusAction?.user.name}?`}
+            </AlertDialogTitle>
+          </div>
+          <AlertDialogDescription>
+            {confirmStatusAction?.targetStatus === "suspended"
+              ? `Are you sure you want to suspend ${confirmStatusAction?.user.name} (${confirmStatusAction?.user.systemId})? This will immediately suspend account access and active clinical duties.`
+              : `Are you sure you want to set ${confirmStatusAction?.user.name} (${confirmStatusAction?.user.systemId}) to inactive? The user will be marked inactive across active facility rosters.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            disabled={Boolean(updatingStatusUserId)}
+            onClick={() => setConfirmStatusAction(null)}
+          >
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={Boolean(updatingStatusUserId)}
+            onClick={async () => {
+              if (!confirmStatusAction) return;
+              const { user, targetStatus } = confirmStatusAction;
+              await handleUpdateStatus(user, targetStatus);
+              setConfirmStatusAction(null);
+            }}
+            className={
+              confirmStatusAction?.targetStatus === "suspended"
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-gray-800 hover:bg-gray-900"
+            }
+          >
+            {updatingStatusUserId ? (
+              <div className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Updating...</span>
+              </div>
+            ) : confirmStatusAction?.targetStatus === "suspended" ? (
+              "Yes, Suspend User"
+            ) : (
+              "Yes, Set Inactive"
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* 8. TOAST NOTIFICATION */}
+    {toastMessage && (
+      <div
+        role="status"
+        aria-live="polite"
+        className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl text-white shadow-2xl border transition-all animate-in fade-in slide-in-from-bottom-4 duration-300 ${
+          toastMessage.type === "success"
+            ? "bg-[#194611] border-emerald-800"
+            : "bg-red-800 border-red-900"
+        }`}
+      >
+        {toastMessage.type === "success" ? (
+          <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+        ) : (
+          <AlertCircle className="h-5 w-5 text-red-300 shrink-0" />
+        )}
+        <div className="text-sm">
+          <p className="font-semibold text-white">
+            {toastMessage.type === "success" ? "Success" : "Error"}
+          </p>
+          <p className="text-xs text-emerald-100">{toastMessage.text}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setToastMessage(null)}
+          className="ml-2 text-white/80 hover:text-white transition cursor-pointer"
+          aria-label="Close notification"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    )}
+  </>
   );
 }
