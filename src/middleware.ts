@@ -16,7 +16,11 @@ export async function middleware(req: NextRequest) {
     Date.now() < Number(token.accessTokenExpires)
   );
 
-  if (path.startsWith("/login") || path.startsWith("/forgot-password")) {
+  if (
+    path.startsWith("/login") ||
+    path.startsWith("/forgot-password") ||
+    path.startsWith("/reset-password")
+  ) {
     // Only redirect to dashboard if the user has a strictly valid, unexpired session and no error param
     if (hasActiveAccessToken && !hasErrorParam) {
       return NextResponse.redirect(new URL("/dashboard", req.url));

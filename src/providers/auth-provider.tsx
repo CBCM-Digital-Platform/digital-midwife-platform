@@ -10,8 +10,12 @@ function AuthErrorListener({ children }: { children: React.ReactNode }) {
   const isSigningOut = useRef(false);
 
   useEffect(() => {
-    // If the user is ALREADY on the login or forgot-password page, DO NOT sign out or redirect
-    if (pathname?.startsWith("/login") || pathname?.startsWith("/forgot-password")) {
+    // If the user is ALREADY on an auth page, DO NOT sign out or redirect
+    if (
+      pathname?.startsWith("/login") ||
+      pathname?.startsWith("/forgot-password") ||
+      pathname?.startsWith("/reset-password")
+    ) {
       return;
     }
 
