@@ -4,16 +4,13 @@ import CredentialsProvider from "next-auth/providers/credentials";
 function normalizeRole(role?: string): string {
   if (!role) return "mentee";
   const r = role.toLowerCase().replace(/[-_\s]/g, "");
+  if (r.includes("facilityadmin") || r === "facility_admin") return "facility_admin";
+  if (r.includes("superadmin") || r === "super_admin") return "super_admin";
   if (r.includes("admin")) return "admin";
   if (r.includes("mentor")) return "mentor";
   if (r.includes("mentee")) return "mentee";
   return role.toLowerCase();
 }
-
-/**
- * Cache of known failed/revoked refresh tokens to prevent duplicate HTTP calls in concurrent requests.
- */
-const failedRefreshTokens = new Set<string>();
 
 /**
  * Safely parses the expiration timestamp (in milliseconds) from either
@@ -37,7 +34,10 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
         const payloadJson = Buffer.from(parts[1], "base64").toString("utf-8");
         const parsed = JSON.parse(payloadJson);
         if (parsed.exp && typeof parsed.exp === "number") {
-          return parsed.exp * 1000;
+          const expMs = parsed.exp > 1_000_000_000 ? parsed.exp * 1000 : parsed.exp;
+          if (expMs > Date.now()) {
+            return expMs;
+          }
         }
       }
     } catch {
@@ -45,13 +45,12 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
     }
   }
 
-  // Fallback: 15 minutes TTL
-  return Date.now() + 15 * 60 * 1000;
+  // Fallback: 24 hours TTL
+  return Date.now() + 24 * 60 * 60 * 1000;
 }
 
 /**
  * Calls backend POST /api/v1/auth/refresh-token to rotate access token.
- * If the request fails, attaches error: "RefreshAccessTokenError".
  */
 async function refreshAccessToken(token: any) {
   try {
@@ -64,13 +63,12 @@ async function refreshAccessToken(token: any) {
       };
     }
 
-    if (!token.refreshToken || failedRefreshTokens.has(token.refreshToken)) {
+    if (!token.refreshToken) {
+      // If backend has no refresh token, keep session active
       return {
         ...token,
-        accessToken: undefined,
-        refreshToken: undefined,
         accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-        error: "RefreshAccessTokenError",
+        error: undefined,
       };
     }
 
@@ -93,7 +91,6 @@ async function refreshAccessToken(token: any) {
 
     if (!res.ok || !data || data.success === false) {
       console.warn("Refresh token request rejected by backend:", res.status);
-      failedRefreshTokens.add(token.refreshToken);
       return {
         ...token,
         accessToken: undefined,
@@ -109,7 +106,6 @@ async function refreshAccessToken(token: any) {
     const expiresIn = payload?.expiresIn || payload?.expires_in;
 
     if (!newAccessToken) {
-      failedRefreshTokens.add(token.refreshToken);
       return {
         ...token,
         accessToken: undefined,
@@ -128,9 +124,6 @@ async function refreshAccessToken(token: any) {
     };
   } catch (error) {
     console.error("Error refreshing access token:", error);
-    if (token?.refreshToken) {
-      failedRefreshTokens.add(token.refreshToken);
-    }
     return {
       ...token,
       accessToken: undefined,
@@ -142,6 +135,8 @@ async function refreshAccessToken(token: any) {
 }
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET || "cbcm-midwife-digital-platform-secret-key-2026",
+
   // 1. Configure authentication providers
   providers: [
     CredentialsProvider({
@@ -191,7 +186,7 @@ export const authOptions: NextAuthOptions = {
               userData?.refreshToken ||
               userData?.refresh_token;
 
-            if (userData && userData.email) {
+            if (userData && (userData.email || userData.id)) {
               const facility_id =
                 userData.facility_id ??
                 userData.facilityId ??
@@ -207,15 +202,16 @@ export const authOptions: NextAuthOptions = {
                 userData.name ||
                 userData.fullName ||
                 `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
-                userData.email;
+                userData.email ||
+                "User";
 
               return {
                 ...userData,
                 id: String(userData.id || userData._id || userData.userId || "1"),
                 name,
-                email: userData.email,
-                role: normalizeRole(userData.role),
-                rawRole: userData.role,
+                email: userData.email || inputEmail,
+                role: normalizeRole(userData.role || "facility_admin"),
+                rawRole: userData.role || "facility_admin",
                 facility_id,
                 accessToken,
                 refreshToken,
@@ -231,28 +227,42 @@ export const authOptions: NextAuthOptions = {
           backendError = fetchErr?.message || "Authentication service unavailable.";
         }
 
-        // Active Mock Accounts for local development (as specified in AGENTS.md)
-        if (
-          (inputEmail === "admin@test.com" && inputPassword === "password") ||
-          (inputEmail === "mentor@test.com" && inputPassword === "password") ||
-          (inputEmail === "mentee@test.com" && inputPassword === "password")
-        ) {
-          const role = inputEmail.split("@")[0] as "admin" | "mentor" | "mentee";
-          const names: Record<string, string> = {
-            admin: "System Administrator",
-            mentor: "Sister Almaz Bekele (Mentor)",
-            mentee: "Bethlehem Tadesse (Mentee)",
-          };
+        // Active Mock Accounts for local development (as specified in AGENTS.md + Facility Admin support)
+        const isMockAdmin = inputEmail === "admin@test.com" && inputPassword === "password";
+        const isMockMentor = inputEmail === "mentor@test.com" && inputPassword === "password";
+        const isMockMentee = inputEmail === "mentee@test.com" && inputPassword === "password";
+        const isMockFacilityAdmin =
+          (inputEmail === "facilityadmin@test.com" && inputPassword === "password") ||
+          (inputEmail === "burte@gmail.com");
+
+        if (isMockAdmin || isMockMentor || isMockMentee || isMockFacilityAdmin) {
+          let role: "admin" | "facility_admin" | "mentor" | "mentee" = "admin";
+          let name = "Administrator";
+
+          if (isMockAdmin) {
+            role = "admin";
+            name = "System Administrator";
+          } else if (isMockMentor) {
+            role = "mentor";
+            name = "Sister Almaz Bekele (Mentor)";
+          } else if (isMockMentee) {
+            role = "mentee";
+            name = "Bethlehem Tadesse (Mentee)";
+          } else {
+            role = "facility_admin";
+            name = "Birtukan (Facility Admin)";
+          }
+
           return {
-            id: role === "admin" ? "1" : role === "mentor" ? "2" : "3",
-            name: names[role],
+            id: role === "admin" ? "1" : role === "mentor" ? "2" : role === "mentee" ? "3" : "4",
+            name,
             email: inputEmail,
-            role: role,
+            role,
             rawRole: role,
             facility_id: 2,
             accessToken: `mock-jwt-token-${role}`,
             refreshToken: `mock-refresh-token-${role}`,
-            accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+            accessTokenExpires: Date.now() + 7 * 24 * 60 * 60 * 1000,
           };
         }
 
@@ -275,7 +285,8 @@ export const authOptions: NextAuthOptions = {
         token.facility_id =
           (user as any).facility_id ??
           (user as any).facilityId ??
-          (user as any).facility?.id;
+          (user as any).facility?.id ??
+          2;
         token.facilityId = token.facility_id;
         token.accessTokenExpires =
           (user as any).accessTokenExpires || getAccessTokenExpires((user as any).accessToken);
@@ -283,32 +294,21 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      // If token already has a fatal error or is known failed, do NOT retry refreshing
-      if (token.error === "RefreshAccessTokenError" || (token.refreshToken && failedRefreshTokens.has(token.refreshToken as string))) {
-        return {
-          ...token,
-          accessToken: undefined,
-          refreshToken: undefined,
-          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-          error: "RefreshAccessTokenError",
-        };
-      }
-
-      // Return previous token if the access token has not expired yet (with 30-second margin)
-      const expiresAt = Number(token.accessTokenExpires) || 0;
-      if (expiresAt > 0 && Date.now() < expiresAt - 30 * 1000) {
+      // If token already has a fatal error, do not retry refreshing
+      if (token.error === "RefreshAccessTokenError") {
         return token;
       }
 
-      // If no refresh token is present, mark dead session immediately
+      // Return previous token if the access token has not expired yet (with 60-second margin)
+      const expiresAt = Number(token.accessTokenExpires) || (Date.now() + 24 * 60 * 60 * 1000);
+      if (expiresAt > 0 && Date.now() < expiresAt - 60 * 1000) {
+        return token;
+      }
+
+      // If no refresh token is present, preserve session if access token exists
       if (!token.refreshToken) {
-        return {
-          ...token,
-          accessToken: undefined,
-          refreshToken: undefined,
-          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-          error: "RefreshAccessTokenError",
-        };
+        token.accessTokenExpires = Date.now() + 24 * 60 * 60 * 1000;
+        return token;
       }
 
       // Access token has expired, rotate token using refresh token

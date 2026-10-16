@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, Suspense, FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, HelpCircle } from "lucide-react";
-import { signIn, getSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlError = searchParams.get("error");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -15,17 +18,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Clear any dead or corrupted session tokens when arriving on the login page
-    document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("error") === "SessionExpired") {
-        setError("Your session has expired. Please sign in again.");
-      }
+    if (urlError === "SessionExpired") {
+      setError("Your session has expired. Please sign in again.");
+    } else if (urlError === "CredentialsSignin") {
+      setError("Invalid email or password. Please try again.");
+    } else if (urlError) {
+      setError(urlError);
     }
-  }, []);
+  }, [urlError]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,19 +33,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 2. Call NextAuth with the "credentials" provider
       const result = await signIn("credentials", {
-        redirect: false, // Keeps the user on this page if there's an error
+        redirect: false,
         email,
         password,
       });
 
       if (result?.error) {
-        setError(
-          result.error === "CredentialsSignin"
-            ? "Invalid email or password. Please try again."
-            : result.error
-        );
+        if (result.error === "CredentialsSignin") {
+          setError("Invalid email or password. Please try again.");
+        } else if (result.error === "SessionExpired") {
+          setError("Your session has expired. Please sign in again.");
+        } else {
+          setError(result.error);
+        }
       } else {
         router.push("/dashboard");
         router.refresh();
@@ -55,6 +56,16 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    if (error) setError(null);
+  };
+
+  const handlePasswordChange = (val: string) => {
+    setPassword(val);
+    if (error) setError(null);
   };
 
   return (
@@ -82,9 +93,8 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 required
-                suppressHydrationWarning
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => handleEmailChange(e.target.value)}
                 placeholder="practitioner@midwifeconnect.com"
                 className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3.5 text-sm text-gray-900 outline-none focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700"
               />
@@ -101,9 +111,8 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 required
-                suppressHydrationWarning
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => handlePasswordChange(e.target.value)}
                 placeholder="••••••••"
                 className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3.5 text-sm text-gray-900 outline-none focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700"
               />
@@ -128,7 +137,6 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            suppressHydrationWarning
             className="w-full rounded-lg bg-emerald-800 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Signing in..." : "Sign in"}
@@ -148,5 +156,13 @@ export default function LoginPage() {
         Need technical support?
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-md p-8 bg-white rounded-2xl shadow-sm text-center text-sm text-gray-500">Loading sign in...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }
