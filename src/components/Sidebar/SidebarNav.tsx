@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Activity,
   BarChart3,
+  FileText,
   Settings,
   BookOpen,
   Stethoscope,
@@ -36,6 +37,7 @@ const iconMap: Record<string, LucideIcon> = {
   cycles: RefreshCw,
   monitoring: Activity,
   analytics: BarChart3,
+  reports: FileText,
   settings: Settings,
   learning: BookOpen,
   "clinical-skills": Stethoscope,
@@ -93,17 +95,15 @@ function SidebarNavContent({ items }: SidebarNavProps) {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              active
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${active
                 ? "bg-[#FDD028] text-black font-semibold shadow-sm"
                 : "text-gray-700 hover:bg-gray-100 hover:text-black"
-            }`}
+              }`}
           >
             {IconComponent && (
               <IconComponent
-                className={`h-4 w-4 ${
-                  active ? "text-black" : "text-gray-500"
-                }`}
+                className={`h-4 w-4 ${active ? "text-black" : "text-gray-500"
+                  }`}
               />
             )}
             <span>{item.name}</span>
