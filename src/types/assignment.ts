@@ -14,6 +14,8 @@ export interface Assignment {
     id: string;
     mentor: Person & { code: string };
     mentee: Person;
+    /** List of mentees assigned to this mentor (supports multiple mentees) */
+    mentees?: (Person & { facility?: string })[];
     facility: string;
     thematicDomain: string;
     /** ISO date, e.g. "2024-10-12" */
@@ -21,6 +23,14 @@ export interface Assignment {
     /** Short note under the date, e.g. "1.2 months tenure" or "Starts in 3 days" */
     dateNote: string;
     status: AssignmentStatus;
+    /** Flag indicating a newly created assignment */
+    isNew?: boolean;
+    /** Mentorship cycle name */
+    cycleName?: string;
+    /** Notes / special instructions */
+    notes?: string;
+    /** Timestamp when the assignment was created */
+    createdAt?: string;
 }
 
 export interface MentorLead {
@@ -57,4 +67,4 @@ export interface AssignmentFiltersState {
     status: "all" | AssignmentStatus;
 }
 
-export type AssignmentTab = "all" | "active" | "pending";
+export type AssignmentTab = "all" | "new" | "previous" | "active" | "pending";

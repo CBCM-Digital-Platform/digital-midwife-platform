@@ -184,3 +184,90 @@ export async function getAssignmentStats(): Promise<AssignmentStats> {
         };
     }
 }
+
+export const CREATED_ASSIGNMENTS_STORAGE_KEY = "cbcm_created_assignments";
+
+/**
+ * Retrieves newly created assignments stored locally in the browser.
+ */
+export function getStoredCreatedAssignments(): Assignment[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = localStorage.getItem(CREATED_ASSIGNMENTS_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        console.error("Error reading stored assignments:", e);
+        return [];
+    }
+}
+
+/**
+ * Saves a newly created assignment to local storage, placing it at the very top.
+ */
+export function saveCreatedAssignment(newAssignment: Assignment): void {
+    if (typeof window === "undefined") return;
+    try {
+        const existing = getStoredCreatedAssignments();
+        const filtered = existing.filter((a) => a.id !== newAssignment.id);
+        const updated = [{ ...newAssignment, isNew: true }, ...filtered];
+        localStorage.setItem(CREATED_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+        console.error("Error saving assignment to localStorage:", e);
+    }
+}
+
+/**
+ * Removes a created assignment from local storage.
+ */
+export function removeCreatedAssignment(id: string): void {
+    if (typeof window === "undefined") return;
+    try {
+        const existing = getStoredCreatedAssignments();
+        const updated = existing.filter((a) => a.id !== id);
+        localStorage.setItem(CREATED_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+        console.error("Error removing assignment from localStorage:", e);
+    }
+}
+
+/**
+ * Groups a flat list of assignments by mentor so each mentor is associated
+ * with the horizontal list of their assigned mentees.
+ */
+export function groupAssignmentsByMentor(assignments: Assignment[]): Assignment[] {
+    const map = new Map<string, Assignment>();
+
+    for (const a of assignments) {
+        // If the assignment already has multiple mentees defined, use it directly
+        if (a.mentees && a.mentees.length > 0) {
+            map.set(a.id, a);
+            continue;
+        }
+
+        const mentorKey = a.mentor.id;
+        const existing = map.get(mentorKey);
+        const menteeWithFacility = {
+            ...a.mentee,
+            facility: a.facility,
+        };
+
+        if (existing) {
+            const currentMentees = existing.mentees || [
+                { ...existing.mentee, facility: existing.facility },
+            ];
+            if (!currentMentees.some((m) => m.id === a.mentee.id)) {
+                existing.mentees = [...currentMentees, menteeWithFacility];
+            }
+        } else {
+            map.set(mentorKey, {
+                ...a,
+                id: a.id || `grouped-${mentorKey}`,
+                mentees: [menteeWithFacility],
+            });
+        }
+    }
+
+    return Array.from(map.values());
+}

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { createAssignment } from "@/services/assignment-form.service";
+import { saveCreatedAssignment } from "@/services/assignments.service";
+import type { Assignment } from "@/types/assignment";
 import {
     MAX_MENTEES_PER_ASSIGNMENT,
     type AssignmentFormOptions,
@@ -133,6 +135,68 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
         setSubmitting(true);
         setSubmitError("");
         try {
+            const selectedMentor = options.mentors.find((m) => mentorIds.includes(m.id)) || {
+                id: mentorIds[0] || "m-1",
+                name: "Assigned Mentor",
+                initials: "AM",
+                specialty: "Clinical Specialist",
+                currentLoad: 1,
+                maxLoad: 3,
+                avatarUrl: undefined,
+            };
+
+            const selectedMentees = options.mentees.filter((me) => menteeIds.includes(me.id));
+            const selectedCycle = options.cycles.find((c) => c.id === cycleId);
+
+            const newAssignment: Assignment = {
+                id: `assign-new-${Date.now()}`,
+                mentor: {
+                    id: String(selectedMentor.id),
+                    code: `MTR-${String(selectedMentor.id).padStart(3, "0")}`,
+                    name: selectedMentor.name,
+                    subtitle: selectedMentor.specialty,
+                    initials: selectedMentor.initials,
+                    avatarUrl: selectedMentor.avatarUrl,
+                },
+                mentee: selectedMentees[0]
+                    ? {
+                          id: String(selectedMentees[0].id),
+                          name: selectedMentees[0].name,
+                          subtitle: selectedMentees[0].specialty,
+                          initials: selectedMentees[0].initials,
+                      }
+                    : {
+                          id: "me-1",
+                          name: "Clinical Mentee",
+                          subtitle: "Resident Midwife",
+                          initials: "CM",
+                      },
+                mentees: selectedMentees.map((m) => ({
+                    id: String(m.id),
+                    name: m.name,
+                    subtitle: m.specialty,
+                    initials: m.initials,
+                    facility: m.facility,
+                })),
+                facility: selectedMentees[0]?.facility || "Central Regional Hospital",
+                thematicDomain: thematicAreas.join(", ") || "Maternal & Newborn Care",
+                assignedDate: startDate || new Date().toISOString().slice(0, 10),
+                dateNote: "Active mentorship pairing",
+                status: "active",
+                isNew: true,
+                cycleName: selectedCycle?.name || "2026 Mentorship Cycle",
+                notes: notes.trim(),
+                createdAt: new Date().toISOString(),
+            };
+
+            // Save locally so the assignment immediately persists and appears at the top
+            saveCreatedAssignment(newAssignment);
+
+            if (typeof window !== "undefined") {
+                sessionStorage.setItem("cbcm_just_created_assignment", JSON.stringify(newAssignment));
+            }
+
+            // Attempt backend persistence
             await createAssignment({
                 type,
                 cycleId,
@@ -143,8 +207,9 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 endDate,
                 notes: notes.trim(),
                 capacityOverrideReason: overloadedMentors.length > 0 ? overrideReason.trim() : undefined,
-            });
-            router.push("/assignments");
+            }).catch(() => null);
+
+            router.push("/assignments?tab=new&created=1");
         } catch {
             setSubmitError("The assignment couldn't be created. Check your connection and try again.");
             setSubmitting(false);

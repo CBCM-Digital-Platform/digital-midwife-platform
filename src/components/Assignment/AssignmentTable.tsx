@@ -39,12 +39,19 @@ export default function AssignmentTable({ data, compact = false, onRowClick }: A
                 id: "mentor",
                 header: "Mentor",
                 cell: ({ row }) => {
-                    const { mentor } = row.original;
+                    const { mentor, isNew } = row.original;
                     return (
                         <div className="flex items-center gap-3">
                             <Avatar person={mentor} />
                             <div>
-                                <p className="font-medium text-gray-900">{mentor.name}</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="font-medium text-gray-900">{mentor.name}</p>
+                                    {isNew && (
+                                        <span className="inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider shadow-2xs">
+                                            NEW
+                                        </span>
+                                    )}
+                                </div>
                                 {!compact && (
                                     <p className="text-xs text-gray-500">
                                         {mentor.subtitle} • ID:{" "}
@@ -58,15 +65,48 @@ export default function AssignmentTable({ data, compact = false, onRowClick }: A
             },
             {
                 id: "mentee",
-                header: "Mentee",
+                header: "Mentee(s)",
                 cell: ({ row }) => {
-                    const { mentee } = row.original;
+                    const { mentee, mentees } = row.original;
+                    const menteeList = mentees && mentees.length > 0 ? mentees : [mentee];
+
+                    if (menteeList.length === 1) {
+                        return (
+                            <div className="flex items-center gap-3">
+                                <Avatar person={menteeList[0]} />
+                                <div>
+                                    <p className="font-medium text-gray-900">{menteeList[0].name}</p>
+                                    {!compact && (
+                                        <p className="text-xs text-gray-500">
+                                            {menteeList[0].subtitle || "Resident Midwife"}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    }
+
                     return (
                         <div className="flex items-center gap-3">
-                            <Avatar person={mentee} />
-                            <div>
-                                <p className="font-medium text-gray-900">{mentee.name}</p>
-                                {!compact && <p className="text-xs text-gray-500">{mentee.subtitle}</p>}
+                            <div className="flex -space-x-2">
+                                {menteeList.map((m) => (
+                                    <Avatar key={m.id} person={m} className="size-8 ring-2 ring-white" />
+                                ))}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <p className="font-medium text-gray-900 truncate max-w-xs">
+                                        {menteeList.map((m) => m.name).join(", ")}
+                                    </p>
+                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 shrink-0">
+                                        {menteeList.length} Mentees
+                                    </span>
+                                </div>
+                                {!compact && (
+                                    <p className="text-xs text-gray-500">
+                                        {menteeList[0]?.subtitle || "Clinical Mentees"}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     );
@@ -148,8 +188,11 @@ export default function AssignmentTable({ data, compact = false, onRowClick }: A
                                 <tr
                                     key={row.id}
                                     onClick={() => onRowClick?.(row.original)}
-                                    className={`border-b border-gray-100 ${onRowClick ? "cursor-pointer hover:bg-gray-50" : ""
-                                        }`}
+                                    className={`border-b border-gray-100 ${
+                                        row.original.isNew
+                                            ? "bg-emerald-50/40 border-l-4 border-l-[#194611]"
+                                            : ""
+                                    } ${onRowClick ? "cursor-pointer hover:bg-gray-50" : ""}`}
                                 >
                                     {row.getVisibleCells().map((cell) => (
                                         <td key={cell.id} className={`px-4 ${compact ? "py-2" : "py-4"}`}>
