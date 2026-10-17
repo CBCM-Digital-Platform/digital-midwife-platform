@@ -147,13 +147,6 @@ function LoginForm() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-
-        <p className="mt-5 text-center text-sm text-gray-500">
-          Don&apos;t have an account?{" "}
-          <Link href="/request-access" className="font-medium text-amber-700 hover:text-amber-800">
-            Request access
-          </Link>
-        </p>
       </div>
 
       <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
