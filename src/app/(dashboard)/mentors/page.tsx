@@ -81,8 +81,8 @@ export default async function MentorsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <button className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition shadow-xs cursor-pointer">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto shrink-0">
+          <button className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition shadow-xs cursor-pointer flex-1 sm:flex-initial">
             <UploadCloud className="h-4 w-4 text-gray-500" />
             <span>Batch Import</span>
           </button>

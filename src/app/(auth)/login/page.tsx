@@ -75,7 +75,7 @@ function LoginForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="rounded-2xl bg-white p-8 shadow-sm">
+      <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-sm">
         <h1 className="text-xl font-semibold text-gray-900">Welcome back</h1>
         <p className="mt-1 text-sm text-gray-500">
           Please enter your credentials to access your dashboard

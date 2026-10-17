@@ -166,9 +166,9 @@ export function UserDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[620px] p-0 overflow-hidden bg-white border border-gray-100 shadow-2xl rounded-2xl">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[620px] max-h-[90dvh] overflow-y-auto p-0 bg-white border border-gray-100 shadow-2xl rounded-2xl">
         {/* HEADER */}
-        <DialogHeader className="p-6 bg-gray-50/80 border-b border-gray-100">
+        <DialogHeader className="p-4 sm:p-6 bg-gray-50/80 border-b border-gray-100">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div

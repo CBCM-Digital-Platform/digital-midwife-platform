@@ -58,30 +58,30 @@ export default function ReportsView({ data }: { data: ReportsData }) {
         "appearance-none bg-transparent pr-1 text-sm font-medium text-gray-800 outline-none";
 
     return (
-        <div className="space-y-6 p-6">
+        <div className="space-y-6">
             {/* Title row */}
-            <header className="flex flex-wrap items-start justify-between gap-4">
+            <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div>
                     <p className="mb-2 inline-flex items-center gap-2 rounded bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-800">
                         <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
                         AUDIT & COMPLIANCE TIER
                         <span className="font-medium text-gray-500">RPT-CYCLE-2024</span>
                     </p>
-                    <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
-                    <p className="mt-1 max-w-xl text-sm text-gray-500">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Reports</h1>
+                    <p className="mt-1 max-w-xl text-xs sm:text-sm text-gray-500">
                         Generate, audit, and export longitudinal mentorship performance and clinical cohort
                         records.
                     </p>
                 </div>
 
-                <div className="flex flex-col items-end gap-2">
-                    <p className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500">
+                <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto shrink-0">
+                    <p className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 w-full sm:w-auto text-left sm:text-right">
                         Data Refreshed:{" "}
                         <span className="font-semibold text-gray-900">{data.refreshedAt}</span>
                     </p>
                     <button
                         type="button"
-                        className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                        className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 w-full sm:w-auto cursor-pointer"
                     // TODO: open schedule automated delivery dialog
                     >
                         <CalendarClock className="h-4 w-4 text-[#0B5D3B]" />

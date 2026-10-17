@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-dvh">
       {/* Left panel: photo background with branding text on top */}
       <div className="relative hidden w-1/2 overflow-hidden lg:block">
         <div
@@ -24,7 +24,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </div>
 
       {/* Right panel: plain background, form card */}
-      <div className="flex w-full items-center justify-center bg-[#faf7f4] px-4 py-12 lg:w-1/2">
+      <div className="flex w-full items-center justify-center bg-[#faf7f4] px-4 py-8 sm:py-12 lg:w-1/2">
         {children}
       </div>
     </div>

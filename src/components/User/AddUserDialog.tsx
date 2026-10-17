@@ -355,8 +355,8 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
           )}
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-[620px] max-h-[92vh] overflow-y-auto p-0 bg-white border border-gray-100 shadow-2xl rounded-2xl">
-          <DialogHeader className="p-6 bg-gray-50/80 border-b border-gray-100 sticky top-0 z-10 backdrop-blur-xs">
+        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[620px] max-h-[90dvh] overflow-y-auto p-0 bg-white border border-gray-100 shadow-2xl rounded-2xl">
+          <DialogHeader className="p-4 sm:p-6 bg-gray-50/80 border-b border-gray-100 sticky top-0 z-10 backdrop-blur-xs">
             <div className="flex items-center gap-2 text-[#194611] mb-1">
               <UserPlus className="h-5 w-5" />
               <DialogTitle className="text-xl font-bold text-gray-900">
@@ -368,7 +368,7 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-4 sm:space-y-5">
             {/* Submission Error Alert */}
             {submitError && (
               <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs">
