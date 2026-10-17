@@ -18,12 +18,17 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (urlError === "SessionExpired") {
-      setError("Your session has expired. Please sign in again.");
-    } else if (urlError === "CredentialsSignin") {
-      setError("Invalid email or password. Please try again.");
-    } else if (urlError) {
-      setError(urlError);
+    // Clear any dead or corrupted session tokens when arriving on the login page
+    document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("error") === "SessionExpired") {
+        setError("Your session has expired. Please sign in again.");
+        // Clear the error query parameter from the URL bar so it doesn't persist on retry
+        window.history.replaceState({}, "", window.location.pathname);
+      }
     }
   }, [urlError]);
 
@@ -48,8 +53,8 @@ function LoginForm() {
           setError(result.error);
         }
       } else {
-        router.push("/dashboard");
-        router.refresh();
+        // Hard navigation guarantees fresh session cookies are immediately available to Server Components
+        window.location.href = "/dashboard";
       }
     } catch (err) {
       setError("An unexpected system error occurred.");

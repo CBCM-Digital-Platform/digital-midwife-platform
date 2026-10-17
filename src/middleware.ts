@@ -13,13 +13,21 @@ export async function middleware(req: NextRequest) {
   const isFatalSession = Boolean(token && (token as any).error === "RefreshAccessTokenError");
   const isAuthenticated = Boolean(token && !isFatalSession);
 
-  // 1. If user is on an auth page (/login or /forgot-password)
-  if (path.startsWith("/login") || path.startsWith("/forgot-password")) {
+  if (
+    path.startsWith("/login") ||
+    path.startsWith("/forgot-password") ||
+    path.startsWith("/reset-password")
+  ) {
     // Only redirect to dashboard if the user has an active valid session and no explicit error param
     if (isAuthenticated && !hasErrorParam) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
-    return NextResponse.next();
+    const response = NextResponse.next();
+    if (isFatalSession && token) {
+      response.cookies.delete("next-auth.session-token");
+      response.cookies.delete("__Secure-next-auth.session-token");
+    }
+    return response;
   }
 
   // 2. Protected dashboard routes

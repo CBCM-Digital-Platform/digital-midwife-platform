@@ -23,6 +23,7 @@ import {
   Library,
   Calendar,
   MessageSquare,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { NavItem } from "@/types/navigation";
