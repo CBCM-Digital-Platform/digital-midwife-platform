@@ -72,9 +72,34 @@ export function generateSecurePassword(length = 12): string {
 }
 
 /**
- * Auto-generates a clean username based on full name and role (e.g., "John Doe" -> "mentor.jdoe").
+ * Auto-generates a clean username based on first name, last name, and role (e.g., "John", "Doe" -> "mentor.jdoe").
  */
-export function generateUsername(fullName: string, role: "mentor" | "mentee"): string {
+export function generateUsername(
+  firstNameOrFullName: string,
+  lastNameOrRole: string,
+  optionalRole?: "mentor" | "mentee"
+): string {
+  if (optionalRole) {
+    const cleanFirst = (firstNameOrFullName || "")
+      .replace(/^(dr|dr\.|sister|brother|prof|prof\.|mr|mr\.|mrs|mrs\.|ms|ms\.)\s+/i, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    const cleanLast = (lastNameOrRole || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    const role = optionalRole;
+    if (!cleanFirst && !cleanLast) return "";
+    if (!cleanLast) return `${role}.${cleanFirst}`;
+    if (!cleanFirst) return `${role}.${cleanLast}`;
+    return `${role}.${cleanFirst[0]}${cleanLast}`;
+  }
+
+  const fullName = firstNameOrFullName;
+  const role = lastNameOrRole as "mentor" | "mentee";
   if (!fullName || !fullName.trim()) return "";
 
   // Strip honorary prefixes like Dr., Sister, Brother, Prof., Mr., etc.
@@ -102,11 +127,11 @@ function createNewUserFromForm(
   role: "mentor" | "mentee",
   activeFacilityId?: number | string
 ): ClinicalUser {
-  const nameParts = formData.full_name.trim().split(" ");
+  const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
   const initials =
-    nameParts.length >= 2
-      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-      : formData.full_name.substring(0, 2).toUpperCase();
+    `${formData.first_name?.[0] || ""}${formData.last_name?.[0] || ""}`.toUpperCase() ||
+    fullName.substring(0, 2).toUpperCase() ||
+    "CU";
 
   const timestamp = Date.now();
   const randomSuffix = Math.floor(100 + Math.random() * 900);
@@ -120,7 +145,7 @@ function createNewUserFromForm(
     const newMentor: MentorUser = {
       id: `mentor-${timestamp}`,
       systemId,
-      name: formData.full_name,
+      name: fullName,
       email: formData.email,
       phone: formData.phone,
       role: "mentor",
@@ -130,7 +155,7 @@ function createNewUserFromForm(
       department: formData.thematic_area,
       facility: facilityName,
       thematicArea: formData.thematic_area,
-      yearsOfExperience: Number(formData.years_of_experience) || 1,
+      yearsOfExperience: Number(formData.years_of_experience) || 0,
       assignedMenteesCount: 0,
       status: "active",
     };
@@ -139,7 +164,7 @@ function createNewUserFromForm(
     const newMentee: MenteeUser = {
       id: `mentee-${timestamp}`,
       systemId,
-      name: formData.full_name,
+      name: fullName,
       email: formData.email,
       phone: formData.phone,
       role: "mentee",
@@ -183,14 +208,15 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
   } = useForm<UserFormData>({
     resolver: zodResolver(userFormSchema),
     defaultValues: {
-      full_name: "",
-      gender: "female",
-      phone: "+251911234567",
+      first_name: "",
+      last_name: "",
+      gender: "" as any,
+      phone: "",
       email: "",
-      profession: role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife",
-      highest_qualification: "BSc Midwifery",
-      years_of_experience: role === "mentor" ? 5 : 2,
-      thematic_area: "Maternal & Child Health",
+      profession: "",
+      highest_qualification: "",
+      years_of_experience: "" as any,
+      thematic_area: "",
       primary_facility: defaultFacilityName,
       username: "",
       password: "",
@@ -210,20 +236,30 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
     if (open) {
       const initialPassword = generateSecurePassword();
       setValue("password", initialPassword, { shouldValidate: true });
-      const currentName = getValues("full_name");
-      if (currentName) {
-        setValue("username", generateUsername(currentName, role), { shouldValidate: true });
+      const currentFirst = getValues("first_name");
+      const currentLast = getValues("last_name");
+      if (currentFirst || currentLast) {
+        setValue("username", generateUsername(currentFirst || "", currentLast || "", role), {
+          shouldValidate: true,
+        });
       }
     }
   }, [open, role, setValue, getValues]);
 
-  // Auto-generate username from full_name
-  const watchedFullName = watch("full_name");
+  // Auto-generate username from first_name and last_name
+  const watchedFirstName = watch("first_name");
+  const watchedLastName = watch("last_name");
   useEffect(() => {
-    if (watchedFullName) {
-      setValue("username", generateUsername(watchedFullName, role), { shouldValidate: true });
+    if (watchedFirstName || watchedLastName) {
+      setValue(
+        "username",
+        generateUsername(watchedFirstName || "", watchedLastName || "", role),
+        { shouldValidate: true }
+      );
+    } else {
+      setValue("username", "");
     }
-  }, [watchedFullName, role, setValue]);
+  }, [watchedFirstName, watchedLastName, role, setValue]);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -266,11 +302,14 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
   const onSubmit = async (formData: UserFormData) => {
     setSubmitError(null);
     try {
+      const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
       const assignedFacilityId = Number(effectiveFacilityId) || 2;
 
       // Construct clean payload strictly adhering to the backend's allowed fields
       const payload = {
-        full_name: formData.full_name.trim(),
+        full_name: fullName,
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
         role: role,
@@ -288,7 +327,7 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
       reset();
       setOpen(false);
       setToastMessage(
-        `${payload.full_name} was successfully registered as a ${role === "mentor" ? "Mentor" : "Mentee"}.`
+        `${fullName} was successfully registered as a ${role === "mentor" ? "Mentor" : "Mentee"}.`
       );
       router.refresh();
     } catch (err: any) {
@@ -355,17 +394,31 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                 Personal Information
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Full Name */}
+                {/* First Name */}
                 <div>
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Full Name <span className="text-red-500">*</span>
+                    First Name <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    {...register("full_name")}
-                    placeholder="e.g. Dr. Abebe Tessema"
+                    {...register("first_name")}
+                    placeholder="e.g. Abebe"
                   />
-                  {errors.full_name && (
-                    <p className="text-red-500 text-xs mt-1">{errors.full_name.message}</p>
+                  {errors.first_name && (
+                    <p className="text-red-500 text-xs mt-1">{errors.first_name.message}</p>
+                  )}
+                </div>
+
+                {/* Last Name */}
+                <div>
+                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Last Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    {...register("last_name")}
+                    placeholder="e.g. Tessema"
+                  />
+                  {errors.last_name && (
+                    <p className="text-red-500 text-xs mt-1">{errors.last_name.message}</p>
                   )}
                 </div>
 
@@ -376,8 +429,12 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   </Label>
                   <select
                     {...register("gender")}
-                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer"
+                    defaultValue=""
+                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
                   >
+                    <option value="" disabled>
+                      Select gender
+                    </option>
                     {genderOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
@@ -397,7 +454,7 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   <Input
                     {...register("phone")}
                     type="tel"
-                    placeholder="+251911234567"
+                    placeholder="e.g. +251911234567"
                   />
                   {errors.phone && (
                     <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>
@@ -405,14 +462,14 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                 </div>
 
                 {/* Email */}
-                <div>
+                <div className="sm:col-span-2">
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
                     Email Address <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     {...register("email")}
                     type="email"
-                    placeholder="clinician@hospital.org"
+                    placeholder="e.g. clinician@hospital.org"
                   />
                   {errors.email && (
                     <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
@@ -434,7 +491,7 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   </Label>
                   <Input
                     {...register("profession")}
-                    placeholder={role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife"}
+                    placeholder={role === "mentor" ? "e.g. Lead Midwifery Preceptor" : "e.g. Resident Midwife"}
                   />
                   {errors.profession && (
                     <p className="text-red-500 text-xs mt-1">{errors.profession.message}</p>
@@ -448,8 +505,12 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   </Label>
                   <select
                     {...register("highest_qualification")}
-                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer"
+                    defaultValue=""
+                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
                   >
+                    <option value="" disabled>
+                      Select highest qualification
+                    </option>
                     {highestQualificationsList.map((qual) => (
                       <option key={qual} value={qual}>
                         {qual}
@@ -470,7 +531,7 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                     {...register("years_of_experience")}
                     type="number"
                     min="0"
-                    placeholder="5"
+                    placeholder="e.g. 5"
                   />
                   {errors.years_of_experience && (
                     <p className="text-red-500 text-xs mt-1">{errors.years_of_experience.message}</p>
@@ -484,8 +545,12 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   </Label>
                   <select
                     {...register("thematic_area")}
-                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer"
+                    defaultValue=""
+                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
                   >
+                    <option value="" disabled>
+                      Select primary thematic area
+                    </option>
                     {thematicAreasList.map((area) => (
                       <option key={area} value={area}>
                         {area}
@@ -534,7 +599,7 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                     disabled
                     className="w-full bg-gray-100 text-gray-700 font-mono text-xs cursor-not-allowed"
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">Auto-derived from full name</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Auto-derived from name</p>
                 </div>
 
                 {/* Password with Regenerate & Copy */}
