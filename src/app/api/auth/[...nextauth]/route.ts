@@ -23,10 +23,10 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
   if (expiresIn !== undefined && expiresIn !== null) {
     const num = Number(expiresIn);
     if (!isNaN(num) && num > 0) {
-      if (num > 1_000_000_000) {
-        return num * 1000;
+      const expMs = num > 1_000_000_000_000 ? num : num > 1_000_000_000 ? num * 1000 : Date.now() + num * 1000;
+      if (expMs > Date.now()) {
+        return expMs;
       }
-      return Date.now() + num * 1000;
     }
   }
 
@@ -37,7 +37,10 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
         const payloadJson = Buffer.from(parts[1], "base64").toString("utf-8");
         const parsed = JSON.parse(payloadJson);
         if (parsed.exp && typeof parsed.exp === "number") {
-          return parsed.exp * 1000;
+          const expMs = parsed.exp > 1_000_000_000_000 ? parsed.exp : parsed.exp * 1000;
+          if (expMs > Date.now()) {
+            return expMs;
+          }
         }
       }
     } catch {
@@ -45,7 +48,7 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
     }
   }
 
-  // Fallback: 15 minutes TTL
+  // Fallback: 15 minutes TTL from now
   return Date.now() + 15 * 60 * 1000;
 }
 

@@ -21,6 +21,7 @@ import {
   Building2,
   Library,
   Calendar,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { NavItem } from "@/types/navigation";
@@ -44,6 +45,7 @@ const iconMap: Record<string, LucideIcon> = {
   facilities: Building2,
   resources: Library,
   sessions: Calendar,
+  reports: FileText,
 };
 
 interface SidebarNavProps {

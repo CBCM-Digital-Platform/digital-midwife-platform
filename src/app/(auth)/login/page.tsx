@@ -23,6 +23,8 @@ export default function LoginPage() {
       const params = new URLSearchParams(window.location.search);
       if (params.get("error") === "SessionExpired") {
         setError("Your session has expired. Please sign in again.");
+        // Clear the error query parameter from the URL bar so it doesn't persist on retry
+        window.history.replaceState({}, "", window.location.pathname);
       }
     }
   }, []);
@@ -47,8 +49,8 @@ export default function LoginPage() {
             : result.error
         );
       } else {
-        router.push("/dashboard");
-        router.refresh();
+        // Hard navigation guarantees fresh session cookies are immediately available to Server Components
+        window.location.href = "/dashboard";
       }
     } catch (err) {
       setError("An unexpected system error occurred.");
