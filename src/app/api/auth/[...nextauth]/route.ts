@@ -49,81 +49,36 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
   return Date.now() + 24 * 60 * 60 * 1000;
 }
 
+// In-memory cache for pending and rejected refresh token requests to avoid redundant backend calls
+const pendingRefreshes = new Map<string, Promise<any>>();
+const failedTokens = new Set<string>();
+
 /**
  * Calls backend POST /api/v1/auth/refresh-token to rotate access token.
  */
 async function refreshAccessToken(token: any) {
-  try {
-    // If running in local development with mock accounts, extend session directly
-    if (token.accessToken?.startsWith?.("mock-")) {
-      return {
-        ...token,
-        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-        error: undefined,
-      };
-    }
-
-    if (!token.refreshToken) {
-      // If backend has no refresh token, keep session active
-      return {
-        ...token,
-        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-        error: undefined,
-      };
-    }
-
-    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
-    const endpoint = baseUrl.endsWith("/api/v1")
-      ? `${baseUrl}/auth/refresh-token`
-      : `${baseUrl}/api/v1/auth/refresh-token`;
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        refreshToken: token.refreshToken,
-      }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok || !data || data.success === false) {
-      console.warn("Refresh token request rejected by backend:", res.status);
-      return {
-        ...token,
-        accessToken: undefined,
-        refreshToken: undefined,
-        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-        error: "RefreshAccessTokenError",
-      };
-    }
-
-    const payload = data?.data || data;
-    const newAccessToken = payload?.accessToken || payload?.token;
-    const newRefreshToken = payload?.refreshToken || payload?.refresh_token || token.refreshToken;
-    const expiresIn = payload?.expiresIn || payload?.expires_in;
-
-    if (!newAccessToken) {
-      return {
-        ...token,
-        accessToken: undefined,
-        refreshToken: undefined,
-        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
-        error: "RefreshAccessTokenError",
-      };
-    }
-
+  // If running in local development with mock accounts, extend session directly
+  if (token.accessToken?.startsWith?.("mock-")) {
     return {
       ...token,
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      accessTokenExpires: getAccessTokenExpires(newAccessToken, expiresIn),
+      accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
       error: undefined,
     };
-  } catch (error) {
-    console.error("Error refreshing access token:", error);
+  }
+
+  if (!token.refreshToken) {
+    // If backend has no refresh token, keep session active
+    return {
+      ...token,
+      accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+      error: undefined,
+    };
+  }
+
+  const tokenKey = String(token.refreshToken);
+
+  // If this token was already rejected, fail immediately without spamming backend
+  if (failedTokens.has(tokenKey)) {
     return {
       ...token,
       accessToken: undefined,
@@ -132,6 +87,83 @@ async function refreshAccessToken(token: any) {
       error: "RefreshAccessTokenError",
     };
   }
+
+  // Deduplicate in-flight requests for the same refresh token
+  if (pendingRefreshes.has(tokenKey)) {
+    return pendingRefreshes.get(tokenKey);
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+      const endpoint = baseUrl.endsWith("/api/v1")
+        ? `${baseUrl}/auth/refresh-token`
+        : `${baseUrl}/api/v1/auth/refresh-token`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          refreshToken: token.refreshToken,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data || data.success === false) {
+        console.warn("Refresh token request rejected by backend:", res.status);
+        failedTokens.add(tokenKey);
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          error: "RefreshAccessTokenError",
+        };
+      }
+
+      const payload = data?.data || data;
+      const newAccessToken = payload?.accessToken || payload?.token;
+      const newRefreshToken = payload?.refreshToken || payload?.refresh_token || token.refreshToken;
+      const expiresIn = payload?.expiresIn || payload?.expires_in;
+
+      if (!newAccessToken) {
+        failedTokens.add(tokenKey);
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+          error: "RefreshAccessTokenError",
+        };
+      }
+
+      return {
+        ...token,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        accessTokenExpires: getAccessTokenExpires(newAccessToken, expiresIn),
+        error: undefined,
+      };
+    } catch (error) {
+      console.error("Error refreshing access token:", error);
+      failedTokens.add(tokenKey);
+      return {
+        ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+        error: "RefreshAccessTokenError",
+      };
+    } finally {
+      pendingRefreshes.delete(tokenKey);
+    }
+  })();
+
+  pendingRefreshes.set(tokenKey, refreshPromise);
+  return refreshPromise;
 }
 
 export const authOptions: NextAuthOptions = {
@@ -341,4 +373,11 @@ export const authOptions: NextAuthOptions = {
 };
 
 const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };
+
+export async function GET(req: any, ctx: any) {
+  return handler(req, ctx);
+}
+
+export async function POST(req: any, ctx: any) {
+  return handler(req, ctx);
+}

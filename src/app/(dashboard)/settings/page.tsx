@@ -1,8 +1,7 @@
-export default function Page() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">Settings</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
-  );
+import SettingsView from "@/components/Settings/SettingsView";
+import { getProfileData } from "@/services/settings-data.service";
+
+export default async function SettingsPage() {
+  const data = await getProfileData();
+  return <SettingsView data={data} />;
 }
