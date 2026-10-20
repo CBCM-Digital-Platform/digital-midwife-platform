@@ -36,6 +36,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface AddUserDialogProps {
   role: "mentor" | "mentee";
@@ -249,6 +250,13 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
   // Auto-generate username from first_name and last_name
   const watchedFirstName = watch("first_name");
   const watchedLastName = watch("last_name");
+  const watchedHighestQualification = watch("highest_qualification");
+  const watchedThematicArea = watch("thematic_area");
+
+  useEffect(() => {
+    register("highest_qualification");
+    register("thematic_area");
+  }, [register]);
   useEffect(() => {
     if (watchedFirstName || watchedLastName) {
       setValue(
@@ -503,20 +511,17 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
                     Highest Qualification <span className="text-red-500">*</span>
                   </Label>
-                  <select
-                    {...register("highest_qualification")}
-                    defaultValue=""
-                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
-                  >
-                    <option value="" disabled>
-                      Select highest qualification
-                    </option>
-                    {highestQualificationsList.map((qual) => (
-                      <option key={qual} value={qual}>
-                        {qual}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={highestQualificationsList}
+                    value={watchedHighestQualification}
+                    onChange={(val) =>
+                      setValue("highest_qualification", val, { shouldValidate: true })
+                    }
+                    placeholder="Select highest qualification"
+                    searchPlaceholder="Search qualification..."
+                    size="sm"
+                    error={errors.highest_qualification?.message}
+                  />
                   {errors.highest_qualification && (
                     <p className="text-red-500 text-xs mt-1">{errors.highest_qualification.message}</p>
                   )}
@@ -543,20 +548,17 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
                     Primary Thematic Area <span className="text-red-500">*</span>
                   </Label>
-                  <select
-                    {...register("thematic_area")}
-                    defaultValue=""
-                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
-                  >
-                    <option value="" disabled>
-                      Select primary thematic area
-                    </option>
-                    {thematicAreasList.map((area) => (
-                      <option key={area} value={area}>
-                        {area}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={thematicAreasList}
+                    value={watchedThematicArea}
+                    onChange={(val) =>
+                      setValue("thematic_area", val, { shouldValidate: true })
+                    }
+                    placeholder="Select primary thematic area"
+                    searchPlaceholder="Search thematic area..."
+                    size="sm"
+                    error={errors.thematic_area?.message}
+                  />
                   {errors.thematic_area && (
                     <p className="text-red-500 text-xs mt-1">{errors.thematic_area.message}</p>
                   )}
