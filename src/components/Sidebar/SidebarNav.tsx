@@ -52,9 +52,10 @@ const iconMap: Record<string, LucideIcon> = {
 
 interface SidebarNavProps {
   items: NavItem[];
+  onNavigate?: () => void;
 }
 
-function SidebarNavContent({ items }: SidebarNavProps) {
+function SidebarNavContent({ items, onNavigate }: SidebarNavProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -95,6 +96,7 @@ function SidebarNavContent({ items }: SidebarNavProps) {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onNavigate}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${active
                 ? "bg-[#FDD028] text-black font-semibold shadow-sm"
                 : "text-gray-700 hover:bg-gray-100 hover:text-black"
@@ -114,7 +116,7 @@ function SidebarNavContent({ items }: SidebarNavProps) {
   );
 }
 
-export function SidebarNav({ items }: SidebarNavProps) {
+export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
   return (
     <Suspense
       fallback={
@@ -128,7 +130,7 @@ export function SidebarNav({ items }: SidebarNavProps) {
         </nav>
       }
     >
-      <SidebarNavContent items={items} />
+      <SidebarNavContent items={items} onNavigate={onNavigate} />
     </Suspense>
   );
 }

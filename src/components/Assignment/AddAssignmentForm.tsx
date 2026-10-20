@@ -15,6 +15,7 @@ import {
 import MenteePicker from "./MenteePicker";
 import MentorPicker from "./MentorPicker";
 import ThematicAreaInput from "./ThematicAreaInput";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface AddAssignmentFormProps {
     options: AssignmentFormOptions;
@@ -259,18 +260,18 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 </Field>
 
                 <Field label="Mentorship Cycle" error={errors.cycleId}>
-                    <select
+                    <SearchableSelect
+                        options={options.cycles.map((cycle) => ({
+                            value: cycle.id,
+                            label: cycle.name,
+                        }))}
                         value={cycleId}
-                        onChange={(e) => handleCycleChange(e.target.value)}
-                        className={`${inputClass} ${borderFor(!!errors.cycleId)}`}
-                    >
-                        <option value="">Select a cycle...</option>
-                        {options.cycles.map((cycle) => (
-                            <option key={cycle.id} value={cycle.id}>
-                                {cycle.name}
-                            </option>
-                        ))}
-                    </select>
+                        onChange={handleCycleChange}
+                        placeholder="Select a cycle..."
+                        searchPlaceholder="Search cycles..."
+                        size="lg"
+                        error={errors.cycleId}
+                    />
                 </Field>
 
                 <Field label="Thematic Area" error={errors.thematicAreas}>
