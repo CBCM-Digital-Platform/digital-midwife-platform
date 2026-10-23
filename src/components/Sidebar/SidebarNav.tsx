@@ -23,6 +23,7 @@ import {
   Library,
   Calendar,
   MessageSquare,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 import { NavItem } from "@/types/navigation";
@@ -45,6 +46,8 @@ const iconMap: Record<string, LucideIcon> = {
   progress: TrendingUp,
   assistant: Bot,
   facilities: Building2,
+  thematic: Layers,
+  "thematic-areas": Layers,
   resources: Library,
   sessions: Calendar,
   messages: MessageSquare,

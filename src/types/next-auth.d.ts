@@ -11,6 +11,7 @@ declare module "next-auth" {
       role?: string;
       facility_id?: string | number;
       facilityId?: string | number;
+      must_change_password?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -19,6 +20,7 @@ declare module "next-auth" {
     role?: string;
     facility_id?: string | number;
     facilityId?: string | number;
+    must_change_password?: boolean;
     accessToken?: string;
     refreshToken?: string;
     accessTokenExpires?: number;
@@ -32,6 +34,7 @@ declare module "next-auth/jwt" {
     role?: string;
     facility_id?: string | number;
     facilityId?: string | number;
+    must_change_password?: boolean;
     accessToken?: string;
     refreshToken?: string;
     accessTokenExpires?: number;

@@ -12,7 +12,8 @@ export default async function AssignmentsPage() {
     // Assignments are managed by admins only.
     if (!isAdminRole(role)) redirect("/dashboard");
 
-    const [assignments, stats] = await Promise.all([getAssignments(), getAssignmentStats()]);
+    const facilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    const [assignments, stats] = await Promise.all([getAssignments(facilityId), getAssignmentStats(facilityId)]);
 
     return <AssignmentsView assignments={assignments} stats={stats} />;
 }

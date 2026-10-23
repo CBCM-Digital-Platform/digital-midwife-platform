@@ -41,6 +41,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 interface AddUserDialogProps {
   role: "mentor" | "mentee";
   facilityId?: number | string;
+  facilityName?: string;
   onUserCreated?: (user: ClinicalUser) => void;
   triggerButton?: React.ReactNode;
 }
@@ -155,6 +156,7 @@ function createNewUserFromForm(
       profession: formData.profession,
       department: formData.thematic_area,
       facility: facilityName,
+      facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
       thematicArea: formData.thematic_area,
       yearsOfExperience: Number(formData.years_of_experience) || 0,
       assignedMenteesCount: 0,
@@ -174,6 +176,7 @@ function createNewUserFromForm(
       profession: formData.profession,
       cadreLevel: formData.highest_qualification,
       facility: facilityName,
+      facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
       thematicArea: formData.thematic_area,
       assignedMentor: {
         status: "pending_review",
@@ -186,12 +189,17 @@ function createNewUserFromForm(
   }
 }
 
-export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }: AddUserDialogProps) {
+export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, triggerButton }: AddUserDialogProps) {
   const router = useRouter();
-  const effectiveFacilityId = facilityId ?? 2;
+  const effectiveFacilityId =
+    facilityId !== undefined && facilityId !== null && String(facilityId).trim() !== ""
+      ? Number(facilityId)
+      : undefined;
+
   const defaultFacilityName =
-    (effectiveFacilityId !== undefined && FACILITY_ID_MAP[Number(effectiveFacilityId)]) ||
-    "Tikur Anbessa Specialized Hospital (TASH)";
+    facilityName ||
+    (effectiveFacilityId !== undefined && FACILITY_ID_MAP[effectiveFacilityId]) ||
+    (effectiveFacilityId !== undefined ? `Facility #${effectiveFacilityId}` : "");
 
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -311,22 +319,23 @@ export function AddUserDialog({ role, facilityId, onUserCreated, triggerButton }
     setSubmitError(null);
     try {
       const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
-      const assignedFacilityId = Number(effectiveFacilityId) || 2;
+      const assignedFacilityId = effectiveFacilityId;
 
       // Construct clean payload strictly adhering to the backend's allowed fields
-      const payload = {
+      const payload: Record<string, any> = {
         full_name: fullName,
-        first_name: formData.first_name.trim(),
-        last_name: formData.last_name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
         role: role,
-        facility_id: assignedFacilityId,
         highest_qualification: formData.highest_qualification || formData.profession.trim(),
         password: formData.password,
         must_change_password: Boolean(formData.force_password_change),
         training_status: "in_training",
       };
+
+      if (assignedFacilityId !== undefined) {
+        payload.facility_id = assignedFacilityId;
+      }
 
       await apiClient.post<any>("/api/v1/users", payload);
       const newUser = createNewUserFromForm(formData, role, assignedFacilityId);

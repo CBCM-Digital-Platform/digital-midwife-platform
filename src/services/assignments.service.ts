@@ -12,13 +12,32 @@ function getInitials(name?: string): string {
         .slice(0, 2) || "U";
 }
 
-export async function getAssignments(): Promise<Assignment[]> {
+export async function getAssignments(facilityId?: number | string): Promise<Assignment[]> {
+    let activeFacilityId = facilityId;
+    if (!activeFacilityId && typeof window === "undefined") {
+        try {
+            const { getServerSession } = await import("next-auth/next");
+            const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+            const session = await getServerSession(authOptions);
+            activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+        } catch {
+            // Ignore session resolution failure
+        }
+    }
+
     try {
         // 1. Check if backend exposes dedicated assignments endpoint
         const res = await apiClient<any>("/api/v1/assignments").catch(() => null);
         const rawAssignments = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
         if (rawAssignments && rawAssignments.length > 0) {
-            return rawAssignments.map((a: any) => ({
+            let filteredRaw = rawAssignments;
+            if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
+                filteredRaw = rawAssignments.filter((a: any) => {
+                    const facId = a.facility_id ?? a.facilityId ?? a.facility?.id;
+                    return String(facId ?? "") === String(activeFacilityId);
+                });
+            }
+            return filteredRaw.map((a: any) => ({
                 id: String(a.id),
                 mentor: {
                     id: String(a.mentor?.id || a.mentorId),
@@ -35,7 +54,7 @@ export async function getAssignments(): Promise<Assignment[]> {
                     initials: getInitials(a.mentee?.full_name || a.mentee?.name),
                     avatarUrl: a.mentee?.avatar_url || undefined,
                 },
-                facility: a.facility?.name || a.facility || "Central Hospital",
+                facility: a.facility?.name || a.facility || (activeFacilityId ? `Facility #${activeFacilityId}` : "Assigned Facility"),
                 thematicDomain: a.thematic_domain || a.thematicDomain || "Maternal & Newborn Care",
                 assignedDate: (a.assigned_date || a.createdAt || new Date().toISOString()).slice(0, 10),
                 dateNote: a.date_note || a.dateNote || "Active mentorship",
@@ -50,9 +69,18 @@ export async function getAssignments(): Promise<Assignment[]> {
             apiClient<any>("/api/v1/facilities").catch(() => null),
         ]);
 
-        const mentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
-        const mentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+        const rawMentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
+        const rawMentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
         const facilities = Array.isArray(facilitiesRes?.data) ? facilitiesRes.data : Array.isArray(facilitiesRes) ? facilitiesRes : [];
+
+        // Scope to facility if provided
+        const mentors = activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== ""
+            ? rawMentors.filter((m: any) => String(m.facility_id ?? m.facilityId ?? m.facility?.id ?? "") === String(activeFacilityId))
+            : rawMentors;
+
+        const mentees = activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== ""
+            ? rawMentees.filter((m: any) => String(m.facility_id ?? m.facilityId ?? m.facility?.id ?? "") === String(activeFacilityId))
+            : rawMentees;
 
         const facilityMap = new Map<number, string>();
         for (const f of facilities) {
@@ -78,7 +106,7 @@ export async function getAssignments(): Promise<Assignment[]> {
                 email: "mentor@cbcm.org",
             };
 
-            const facilityName = facilityMap.get(mentee.facility_id) || "Tirunesh Beijing Hospital";
+            const facilityName = facilityMap.get(mentee.facility_id) || (mentee.facility_id ? `Facility #${mentee.facility_id}` : "Assigned Facility");
             const domain = thematicDomains[i % thematicDomains.length];
             const status = mentee.status === "active" ? "active" : "pending";
 
@@ -114,15 +142,36 @@ export async function getAssignments(): Promise<Assignment[]> {
     }
 }
 
-export async function getAssignmentStats(): Promise<AssignmentStats> {
+export async function getAssignmentStats(facilityId?: number | string): Promise<AssignmentStats> {
+    let activeFacilityId = facilityId;
+    if (!activeFacilityId && typeof window === "undefined") {
+        try {
+            const { getServerSession } = await import("next-auth/next");
+            const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+            const session = await getServerSession(authOptions);
+            activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+        } catch {
+            // Ignore session resolution failure
+        }
+    }
+
     try {
         const [mentorsRes, menteesRes] = await Promise.all([
             apiClient<any>("/api/v1/users?role=mentor").catch(() => null),
             apiClient<any>("/api/v1/users?role=mentee").catch(() => null),
         ]);
 
-        const mentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
-        const mentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+        const rawMentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
+        const rawMentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+
+        // Scope to facility if provided
+        const mentors = activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== ""
+            ? rawMentors.filter((m: any) => String(m.facility_id ?? m.facilityId ?? m.facility?.id ?? "") === String(activeFacilityId))
+            : rawMentors;
+
+        const mentees = activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== ""
+            ? rawMentees.filter((m: any) => String(m.facility_id ?? m.facilityId ?? m.facility?.id ?? "") === String(activeFacilityId))
+            : rawMentees;
 
         const activeMentors = mentors.filter((m: any) => m.status === "active");
         const activeMentees = mentees.filter((m: any) => m.status === "active");

@@ -12,14 +12,19 @@ export async function middleware(req: NextRequest) {
   const hasErrorParam = req.nextUrl.searchParams.has("error");
   const isFatalSession = Boolean(token && (token as any).error === "RefreshAccessTokenError");
   const isAuthenticated = Boolean(token && !isFatalSession);
+  const mustChangePassword = Boolean(token && (token as any).must_change_password);
 
+  // 1. Auth routes (login, forgot-password, reset-password)
   if (
     path.startsWith("/login") ||
     path.startsWith("/forgot-password") ||
     path.startsWith("/reset-password")
   ) {
-    // Only redirect to dashboard if the user has an active valid session and no explicit error param
+    // Only redirect if the user has an active valid session and no explicit error param
     if (isAuthenticated && !hasErrorParam) {
+      if (mustChangePassword) {
+        return NextResponse.redirect(new URL("/set-password", req.url));
+      }
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
     const response = NextResponse.next();
@@ -30,8 +35,13 @@ export async function middleware(req: NextRequest) {
     return response;
   }
 
-  // 2. Protected dashboard routes
+  // 2. Unauthenticated check for protected routes
   if (!isAuthenticated) {
+    // Allow /set-password only if an invite/reset token query param is present
+    if (path.startsWith("/set-password") && req.nextUrl.searchParams.has("token")) {
+      return NextResponse.next();
+    }
+
     const loginUrl = new URL("/login", req.url);
     if (isFatalSession) {
       loginUrl.searchParams.set("error", "SessionExpired");
@@ -44,7 +54,20 @@ export async function middleware(req: NextRequest) {
     return response;
   }
 
-  // 3. User is authenticated, let request proceed
+  // 3. Authenticated check: Force newly created users to reset their first-time password
+  if (mustChangePassword) {
+    if (path.startsWith("/set-password")) {
+      return NextResponse.next();
+    }
+    return NextResponse.redirect(new URL("/set-password", req.url));
+  } else {
+    // If user does NOT need to change password, prevent unnecessary visits to /set-password
+    if (path.startsWith("/set-password") && !req.nextUrl.searchParams.has("token")) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+  }
+
+  // 4. User is authenticated and password status is valid, let request proceed
   return NextResponse.next();
 }
 

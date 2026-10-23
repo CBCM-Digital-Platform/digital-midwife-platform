@@ -28,6 +28,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   params?: Record<string, string | number | boolean | undefined | null>;
   body?: any;
   token?: string; // Optional manual override
+  _isRetry?: boolean;
   next?: {
     revalidate?: number | false;
     tags?: string[];
@@ -120,11 +121,15 @@ export async function apiClient<T = any>(
   const headers = new Headers(customHeaders);
 
   // 1. Attach Bearer token if not already explicitly provided in headers
+  let currentToken: string | null = explicitToken || null;
   if (!headers.has("Authorization")) {
-    const token = explicitToken || (await resolveAccessToken());
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
+    currentToken = currentToken || (await resolveAccessToken());
+    if (currentToken) {
+      headers.set("Authorization", `Bearer ${currentToken}`);
     }
+  } else {
+    const authHeader = headers.get("Authorization") || "";
+    currentToken = authHeader.replace(/^Bearer\s+/i, "");
   }
 
   // 2. Handle Body and Content-Type
@@ -155,6 +160,53 @@ export async function apiClient<T = any>(
 
   // 5. Handle HTTP errors
   if (!response.ok) {
+    // If request failed with 401 Unauthorized, attempt to rotate access token via refresh token and retry once
+    if (response.status === 401 && !options?._isRetry) {
+      try {
+        let refreshToken: string | null = null;
+        if (typeof window !== "undefined") {
+          const { getSession } = await import("next-auth/react");
+          const session = await getSession();
+          refreshToken = (session as any)?.refreshToken || (session as any)?.user?.refreshToken || null;
+        } else {
+          const { getServerSession } = await import("next-auth/next");
+          const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+          const session = await getServerSession(authOptions);
+          refreshToken = (session as any)?.refreshToken || (session as any)?.user?.refreshToken || null;
+        }
+
+        if (refreshToken) {
+          const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+          const refreshEndpoint = baseUrl.endsWith("/api/v1")
+            ? `${baseUrl}/auth/refresh-token`
+            : `${baseUrl}/api/v1/auth/refresh-token`;
+
+          const refreshRes = await fetch(refreshEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          if (refreshRes.ok) {
+            const data = await refreshRes.json().catch(() => null);
+            const payload = data?.data || data;
+            const freshAccessToken = payload?.accessToken || payload?.token;
+            if (freshAccessToken) {
+              return apiClient<T>(endpoint, {
+                ...options,
+                _isRetry: true,
+                token: freshAccessToken,
+              });
+            }
+          }
+        }
+      } catch {
+        // Fall through to standard error handling if retry fails
+      }
+    }
+
     let errorData: any = null;
     let errorMessage = `API request failed with status ${response.status}: ${response.statusText}`;
 

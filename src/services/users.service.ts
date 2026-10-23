@@ -43,12 +43,18 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       .toUpperCase() ||
     "CP";
 
-  const facilityId = raw.facility_id !== undefined ? Number(raw.facility_id) : undefined;
+  const facilityId =
+    raw.facility_id !== undefined && raw.facility_id !== null
+      ? Number(raw.facility_id)
+      : raw.facilityId !== undefined && raw.facilityId !== null
+      ? Number(raw.facilityId)
+      : undefined;
+
   const facility =
-    raw.facility ||
-    (facilityId !== undefined && FACILITY_ID_MAP[facilityId]) ||
+    (typeof raw.facility === "object" ? raw.facility?.name : raw.facility) ||
     raw.facility_name ||
-    "Tikur Anbessa Specialized Hospital (TASH)";
+    (facilityId !== undefined && FACILITY_ID_MAP[facilityId]) ||
+    (facilityId !== undefined ? `Facility #${facilityId}` : "Unassigned Facility");
 
   const profession =
     raw.profession ||
@@ -93,6 +99,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       phone: raw.phone || "+251911234567",
       role: "mentor",
       facility,
+      facilityId,
       thematicArea,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
@@ -112,6 +119,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       phone: raw.phone || "+251911234567",
       role: "mentee",
       facility,
+      facilityId,
       thematicArea,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-blue-100 text-blue-800",
@@ -151,9 +159,21 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
     query.set("facility_id", String(activeFacilityId));
   }
 
-  const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
-  const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
-  return (rawList || []).map((u: any) => normalizeUser(u, "mentor")) as MentorUser[];
+  try {
+    const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
+    const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
+    let list = (rawList || []).map((u: any) => normalizeUser(u, "mentor")) as MentorUser[];
+
+    // Ensure users are filtered to the active facility
+    if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
+      list = list.filter((u) => String(u.facilityId ?? "") === String(activeFacilityId));
+    }
+
+    return list;
+  } catch (error: any) {
+    console.warn("Failed to fetch mentors from API (session expired or unauthenticated):", error?.message || error);
+    return [];
+  }
 }
 
 /**
@@ -178,9 +198,21 @@ export async function getMentees(facilityId?: number | string): Promise<MenteeUs
     query.set("facility_id", String(activeFacilityId));
   }
 
-  const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
-  const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
-  return (rawList || []).map((u: any) => normalizeUser(u, "mentee")) as MenteeUser[];
+  try {
+    const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
+    const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
+    let list = (rawList || []).map((u: any) => normalizeUser(u, "mentee")) as MenteeUser[];
+
+    // Ensure users are filtered to the active facility
+    if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
+      list = list.filter((u) => String(u.facilityId ?? "") === String(activeFacilityId));
+    }
+
+    return list;
+  } catch (error: any) {
+    console.warn("Failed to fetch mentees from API (session expired or unauthenticated):", error?.message || error);
+    return [];
+  }
 }
 
 export async function getMentorStats(facilityId?: number | string): Promise<MentorSummaryStats> {
@@ -188,8 +220,22 @@ export async function getMentorStats(facilityId?: number | string): Promise<Ment
   if (facilityId !== undefined && facilityId !== null && String(facilityId).trim() !== "") {
     query.set("facility_id", String(facilityId));
   }
-  const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
-  return (res?.data || res?.stats || res) as MentorSummaryStats;
+  try {
+    const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
+    return (res?.data || res?.stats || res) as MentorSummaryStats;
+  } catch (error: any) {
+    console.warn("Failed to fetch mentor stats:", error?.message || error);
+    return {
+      totalMentors: 0,
+      activeCount: 0,
+      pendingCount: 0,
+      inactiveCount: 0,
+      quarterTrend: "+0%",
+      completionPercentage: 0,
+      completionTrend: "+0%",
+      completionTarget: 0,
+    };
+  }
 }
 
 export async function getMenteeStats(facilityId?: number | string): Promise<MenteeSummaryStats> {
@@ -197,8 +243,22 @@ export async function getMenteeStats(facilityId?: number | string): Promise<Ment
   if (facilityId !== undefined && facilityId !== null && String(facilityId).trim() !== "") {
     query.set("facility_id", String(facilityId));
   }
-  const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
-  return (res?.data || res?.stats || res) as MenteeSummaryStats;
+  try {
+    const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
+    return (res?.data || res?.stats || res) as MenteeSummaryStats;
+  } catch (error: any) {
+    console.warn("Failed to fetch mentee stats:", error?.message || error);
+    return {
+      totalMentees: 0,
+      termTrend: "+0%",
+      activeInRotation: 0,
+      operationalPercentage: "0%",
+      pendingOrientation: 0,
+      pendingStage: "None",
+      avgKnowledgeMastery: 0,
+      cohortTrend: "+0%",
+    };
+  }
 }
 
 export async function createUser(data: Partial<ClinicalUser>): Promise<ClinicalUser> {

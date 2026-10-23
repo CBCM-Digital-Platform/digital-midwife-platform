@@ -12,19 +12,47 @@ function normalizeRole(role?: string): string {
   return role.toLowerCase();
 }
 
+function parseExpiresInToMs(expiresIn?: number | string): number | null {
+  if (expiresIn === undefined || expiresIn === null) return null;
+  if (typeof expiresIn === "number") {
+    if (expiresIn <= 0) return null;
+    return expiresIn > 1_000_000_000_000
+      ? expiresIn
+      : expiresIn > 1_000_000_000
+      ? expiresIn * 1000
+      : Date.now() + expiresIn * 1000;
+  }
+  const str = String(expiresIn).trim().toLowerCase();
+  const num = parseFloat(str);
+  if (isNaN(num) || num <= 0) return null;
+
+  if (str.endsWith("m")) {
+    return Date.now() + num * 60 * 1000;
+  }
+  if (str.endsWith("h")) {
+    return Date.now() + num * 60 * 60 * 1000;
+  }
+  if (str.endsWith("d")) {
+    return Date.now() + num * 24 * 60 * 60 * 1000;
+  }
+  if (str.endsWith("s")) {
+    return Date.now() + num * 1000;
+  }
+  return num > 1_000_000_000_000
+    ? num
+    : num > 1_000_000_000
+    ? num * 1000
+    : Date.now() + num * 1000;
+}
+
 /**
  * Safely parses the expiration timestamp (in milliseconds) from either
  * an expiresIn field or the JWT's decoded 'exp' claim.
  */
 function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string): number {
-  if (expiresIn !== undefined && expiresIn !== null) {
-    const num = Number(expiresIn);
-    if (!isNaN(num) && num > 0) {
-      const expMs = num > 1_000_000_000_000 ? num : num > 1_000_000_000 ? num * 1000 : Date.now() + num * 1000;
-      if (expMs > Date.now()) {
-        return expMs;
-      }
-    }
+  const parsedMs = parseExpiresInToMs(expiresIn);
+  if (parsedMs && parsedMs > Date.now()) {
+    return parsedMs;
   }
 
   if (accessToken && typeof accessToken === "string") {
@@ -45,8 +73,8 @@ function getAccessTokenExpires(accessToken?: string, expiresIn?: number | string
     }
   }
 
-  // Fallback: 24 hours TTL
-  return Date.now() + 24 * 60 * 60 * 1000;
+  // Fallback: 14 minutes TTL to ensure rotation before 15-minute backend token expiration
+  return Date.now() + 14 * 60 * 1000;
 }
 
 // In-memory cache for pending and rejected refresh token requests to avoid redundant backend calls
@@ -127,7 +155,7 @@ async function refreshAccessToken(token: any) {
       const payload = data?.data || data;
       const newAccessToken = payload?.accessToken || payload?.token;
       const newRefreshToken = payload?.refreshToken || payload?.refresh_token || token.refreshToken;
-      const expiresIn = payload?.expiresIn || payload?.expires_in;
+      const expiresIn = payload?.accessTokenExpiresIn || payload?.expiresIn || payload?.expires_in;
 
       if (!newAccessToken) {
         failedTokens.add(tokenKey);
@@ -219,23 +247,66 @@ export const authOptions: NextAuthOptions = {
               userData?.refresh_token;
 
             if (userData && (userData.email || userData.id)) {
-              const facility_id =
-                userData.facility_id ??
-                userData.facilityId ??
-                userData.facility?.id ??
-                (userData.role?.includes("admin") ? 2 : undefined);
+              let facility_id =
+                userData.facility_id !== undefined && userData.facility_id !== null
+                  ? Number(userData.facility_id)
+                  : userData.facilityId !== undefined && userData.facilityId !== null
+                  ? Number(userData.facilityId)
+                  : userData.facility?.id !== undefined && userData.facility?.id !== null
+                  ? Number(userData.facility?.id)
+                  : undefined;
+
+              // If facility_id is not directly present on the login payload, query user profile
+              if (facility_id === undefined && userData.id && accessToken) {
+                try {
+                  const profileRes = await fetch(`${baseUrl}/api/v1/users/${userData.id}`, {
+                    headers: {
+                      Authorization: `Bearer ${accessToken}`,
+                    },
+                  });
+                  if (profileRes.ok) {
+                    const profileData = await profileRes.json();
+                    const profile =
+                      profileData?.data?.user ||
+                      profileData?.data ||
+                      profileData?.user ||
+                      profileData;
+                    if (profile?.facility_id !== undefined && profile?.facility_id !== null) {
+                      facility_id = Number(profile.facility_id);
+                    } else if (profile?.facilityId !== undefined && profile?.facilityId !== null) {
+                      facility_id = Number(profile.facilityId);
+                    } else if (profile?.facility?.id !== undefined && profile?.facility?.id !== null) {
+                      facility_id = Number(profile.facility?.id);
+                    }
+                  }
+                } catch (profErr) {
+                  console.warn("Could not fetch user profile for facility_id:", profErr);
+                }
+              }
 
               const accessTokenExpires = getAccessTokenExpires(
                 accessToken,
-                payload?.expiresIn || payload?.expires_in
+                payload?.accessTokenExpiresIn || payload?.expiresIn || payload?.expires_in
               );
 
-              const name =
+              let rawName =
                 userData.name ||
                 userData.fullName ||
                 `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
                 userData.email ||
+                inputEmail ||
                 "User";
+
+              // Clean up email domain if present in name (e.g. user@gmail.com -> User)
+              let name = rawName;
+              if (name && name.includes("@")) {
+                const cleanPrefix = name.split("@")[0].split(/[._-]/)[0];
+                name = cleanPrefix.charAt(0).toUpperCase() + cleanPrefix.slice(1);
+              }
+
+              const must_change_password = Boolean(
+                userData.must_change_password ?? userData.mustChangePassword
+              );
 
               return {
                 ...userData,
@@ -248,6 +319,7 @@ export const authOptions: NextAuthOptions = {
                 accessToken,
                 refreshToken,
                 accessTokenExpires,
+                must_change_password,
               };
             }
           } else {
@@ -259,39 +331,44 @@ export const authOptions: NextAuthOptions = {
           backendError = fetchErr?.message || "Authentication service unavailable.";
         }
 
-        // Active Mock Accounts for local development (as specified in AGENTS.md + Facility Admin support)
+        // Active Mock Accounts for local development (as specified in AGENTS.md + Facility Admin & Super Admin support)
+        const isMockSuperAdmin =
+          (inputEmail === "superadmin@test.com" && inputPassword === "password") ||
+          (inputEmail === "superadmin@admin.com" && inputPassword === "password");
         const isMockAdmin = inputEmail === "admin@test.com" && inputPassword === "password";
         const isMockMentor = inputEmail === "mentor@test.com" && inputPassword === "password";
         const isMockMentee = inputEmail === "mentee@test.com" && inputPassword === "password";
         const isMockFacilityAdmin =
-          (inputEmail === "facilityadmin@test.com" && inputPassword === "password") ||
-          (inputEmail === "burte@gmail.com");
+          inputEmail === "facilityadmin@test.com" && inputPassword === "password";
 
-        if (isMockAdmin || isMockMentor || isMockMentee || isMockFacilityAdmin) {
-          let role: "admin" | "facility_admin" | "mentor" | "mentee" = "admin";
+        if (isMockSuperAdmin || isMockAdmin || isMockMentor || isMockMentee || isMockFacilityAdmin) {
+          let role: "super_admin" | "admin" | "facility_admin" | "mentor" | "mentee" = "admin";
           let name = "Administrator";
 
-          if (isMockAdmin) {
+          if (isMockSuperAdmin) {
+            role = "super_admin";
+            name = "Super Administrator";
+          } else if (isMockAdmin) {
             role = "admin";
-            name = "System Administrator";
+            name = "Administrator";
           } else if (isMockMentor) {
             role = "mentor";
-            name = "Sister Almaz Bekele (Mentor)";
+            name = "Almaz Bekele";
           } else if (isMockMentee) {
             role = "mentee";
-            name = "Bethlehem Tadesse (Mentee)";
+            name = "Bethlehem Tadesse";
           } else {
             role = "facility_admin";
-            name = "Birtukan (Facility Admin)";
+            name = "Birtukan";
           }
 
           return {
-            id: role === "admin" ? "1" : role === "mentor" ? "2" : role === "mentee" ? "3" : "4",
+            id: role === "super_admin" ? "0" : role === "admin" ? "1" : role === "mentor" ? "2" : role === "mentee" ? "3" : "4",
             name,
             email: inputEmail,
             role,
             rawRole: role,
-            facility_id: 2,
+            facility_id: role === "super_admin" ? undefined : 2,
             accessToken: `mock-jwt-token-${role}`,
             refreshToken: `mock-refresh-token-${role}`,
             accessTokenExpires: Date.now() + 7 * 24 * 60 * 60 * 1000,
@@ -306,7 +383,7 @@ export const authOptions: NextAuthOptions = {
   // 2. Persist role and access token across JWT and Session with refresh rotation
   callbacks: {
     // Step A: Store role, facility_id, and tokens inside the JWT token
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       // Initial sign in
       if (user) {
         token.role = normalizeRole((user as any).role || (user as any).rawRole);
@@ -317,13 +394,18 @@ export const authOptions: NextAuthOptions = {
         token.facility_id =
           (user as any).facility_id ??
           (user as any).facilityId ??
-          (user as any).facility?.id ??
-          2;
+          (user as any).facility?.id;
         token.facilityId = token.facility_id;
         token.accessTokenExpires =
           (user as any).accessTokenExpires || getAccessTokenExpires((user as any).accessToken);
+        token.must_change_password = Boolean((user as any).must_change_password);
         token.error = undefined;
         return token;
+      }
+
+      // Handle session updates (e.g. after user changes their initial password)
+      if (trigger === "update" && session?.must_change_password !== undefined) {
+        token.must_change_password = Boolean(session.must_change_password);
       }
 
       // If token already has a fatal error, do not retry refreshing
@@ -347,7 +429,7 @@ export const authOptions: NextAuthOptions = {
       return await refreshAccessToken(token);
     },
 
-    // Step B: Expose role, facility_id, accessToken, and error state on session
+    // Step B: Expose role, facility_id, accessToken, refreshToken, and error state on session
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).role = normalizeRole(token.role as string);
@@ -355,7 +437,9 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).id = token.id;
         (session.user as any).facility_id = token.facility_id;
         (session.user as any).facilityId = token.facility_id;
+        (session.user as any).must_change_password = Boolean(token.must_change_password);
         (session as any).accessToken = token.accessToken;
+        (session as any).refreshToken = token.refreshToken;
       }
       (session as any).error = token.error;
       return session;

@@ -6,6 +6,12 @@ export interface PasswordResetResponse {
   data?: any;
 }
 
+export interface ChangePasswordResponse {
+  success?: boolean;
+  message?: string;
+  data?: any;
+}
+
 /**
  * Initiates the password reset flow by calling POST /api/v1/auth/forgot-password
  *
@@ -32,5 +38,19 @@ export async function resetPassword(
     resetToken: token.trim(),
     newPassword,
     new_password: newPassword,
+  });
+}
+
+/**
+ * Changes password for authenticated user (required on first-time login)
+ * Calls POST /api/v1/auth/change-password
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<ChangePasswordResponse> {
+  return await apiClient.post<ChangePasswordResponse>("/api/v1/auth/change-password", {
+    currentPassword,
+    newPassword,
   });
 }

@@ -19,6 +19,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect("/login?error=SessionExpired");
   }
 
+  // If user must reset their first-time password, force redirect to /set-password
+  if ((session?.user as any)?.must_change_password) {
+    redirect("/set-password");
+  }
+
   const role: UserRole = (session?.user as { role?: UserRole })?.role || "mentee";
 
   return (

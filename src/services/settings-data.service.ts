@@ -4,40 +4,85 @@ import type {
     ProfileData,
     UpdateProfileInput,
 } from "@/types/settings";
+import { FACILITY_ID_MAP } from "@/services/users.service";
 
 const MOCK_PROFILE: AdminProfile = {
     id: "u1",
-    fullName: "Dr. Elizabeth Mesay",
+    fullName: "Facility Administrator",
     position: "Mentoring Facility Administrator",
-    email: "e.mesay@Tirunesh-beijing.org",
-    phone: "+251 712 345 678",
-    facilityName: "Tirunesh Beijing Hospital",
+    email: "admin@facility.org",
+    phone: "+251 911 234 567",
+    facilityName: "Assigned Facility",
     region: "Addis Ababa",
-    zone: "Akakai",
-    woreda: "03",
-    username: "admin_elizabeth",
+    zone: "Central",
+    woreda: "01",
+    username: "facility_admin",
     status: "ACTIVE",
-    memberSince: "2022-01-01",
+    memberSince: "2024-01-01",
     avatarUrl: null,
 };
 
 const MOCK_DATA: ProfileData = {
     profile: MOCK_PROFILE,
-    lastLogin: "2023-10-24T09:45:00Z",
+    lastLogin: new Date().toISOString(),
     sessions: [
         {
             id: "s1",
             label: "Current Device",
-            os: "Mac OS",
-            browser: "Chrome",
-            location: "Nairobi, Kenya",
+            os: "Web Browser",
+            browser: "Active Session",
+            location: "Regional Medical Center",
             current: true,
         },
     ],
 };
 
-// TODO: replace with a fetch to the backend profile and sessions endpoints
 export async function getProfileData(): Promise<ProfileData> {
+    if (typeof window === "undefined") {
+        try {
+            const { getServerSession } = await import("next-auth/next");
+            const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+            const session = await getServerSession(authOptions);
+            if (session?.user) {
+                const user = session.user as any;
+                const userFacilityId = user.facility_id ?? user.facilityId;
+                const facilityName =
+                    (userFacilityId && FACILITY_ID_MAP[Number(userFacilityId)]) ||
+                    (userFacilityId ? `Facility #${userFacilityId}` : "Assigned Facility");
+
+                return {
+                    profile: {
+                        id: String(user.id || "u1"),
+                        fullName: user.name || "Facility Administrator",
+                        position: user.role === "facility_admin" ? "Facility Administrator" : "System Administrator",
+                        email: user.email || "",
+                        phone: user.phone || "+251 911 234 567",
+                        facilityName,
+                        region: user.region || "Regional Center",
+                        zone: "Central Zone",
+                        woreda: "01",
+                        username: user.email?.split("@")[0] || "admin",
+                        status: "ACTIVE",
+                        memberSince: "2024-01-01",
+                        avatarUrl: null,
+                    },
+                    lastLogin: new Date().toISOString(),
+                    sessions: [
+                        {
+                            id: "s1",
+                            label: "Current Device",
+                            os: "Web Browser",
+                            browser: "Active Session",
+                            location: "Regional Medical Center",
+                            current: true,
+                        },
+                    ],
+                };
+            }
+        } catch {
+            // Ignore session resolution failure
+        }
+    }
     return MOCK_DATA;
 }
 

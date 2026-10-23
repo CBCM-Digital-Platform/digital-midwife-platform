@@ -16,7 +16,7 @@ export async function login(email: string, password: string) {
   return res.json();
 }
 
-export { requestPasswordReset, resetPassword } from "./auth.service";
+export { requestPasswordReset, resetPassword, changePassword } from "./auth.service";
 
 export async function setInitialPassword(newPassword: string, token?: string) {
   const res = await fetch(`${API_BASE}/auth/set-password`, {

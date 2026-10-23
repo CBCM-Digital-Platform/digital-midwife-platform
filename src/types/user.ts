@@ -29,6 +29,7 @@ export interface BaseUser {
   phone?: string;
   role: UserRole;
   facility: string;
+  facilityId?: number;
   facilityType?: string;
   thematicArea: ThematicArea;
   avatarInitials: string;
@@ -93,4 +94,3 @@ export interface MenteeSummaryStats {
   avgKnowledgeMastery: number;
   cohortTrend: string;
 }
-

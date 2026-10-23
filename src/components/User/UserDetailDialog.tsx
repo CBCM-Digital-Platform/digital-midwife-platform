@@ -305,7 +305,7 @@ export function UserDetailDialog({
               <div className="flex items-center gap-2 text-xs text-gray-700">
                 <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                 <span className="font-semibold text-gray-900 truncate">
-                  {currentUser.facility || "Tikur Anbessa Hospital"}
+                  {currentUser.facility || (currentUser.facilityId ? `Facility #${currentUser.facilityId}` : "Assigned Facility")}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-500">

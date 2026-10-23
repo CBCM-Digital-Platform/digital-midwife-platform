@@ -15,8 +15,8 @@ The **Digital Midwife Mentoring App** is an adolescent health education and clin
 
 ### User Roles & Responsibilities
 - **Administrator (`admin`)**: Manages facilities, user accounts, system configuration, resource library approval, and cross-facility analytics.
-- **Midwife Mentor (`mentor`)**: Monitors mentee progress, assigns learning modules, conducts mentoring sessions, and evaluates clinical logbook submissions and assessments.
-- **Mentee (`mentee`)**: Junior midwives and students completing clinical learning modules, logging procedural activity in logbooks, and sitting for competency assessments.
+- **Midwife Mentor (`mentor`)**: Monitors mentee progress, assigns learning modules, conducts mentoring sessions, and evaluates clinical competency assessments.
+- **Mentee (`mentee`)**: Junior midwives and students completing clinical learning modules and sitting for competency assessments.
 
 ---
 

@@ -1,8 +1,23 @@
-export default function Page() {
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { NotificationsView } from "@/components/Notifications";
+import { getNotifications } from "@/services/notifications.service";
+
+export const metadata = {
+  title: "Notifications | Digital Midwife Platform",
+  description: "Operational and governance notifications, clinical alerts, and milestone updates.",
+};
+
+export default async function NotificationsPage() {
+  const session = await getServerSession(authOptions);
+  const rawRole = ((session?.user as any)?.role || "").toLowerCase();
+
+  const initialNotifications = await getNotifications(rawRole);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">Notifications</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
+    <NotificationsView
+      userRole={rawRole}
+      initialNotifications={initialNotifications}
+    />
   );
 }
