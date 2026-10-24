@@ -24,8 +24,8 @@ export const adminNavLinks: NavItem[] = [
 export const mentorNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
   { name: "Mentees", href: "/mentees", icon: "mentee" },
+  { name: "Facilities", href: "/facilities", icon: "facilities" },
   { name: "Assignments", href: "/assignments", icon: "assignments" },
-  { name: "Direct Messages", href: "/messaging", icon: "messages" },
   { name: "Resources", href: "/resources", icon: "resources" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
   { name: "Sessions", href: "/sessions", icon: "sessions" },
