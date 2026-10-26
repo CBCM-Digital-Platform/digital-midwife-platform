@@ -1,8 +1,22 @@
-export default function Page() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">AssessmentId</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
-  );
+import { notFound, redirect } from "next/navigation";
+import { getAssessmentById } from "@/services/mentor-assessments.service";
+import { AssessmentDetailPageClient } from "@/components/MentorAssessments/AssessmentDetailPageClient";
+
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ assessmentId: string }>;
+}) {
+  const { assessmentId } = await params;
+  if (assessmentId === "new") {
+    redirect("/my-assessments/new");
+  }
+
+  const assessment = await getAssessmentById(assessmentId);
+  if (!assessment) {
+    notFound();
+  }
+
+  return <AssessmentDetailPageClient assessment={assessment} />;
 }
+

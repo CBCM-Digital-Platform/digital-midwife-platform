@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { formatWelcomeName } from "@/lib/utils";
 import type { ProfileData } from "@/types/settings";
+import { updateProfile, changePassword } from "@/services/settings-data.service";
 
 interface SuperAdminSettingsViewProps {
   data: ProfileData;
@@ -36,13 +37,13 @@ export function SuperAdminSettingsView({
 }: SuperAdminSettingsViewProps) {
   const [activeTab, setActiveTab] = useState<"profile" | "governance" | "security">("profile");
 
-  // Profile Form State
+  // Profile Form State initialized from real backend data
   const [fullName, setFullName] = useState(
-    userName && !userName.includes("@") ? userName : "National System Administrator"
+    data.profile?.fullName || (userName && !userName.includes("@") ? userName : "National System Administrator")
   );
-  const [designation, setDesignation] = useState("Director of Clinical Mentorship & Governance");
-  const [email, setEmail] = useState(userEmail || "admin@moh.gov");
-  const [phone, setPhone] = useState("+250 788 123 456");
+  const [designation, setDesignation] = useState(data.profile?.position || "Director of Clinical Mentorship & Governance");
+  const [email, setEmail] = useState(data.profile?.email || userEmail || "admin@moh.gov");
+  const [phone, setPhone] = useState(data.profile?.phone || "+250 788 123 456");
   const [department, setDepartment] = useState("Maternal & Adolescent Health Directorate");
   const [organization, setOrganization] = useState("Ministry of Health (MOH)");
   const [officeLocation, setOfficeLocation] = useState("National Healthcare Operations Center, Sector 4");
@@ -79,13 +80,27 @@ export function SuperAdminSettingsView({
     setIsSaving(true);
     setToastMessage(null);
 
-    // Simulate saving settings
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setIsSaving(false);
-    setToastMessage({
-      type: "success",
-      text: "Super Administrator profile updated successfully.",
-    });
+    try {
+      await updateProfile({
+        fullName,
+        phone,
+        position: designation,
+        email,
+        facilityName: organization,
+        region: officeLocation,
+      });
+      setIsSaving(false);
+      setToastMessage({
+        type: "success",
+        text: "Super Administrator profile saved successfully to backend.",
+      });
+    } catch (err: any) {
+      setIsSaving(false);
+      setToastMessage({
+        type: "error",
+        text: err?.message || "Failed to update profile. Please try again.",
+      });
+    }
   };
 
   const handleSaveGovernance = async () => {
@@ -117,15 +132,24 @@ export function SuperAdminSettingsView({
 
     setIsSaving(true);
     setToastMessage(null);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsSaving(false);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setToastMessage({
-      type: "success",
-      text: "Account password changed successfully.",
-    });
+
+    try {
+      await changePassword({ currentPassword, newPassword });
+      setIsSaving(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setToastMessage({
+        type: "success",
+        text: "Account password updated successfully.",
+      });
+    } catch (err: any) {
+      setIsSaving(false);
+      setToastMessage({
+        type: "error",
+        text: err?.message || "Failed to change password. Please verify your current password.",
+      });
+    }
   };
 
   const inputClass =

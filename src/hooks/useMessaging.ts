@@ -6,7 +6,15 @@ import type { SubmitEvent } from "react";
 
 export type MessagingRole = "mentor" | "mentee";
 
+export type MessagingContact = {
+  id: number;
+  full_name: string;
+  role: string;
+  avatar_url?: string | null;
+};
+
 export type ChatMessage = {
+
   id: number | string;
   text: string;
   time: string;
@@ -214,6 +222,8 @@ export function useMessaging(role: MessagingRole) {
   );
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<MessagingContact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
   const otherRole = role === "mentor" ? "mentee" : "mentor";
   const filters = ["All", role === "mentor" ? "Mentees" : "Mentors"];
@@ -260,6 +270,38 @@ export function useMessaging(role: MessagingRole) {
     [accessToken, apiUrl],
   );
 
+  const loadContacts = useCallback(async () => {
+    setLoadingContacts(true);
+    try {
+      const items = await apiRequest<MessagingContact[]>("/messages/contacts");
+      if (Array.isArray(items) && items.length > 0) {
+        setContacts(items);
+        return;
+      }
+    } catch {
+      // Fallback: fetch users of the other role if contacts list requires active assignment
+      try {
+        const queryRole = role === "mentor" ? "mentee" : "mentor";
+        const res = await apiRequest<any>(`/users?role=${queryRole}&limit=30`);
+        const userList = res?.users || res?.data?.users || res?.data || [];
+        if (Array.isArray(userList) && userList.length > 0) {
+          setContacts(
+            userList.map((u: any) => ({
+              id: Number(u.id),
+              full_name: u.full_name || u.name || `${queryRole} #${u.id}`,
+              role: queryRole,
+              avatar_url: u.avatar_url || null,
+            }))
+          );
+        }
+      } catch {
+        // Fallback silently
+      }
+    } finally {
+      setLoadingContacts(false);
+    }
+  }, [apiRequest, role]);
+
   const loadConversations = useCallback(async () => {
     try {
       const items = await apiRequest<ApiConversation[]>(
@@ -291,14 +333,18 @@ export function useMessaging(role: MessagingRole) {
     let active = true;
     const load = async () => {
       await Promise.resolve();
-      if (active) await loadConversations();
+      if (active) {
+        await loadConversations();
+        await loadContacts();
+      }
     };
     void load();
 
     return () => {
       active = false;
     };
-  }, [loadConversations, sessionStatus]);
+  }, [loadContacts, loadConversations, sessionStatus]);
+
 
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedId) ?? null;
@@ -547,6 +593,50 @@ export function useMessaging(role: MessagingRole) {
     }
   }
 
+  async function startConversationWithContact(participantId: number) {
+    if (!Number.isSafeInteger(participantId) || participantId <= 0) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const item = await apiRequest<ApiConversation>(
+        "/messages/conversations",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            participantIds: [participantId],
+            type: "direct",
+          }),
+        },
+      );
+      const conversation = mapConversation(item, role, currentUserId);
+      setConversations((current) => [
+        conversation,
+        ...current.filter((existing) => existing.id !== conversation.id),
+      ]);
+      setLoadingMessages(true);
+      setSelectedId(conversation.id);
+      setIsComposing(false);
+      setShowChat(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not start conversation.",
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // Periodic polling for active conversation updates
+  useEffect(() => {
+    if (selectedId == null || sessionStatus !== "authenticated") return;
+
+    const interval = setInterval(() => {
+      void loadConversation(selectedId);
+    }, 12000);
+
+    return () => clearInterval(interval);
+  }, [loadConversation, selectedId, sessionStatus]);
+
   return {
     conversations,
     selectedId,
@@ -573,6 +663,10 @@ export function useMessaging(role: MessagingRole) {
     deleteMessage,
     messageActionId,
     createConversation,
+    startConversationWithContact,
+    contacts,
+    loadingContacts,
+    loadContacts,
     loadConversations,
     loading,
     loadingMessages,
@@ -581,3 +675,4 @@ export function useMessaging(role: MessagingRole) {
     error,
   };
 }
+

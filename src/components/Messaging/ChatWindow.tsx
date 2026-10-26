@@ -50,7 +50,17 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
     sending,
     creating,
     error,
+    contacts,
+    loadingContacts,
+    startConversationWithContact,
   } = useMessaging(role);
+
+  const [contactSearch, setContactSearch] = useState("");
+  const filteredContacts = contacts.filter((c) =>
+    !contactSearch.trim() ||
+    c.full_name.toLowerCase().includes(contactSearch.trim().toLowerCase()) ||
+    String(c.id).includes(contactSearch.trim())
+  );
 
   return (
     <section className="flex min-h-155 h-[calc(100vh-12rem)] overflow-hidden rounded-xl border border-[#dce2d5] bg-white text-[#263226] shadow-sm">
@@ -69,6 +79,7 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
               onClick={() => {
                 setIsComposing((current) => !current);
                 setNewContact("");
+                setContactSearch("");
               }}
             >
               <MessageSquarePlus size={18} />
@@ -87,28 +98,80 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
               className="w-full rounded-full border border-[#e0e5dc] bg-[#f7f8f4] py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-[#47793d]"
             />
           </label>
+
           {isComposing && (
-            <form onSubmit={createConversation} className="mt-3 flex gap-2">
-              <input
-                autoFocus
-                type="number"
-                min="1"
-                step="1"
-                value={newContact}
-                onChange={(event) => setNewContact(event.target.value)}
-                aria-label={`${contactRole} user ID`}
-                placeholder={`${contactRole} user ID`}
-                className="min-w-0 flex-1 rounded-md border border-[#dce2d5] px-3 py-2 text-sm outline-none focus:border-[#47793d]"
-              />
-              <button
-                type="submit"
-                disabled={!newContact.trim() || creating}
-                className="rounded-md bg-[#315f2a] px-3 text-sm text-white disabled:opacity-50"
-              >
-                {creating ? "Starting..." : "Start"}
-              </button>
-            </form>
+            <div className="mt-3 rounded-lg border border-[#dce2d5] bg-[#fafbf9] p-3 shadow-xs">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#315f2a]">Select Contact</span>
+                <button
+                  type="button"
+                  onClick={() => setIsComposing(false)}
+                  className="rounded p-0.5 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {contacts.length > 0 && (
+                <div className="mb-2">
+                  <input
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    placeholder="Filter contacts..."
+                    className="w-full rounded border border-[#dce2d5] bg-white px-2.5 py-1 text-xs outline-none focus:border-[#47793d]"
+                  />
+                  <div className="mt-1.5 max-h-36 overflow-y-auto space-y-1 divide-y divide-gray-100">
+                    {filteredContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => startConversationWithContact(c.id)}
+                        disabled={creating}
+                        className="flex w-full items-center justify-between rounded p-1.5 text-left text-xs transition hover:bg-[#eef3ea]"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#dbe8d7] text-[10px] font-bold text-[#275321]">
+                            {c.full_name
+                              .split(" ")
+                              .map((p) => p[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </span>
+                          <span className="truncate font-medium text-gray-800">{c.full_name}</span>
+                        </div>
+                        <span className="shrink-0 text-[10px] text-gray-400 capitalize">{c.role}</span>
+                      </button>
+                    ))}
+                    {filteredContacts.length === 0 && (
+                      <p className="p-2 text-center text-[11px] text-gray-400">No matching contacts</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={createConversation} className="mt-2 flex gap-1.5 border-t border-gray-200/60 pt-2">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={newContact}
+                  onChange={(event) => setNewContact(event.target.value)}
+                  aria-label={`${contactRole} user ID`}
+                  placeholder="Or enter user ID"
+                  className="min-w-0 flex-1 rounded border border-[#dce2d5] bg-white px-2 py-1 text-xs outline-none focus:border-[#47793d]"
+                />
+                <button
+                  type="submit"
+                  disabled={!newContact.trim() || creating}
+                  className="rounded bg-[#315f2a] px-2.5 py-1 text-xs text-white disabled:opacity-50"
+                >
+                  {creating ? "..." : "Chat"}
+                </button>
+              </form>
+            </div>
           )}
+
           {error && (
             <div
               role="alert"

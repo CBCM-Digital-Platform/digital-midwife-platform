@@ -21,10 +21,11 @@ export interface UpdateProfileInput {
     position: string;
     email: string;
     phone: string;
-    facilityName: string;
-    region: string;
-    zone: string;
-    woreda: string;
+    facilityName?: string;
+    region?: string;
+    zone?: string;
+    woreda?: string;
+    avatarUrl?: string | null;
 }
 
 export interface ChangePasswordInput {

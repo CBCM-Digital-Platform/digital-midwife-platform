@@ -35,6 +35,7 @@ const iconMap: Record<string, LucideIcon> = {
   mentor: UserCheck,
   mentee: GraduationCap,
   assignments: ClipboardList,
+  assessments: ClipboardList,
   cycles: RefreshCw,
   monitoring: Activity,
   analytics: BarChart3,

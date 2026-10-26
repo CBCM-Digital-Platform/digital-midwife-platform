@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Mail, Phone, Save, User } from "lucide-react";
+import { useSession } from "next-auth/react";
 import type { AdminProfile } from "@/types/settings";
 import { updateProfile } from "@/services/settings-data.service";
 import { REGIONS, profileSchema, type ProfileFormValues } from "./settingsSchema";
@@ -23,6 +24,7 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 export default function PersonalInfoForm({ profile, onSaved }: Props) {
+    const { update: updateSession } = useSession();
     const [saved, setSaved] = useState(false);
     const [serverError, setServerError] = useState<string | null>(null);
 
@@ -52,6 +54,9 @@ export default function PersonalInfoForm({ profile, onSaved }: Props) {
             onSaved(updated);
             reset(values); // new baseline, so the form is "clean" again
             setSaved(true);
+            if (updateSession) {
+                await updateSession({ name: updated.fullName }).catch(() => {});
+            }
         } catch (err) {
             setSaved(false);
             setServerError(
