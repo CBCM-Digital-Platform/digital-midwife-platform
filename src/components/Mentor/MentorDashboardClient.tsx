@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { ClipboardList, Calendar, GraduationCap, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MentorDashboardData } from "@/types/mentor-dashboard";
@@ -52,29 +53,44 @@ function MentorDashboardInner({
 
         {/* 4 STAT CARDS */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-          <MentorStatCard
-            label="Total Mentees"
-            value={stats.totalMentees}
-            trend={stats.menteesTrend}
-            icon={Users}
-            iconColor="text-emerald-700"
-            iconBg="bg-emerald-50"
-          />
-          <MentorStatCard
-            label="Upcoming Sessions"
-            value={stats.upcomingSessions}
-            icon={Calendar}
-            iconColor="text-amber-700"
-            iconBg="bg-yellow-100"
-          />
-          <MentorStatCard
-            label="Pending Assessments"
-            value={stats.pendingAssessments}
-            alert={stats.pendingAssessments > 0 ? "Needs Action" : null}
-            icon={ClipboardList}
-            iconColor="text-red-600"
-            iconBg="bg-red-50"
-          />
+          <Link
+            href="/my-mentees"
+            className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 transition-transform hover:-translate-y-0.5"
+          >
+            <MentorStatCard
+              label="Total Mentees"
+              value={stats.totalMentees}
+              trend={stats.menteesTrend}
+              icon={Users}
+              iconColor="text-emerald-700"
+              iconBg="bg-emerald-50"
+            />
+          </Link>
+          <Link
+            href="/sessions"
+            className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 transition-transform hover:-translate-y-0.5"
+          >
+            <MentorStatCard
+              label="Upcoming Sessions"
+              value={stats.upcomingSessions}
+              icon={Calendar}
+              iconColor="text-amber-700"
+              iconBg="bg-yellow-100"
+            />
+          </Link>
+          <Link
+            href="/my-assessments"
+            className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition-transform hover:-translate-y-0.5"
+          >
+            <MentorStatCard
+              label="Pending Assessments"
+              value={stats.pendingAssessments}
+              alert={stats.pendingAssessments > 0 ? "Needs Action" : null}
+              icon={ClipboardList}
+              iconColor="text-red-600"
+              iconBg="bg-red-50"
+            />
+          </Link>
           <MentorStatCard
             label="Avg. Competency"
             value={`${stats.avgCompetencyPct}%`}

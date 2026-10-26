@@ -14,6 +14,10 @@ import {
     Sparkles,
     Target,
     X,
+    Loader2,
+    CheckCircle2,
+    ArrowRight,
+    Eye,
 } from "lucide-react";
 import type { Facility } from "@/types/newCycle";
 import { createCycle } from "@/services/cycle-data.service";
@@ -70,9 +74,28 @@ function Field({
     );
 }
 
+interface CreatedCycleData {
+    id: string;
+    name: string;
+    code: string;
+    startDate: string;
+    endDate: string;
+    durationWeeks?: number | null;
+    facilitiesCount: number;
+    facilityNames: string[];
+    thematicAreasCount: number;
+    thematicAreas: string[];
+    assessmentFrequency: string;
+    maxMenteesPerMentor: number;
+    maxFacilitiesPerMentor: number;
+    description?: string;
+    notes?: string;
+}
+
 export default function CreateCycleForm({ facilities }: { facilities: Facility[] }) {
     const router = useRouter();
     const [serverError, setServerError] = useState<string | null>(null);
+    const [createdCycle, setCreatedCycle] = useState<CreatedCycleData | null>(null);
     const [search, setSearch] = useState("");
     const [open, setOpen] = useState(false);
 
@@ -81,6 +104,7 @@ export default function CreateCycleForm({ facilities }: { facilities: Facility[]
         handleSubmit,
         watch,
         setValue,
+        reset,
         formState: { errors, isSubmitting },
     } = useForm<CycleFormValues>({
         resolver: zodResolver(cycleSchema),
@@ -138,9 +162,41 @@ export default function CreateCycleForm({ facilities }: { facilities: Facility[]
     const onSubmit = async (values: CycleFormValues) => {
         setServerError(null);
         try {
-            await createCycle(values);
-            router.push("/cycles");
-            router.refresh();
+            const res = await createCycle(values);
+            if (res?.id) {
+                // Save complete form metadata to localStorage so detail page can display all inputs
+                try {
+                    const meta = {
+                        ...values,
+                        id: res.id,
+                        durationWeeks: weeks,
+                        facilityNames: selectedFacilities.map((f) => f.name),
+                    };
+                    localStorage.setItem(`cycle_meta_${res.id}`, JSON.stringify(meta));
+                } catch (e) {
+                    console.warn("Could not write cycle_meta to localStorage", e);
+                }
+
+                setCreatedCycle({
+                    id: res.id,
+                    name: values.name,
+                    code: values.code,
+                    startDate: values.startDate,
+                    endDate: values.endDate,
+                    durationWeeks: weeks,
+                    facilitiesCount: values.facilityIds.length,
+                    facilityNames: selectedFacilities.map((f) => f.name),
+                    thematicAreasCount: values.thematicAreas.length,
+                    thematicAreas: values.thematicAreas,
+                    assessmentFrequency: values.assessmentFrequency,
+                    maxMenteesPerMentor: values.maxMenteesPerMentor,
+                    maxFacilitiesPerMentor: values.maxFacilitiesPerMentor,
+                    description: values.description,
+                    notes: values.notes,
+                });
+            } else {
+                router.push("/cycles");
+            }
         } catch (err) {
             setServerError(
                 err instanceof Error ? err.message : "Couldn't create the cycle. Please try again."
@@ -389,12 +445,95 @@ export default function CreateCycleForm({ facilities }: { facilities: Facility[]
                     <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="rounded-lg bg-[#0B5D3B] px-5 py-2 text-sm font-medium text-white hover:bg-[#094d31] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#0B5D3B] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#094d31] disabled:cursor-not-allowed disabled:opacity-60 transition cursor-pointer"
                     >
-                        {isSubmitting ? "Creating..." : "Create Cycle"}
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin text-white" />
+                                <span>Creating Cycle in Backend...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="h-4 w-4" />
+                                <span>Create Cycle</span>
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
+
+            {/* SUCCESS MODAL WITH VIEW DETAIL BUTTON */}
+            {createdCycle && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-gray-100 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-start gap-4">
+                            <div className="rounded-full bg-emerald-100 p-3 text-[#0B5D3B] shrink-0">
+                                <CheckCircle2 className="h-8 w-8" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">
+                                    Cycle Created Successfully!
+                                </h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Mentorship cycle <span className="font-semibold text-gray-800">"{createdCycle.name}"</span> has been created and initialized in the backend.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* SUMMARY CARD OF CREATED CYCLE */}
+                        <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-2.5 text-xs text-gray-700">
+                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
+                                <span className="font-medium text-gray-500 uppercase tracking-wide">Cycle Code</span>
+                                <span className="font-bold text-gray-900">{createdCycle.code}</span>
+                            </div>
+                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
+                                <span className="font-medium text-gray-500 uppercase tracking-wide">Timeline</span>
+                                <span className="font-semibold text-gray-900">
+                                    {createdCycle.startDate} to {createdCycle.endDate}
+                                    {createdCycle.durationWeeks ? ` (${createdCycle.durationWeeks} Weeks)` : ""}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
+                                <span className="font-medium text-gray-500 uppercase tracking-wide">Facilities Linked</span>
+                                <span className="font-semibold text-gray-900">{createdCycle.facilitiesCount} Selected</span>
+                            </div>
+                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
+                                <span className="font-medium text-gray-500 uppercase tracking-wide">Thematic Areas</span>
+                                <span className="font-semibold text-gray-900">{createdCycle.thematicAreasCount} Areas</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="font-medium text-gray-500 uppercase tracking-wide">Mentorship Rules</span>
+                                <span className="font-semibold text-gray-900">
+                                    {createdCycle.maxMenteesPerMentor} Mentees/Mentor &bull; {createdCycle.assessmentFrequency}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* ACTION BUTTONS */}
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                            <Link
+                                href={`/cycles/${createdCycle.id}`}
+                                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#0B5D3B] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#094d31] transition shadow-sm"
+                            >
+                                <Eye className="h-4 w-4" />
+                                <span>View Cycle Details</span>
+                                <ArrowRight className="h-4 w-4 ml-1" />
+                            </Link>
+
+                            <button
+                                type="button"
+                                onClick={() => router.push("/cycles")}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                            >
+                                Go to Cycles List
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </form>
     );
 }

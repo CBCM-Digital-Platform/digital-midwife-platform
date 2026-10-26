@@ -1,8 +1,17 @@
-export default function Page() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">Sessions</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
-  );
+import { getSessions } from "@/services/sessions.service";
+import { getMyMentees } from "@/services/my-mentees.service";
+import { SessionsView } from "@/components/Sessions/SessionsView";
+
+export const metadata = {
+    title: "Clinical Sessions | Digital Midwife Mentorship Platform",
+    description: "Manage, observe, and document clinical preceptor encounters with assigned midwives.",
+};
+
+export default async function SessionsPage() {
+    const [sessions, mentees] = await Promise.all([
+        getSessions(),
+        getMyMentees(),
+    ]);
+
+    return <SessionsView initialSessions={sessions} mentees={mentees} />;
 }

@@ -1,8 +1,7 @@
-export default function Page() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">Ai Assistant</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
-  );
+import { AssistantChat } from "@/components/AiAssistant/AssistantChat";
+import { getAssistantData } from "@/services/clinical-assistant.service";
+
+export default async function AiAssistantPage() {
+  const data = await getAssistantData();
+  return <AssistantChat data={data} />;
 }
