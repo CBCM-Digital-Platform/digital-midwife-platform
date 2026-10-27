@@ -143,14 +143,24 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
  */
 export async function getMentors(facilityId?: number | string): Promise<MentorUser[]> {
   let activeFacilityId = facilityId;
-  if (!activeFacilityId && typeof window === "undefined") {
-    try {
-      const { getServerSession } = await import("next-auth/next");
-      const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
-      const session = await getServerSession(authOptions);
-      activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
-    } catch {
-      // Ignore session resolution failure
+  if (!activeFacilityId) {
+    if (typeof window === "undefined") {
+      try {
+        const { getServerSession } = await import("next-auth/next");
+        const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+        const session = await getServerSession(authOptions);
+        activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+      } catch {
+        // Ignore session resolution failure
+      }
+    } else {
+      try {
+        const { getSession } = await import("next-auth/react");
+        const session = await getSession();
+        activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+      } catch {
+        // Ignore session resolution failure
+      }
     }
   }
 
