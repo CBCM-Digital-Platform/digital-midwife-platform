@@ -36,7 +36,6 @@ export const menteeNavLinks: NavItem[] = [
   { name: "Learning", href: "/learning", icon: "learning" },
   { name: "Clinical Skills", href: "/clinical-skills", icon: "clinical-skills" },
   { name: "Mentors", href: "/mentors", icon: "mentor" },
-  { name: "Profile", href: "/profile", icon: "profile" },
   { name: "Messages", href: "/messaging", icon: "messages" },
   { name: "Progress", href: "/progress", icon: "progress" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
