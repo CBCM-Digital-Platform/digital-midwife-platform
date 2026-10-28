@@ -86,10 +86,37 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
  */
 export async function createAssignment(input: NewAssignmentInput): Promise<{ id: string }> {
     try {
-        // Try submitting to backend assignments endpoint if available
+        // 1. Try submitting bulk payload to backend
         const res = await apiClient.post<any>("/api/v1/assignments", input).catch(() => null);
         if (res?.data?.id || res?.id) {
             return { id: String(res.data?.id || res.id) };
+        }
+
+        // 2. Also submit normalized individual assignment pairs for backend database compatibility
+        if (Array.isArray(input.mentorIds) && Array.isArray(input.menteeIds)) {
+            for (const mentorId of input.mentorIds) {
+                for (const menteeId of input.menteeIds) {
+                    const mentorIdNum = Number(mentorId);
+                    const menteeIdNum = Number(menteeId);
+                    const cycleIdNum = Number(input.cycleId);
+
+                    await apiClient.post<any>("/api/v1/assignments", {
+                        mentor_id: !isNaN(mentorIdNum) ? mentorIdNum : mentorId,
+                        mentee_id: !isNaN(menteeIdNum) ? menteeIdNum : menteeId,
+                        cycle_id: !isNaN(cycleIdNum) ? cycleIdNum : 1,
+                        status: "active",
+                        thematic_area: input.thematicAreas?.[0] || "Maternal & Newborn Care",
+                        notes: input.notes,
+                    }).catch(() => null);
+
+                    // Also link mentor on the mentee user record directly
+                    if (!isNaN(menteeIdNum)) {
+                        await apiClient.patch<any>(`/api/v1/users/${menteeId}`, {
+                            mentor_id: !isNaN(mentorIdNum) ? mentorIdNum : mentorId,
+                        }).catch(() => null);
+                    }
+                }
+            }
         }
     } catch {
         // Fallback gracefully

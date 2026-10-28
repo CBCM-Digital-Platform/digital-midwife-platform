@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { Building2, Clock, CheckCircle2, AlertCircle, FileText, Plus, Eye } from "lucide-react";
+import { Building2, Clock, CheckCircle2, AlertCircle, FileText, Plus, Eye, MessageSquare } from "lucide-react";
 import type { MyMentee } from "@/types/my-mentee";
 import type { MentorAssessment } from "@/types/mentor-assessment";
 import { CompetencyBadge, LastSession, MenteeAvatar, formatSessionDate } from "./MenteeParts";
@@ -124,25 +124,34 @@ export function MenteeCards({ mentees, onSelectAssessment, highlightMenteeId }: 
                         </div>
 
                         {/* Card Bottom Actions */}
-                        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                            {assigned && onSelectAssessment ? (
-                                <button
-                                    type="button"
-                                    onClick={() => onSelectAssessment(assigned, m)}
-                                    className="text-xs font-semibold text-gray-700 hover:text-[#194611] transition"
-                                >
-                                    View Details
-                                </button>
-                            ) : (
-                                <span className="text-[11px] text-gray-600">Clinical Rotation Active</span>
-                            )}
-
+                        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 gap-2">
                             <Link
-                                href={`/my-assessments/new?menteeId=${m.id}`}
-                                className="text-xs font-semibold text-[#194611] hover:underline"
+                                href="/messaging"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 text-gray-700 hover:text-[#194611] text-xs font-semibold transition shadow-2xs"
+                                title={`Send direct message to ${m.name}`}
                             >
-                                {assigned ? "Assess Again" : "Assess"}
+                                <MessageSquare className="h-3.5 w-3.5 text-[#194611]" />
+                                <span>Message</span>
                             </Link>
+
+                            <div className="flex items-center gap-2">
+                                {assigned && onSelectAssessment && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onSelectAssessment(assigned, m)}
+                                        className="text-xs font-semibold text-gray-600 hover:text-[#194611] transition"
+                                    >
+                                        Details
+                                    </button>
+                                )}
+
+                                <Link
+                                    href={`/my-assessments/new?menteeId=${m.id}`}
+                                    className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-[#194611] hover:bg-[#14380e] text-white text-xs font-semibold transition shadow-2xs"
+                                >
+                                    {assigned ? "Assess Again" : "Assess"}
+                                </Link>
+                            </div>
                         </div>
                     </li>
                 );

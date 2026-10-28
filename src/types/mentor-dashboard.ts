@@ -1,3 +1,5 @@
+import type { MyMentee } from "./my-mentee";
+
 export type ActivityKind = "LOGBOOK" | "MESSAGE" | "MISSED_ASSESSMENT";
 export type ScheduleStatus = "DONE" | "NOW" | "UPCOMING";
 
@@ -36,4 +38,5 @@ export interface MentorDashboardData {
     activity: ActivityItem[];
     scheduleDate: string; // ISO date
     schedule: ScheduleItem[];
+    mentees: MyMentee[];
 }

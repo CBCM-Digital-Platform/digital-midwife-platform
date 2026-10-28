@@ -24,11 +24,11 @@ export const adminNavLinks: NavItem[] = [
 export const mentorNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
   { name: "Mentees", href: "/my-mentees", icon: "mentee" },
-  { name: "Facilities", href: "/my-facilities", icon: "facilities" },
   { name: "Assessments", href: "/my-assessments", icon: "assessments" },
   { name: "Resources", href: "/resources", icon: "resources" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
   { name: "Sessions", href: "/sessions", icon: "sessions" },
+  { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
 export const menteeNavLinks: NavItem[] = [
@@ -40,6 +40,7 @@ export const menteeNavLinks: NavItem[] = [
   { name: "Messages", href: "/messaging", icon: "messages" },
   { name: "Progress", href: "/progress", icon: "progress" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
+  { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
 export function getNavLinksByRole(role?: UserRole | string): NavItem[] {

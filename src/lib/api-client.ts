@@ -29,6 +29,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   body?: any;
   token?: string; // Optional manual override
   _isRetry?: boolean;
+  timeout?: number; // Custom timeout in milliseconds
   next?: {
     revalidate?: number | false;
     tags?: string[];
@@ -110,7 +111,7 @@ function buildUrl(endpoint: string, params?: Record<string, string | number | bo
   if (/^https?:\/\//i.test(endpoint)) {
     fullUrl = endpoint;
   } else {
-    const rawBase = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1").replace(/\/+$/, "");
+    const rawBase = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com/api/v1").replace(/\/+$/, "");
     let cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
     // Prevent duplicate `/api/v1` or `/api` if base URL already ends with it
@@ -195,13 +196,34 @@ export async function apiClient<T = any>(
   }
 
   // 4. Execute fetch with safe timeout
-  const signal = fetchOptions.signal || AbortSignal.timeout(12000);
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-    body: resolvedBody,
-    signal,
-  });
+  const method = (fetchOptions.method || "GET").toUpperCase();
+  const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+  const defaultTimeout = isMutation ? 60000 : 45000;
+  const timeoutMs = options.timeout || defaultTimeout;
+  const signal = fetchOptions.signal || AbortSignal.timeout(timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      body: resolvedBody,
+      signal,
+    });
+  } catch (fetchErr: any) {
+    if (
+      fetchErr?.name === "TimeoutError" ||
+      String(fetchErr?.message || "").toLowerCase().includes("timed out") ||
+      String(fetchErr?.message || "").toLowerCase().includes("signal")
+    ) {
+      throw new ApiError(
+        "The server took too long to respond. The backend may be cold-starting or busy. Please try submitting again.",
+        504,
+        { code: "TIMEOUT", message: fetchErr?.message }
+      );
+    }
+    throw fetchErr;
+  }
 
   // 5. Handle HTTP errors
   if (!response.ok) {
@@ -227,7 +249,7 @@ export async function apiClient<T = any>(
         }
 
         if (refreshToken) {
-          const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+          const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com").replace(/\/+$/, "");
           const refreshEndpoint = baseUrl.endsWith("/api/v1")
             ? `${baseUrl}/auth/refresh-token`
             : `${baseUrl}/api/v1/auth/refresh-token`;
