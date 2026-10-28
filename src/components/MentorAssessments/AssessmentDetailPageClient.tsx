@@ -386,7 +386,7 @@ export function AssessmentDetailPageClient({
                                         </div>
                                         {ev.file_id && (
                                             <a
-                                                href={`https://cbcm-backend-1.onrender.com/api/v1/uploads/${ev.file_id}/content`}
+                                                href={`${process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com/api/v1"}/uploads/${ev.file_id}/content`}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-900"

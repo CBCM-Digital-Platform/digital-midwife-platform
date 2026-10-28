@@ -67,7 +67,7 @@ function buildUrl(endpoint: string, params?: Record<string, string | number | bo
   if (/^https?:\/\//i.test(endpoint)) {
     fullUrl = endpoint;
   } else {
-    const rawBase = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1").replace(/\/+$/, "");
+    const rawBase = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com/api/v1").replace(/\/+$/, "");
     let cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
     // Prevent duplicate `/api/v1` or `/api` if base URL already ends with it
@@ -176,7 +176,7 @@ export async function apiClient<T = any>(
         }
 
         if (refreshToken) {
-          const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+          const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com").replace(/\/+$/, "");
           const refreshEndpoint = baseUrl.endsWith("/api/v1")
             ? `${baseUrl}/auth/refresh-token`
             : `${baseUrl}/api/v1/auth/refresh-token`;

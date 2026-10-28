@@ -205,7 +205,7 @@ function normalizeResource(raw: any, starredIds: Set<string>): Resource {
     let url = raw.url || "#";
     if (!url || url === "#") {
         if (fileId) {
-            const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1").replace(/\/+$/, "");
+            const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com/api/v1").replace(/\/+$/, "");
             url = `${baseUrl}/uploads/${fileId}/content`;
         }
     }
