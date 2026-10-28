@@ -75,6 +75,13 @@ export function FacilityAdminResourcesTableClient({
     });
   };
 
+  const handleAssignFailed = (resourceTitle: string, errorMessage: string) => {
+    setToastMessage({
+      type: "error",
+      text: `Failed to assign "${resourceTitle}": ${errorMessage}`,
+    });
+  };
+
   // Filter dataset by type dropdown
   const filteredData = useMemo(() => {
     if (typeFilter === "all") return resources;
@@ -358,6 +365,7 @@ export function FacilityAdminResourcesTableClient({
         resource={selectedResourceForAssign}
         availableMentors={availableMentors}
         onAssigned={handleAssigned}
+        onAssignFailed={handleAssignFailed}
       />
     </div>
   );

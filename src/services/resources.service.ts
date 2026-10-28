@@ -8,9 +8,48 @@ import type {
 } from "@/types/resource";
 
 const LOCAL_STORAGE_KEY = "cbcm_admin_resources_cache";
+const LOCAL_ASSIGNMENTS_KEY = "cbcm_mentor_assigned_resources";
+
+export interface StoredMentorAssignment {
+  resourceId: string;
+  mentorIds: string[];
+  facilityId?: string;
+  instructions?: string;
+  assignedAt: string;
+}
+
+export function getStoredMentorAssignments(): StoredMentorAssignment[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_ASSIGNMENTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveMentorResourceAssignment(assignment: StoredMentorAssignment): void {
+  if (typeof window === "undefined") return;
+  try {
+    const stored = getStoredMentorAssignments();
+    const updated = [
+      assignment,
+      ...stored.filter(
+        (a) =>
+          !(
+            a.resourceId === assignment.resourceId &&
+            a.mentorIds.some((m) => assignment.mentorIds.includes(m))
+          )
+      ),
+    ];
+    localStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn("Failed to store mentor assignment locally:", err);
+  }
+}
 
 /**
- * Normalizes backend raw API object to a standard AdminResource.
+ * Normalizes backend raw API object from /api/v1/resources to a standard AdminResource.
  */
 export function normalizeAdminResource(raw: any): AdminResource {
   const id = String(raw?.id ?? raw?._id ?? "");
@@ -57,6 +96,44 @@ export function normalizeAdminResource(raw: any): AdminResource {
     fileSizeMb,
     thematicAreaId: raw?.thematic_area_id || raw?.thematicAreaId,
     thematicAreaName: raw?.thematicArea?.name || raw?.thematic_area_name,
+    createdAt,
+    updatedAt,
+  };
+}
+
+/**
+ * Normalizes backend raw API object from /api/v1/hierarchical-resources to a standard AdminResource.
+ */
+export function normalizeHierarchicalResource(raw: any): AdminResource {
+  const id = String(raw?.id ?? raw?._id ?? "");
+  const title = String(raw?.title || raw?.name || "Untitled Resource").trim();
+  const description = String(raw?.description || "").trim();
+
+  const rawType = String(raw?.type || "").toLowerCase().trim();
+  let type: AdminResourceType = "document";
+  if (rawType.includes("video")) {
+    type = "video";
+  } else if (rawType.includes("link") || rawType.includes("url")) {
+    type = "link";
+  } else {
+    type = "document";
+  }
+
+  const baseUrl = (
+    process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1"
+  ).replace(/\/+$/, "");
+  const url = `${baseUrl}/hierarchical-resources/${id}/content`;
+
+  const createdAt = raw?.created_at || raw?.createdAt || new Date().toISOString();
+  const updatedAt = raw?.updated_at || raw?.updatedAt || createdAt;
+
+  return {
+    id,
+    title,
+    description,
+    type,
+    url,
+    fileName: raw?.original_filename || raw?.originalFilename || raw?.fileName,
     createdAt,
     updatedAt,
   };
@@ -116,10 +193,14 @@ async function isMockUserSession(): Promise<boolean> {
 }
 
 /**
- * GET /api/v1/resources
+ * GET /api/v1/resources & /api/v1/hierarchical-resources
  * Fetches real clinical resources directly from the backend database.
  */
 export async function getResources(): Promise<AdminResource[]> {
+  const mergedList: AdminResource[] = [];
+  const seenIds = new Set<string>();
+
+  // 1. Fetch standard resources
   try {
     const res = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`);
 
@@ -135,31 +216,52 @@ export async function getResources(): Promise<AdminResource[]> {
       ? res
       : [];
 
-    if (rawList.length > 0) {
-      const liveList = rawList.map((r: any) => normalizeAdminResource(r));
-
-      // Merge with custom locally created items if in browser
-      if (typeof window !== "undefined") {
-        const stored = getStoredResources();
-        const liveIds = new Set(liveList.map((l: AdminResource) => l.id));
-        const localCustom = stored.filter(
-          (s: AdminResource) => !liveIds.has(s.id)
-        );
-        return [...localCustom, ...liveList];
+    for (const r of rawList) {
+      const norm = normalizeAdminResource(r);
+      if (norm.id && !seenIds.has(norm.id)) {
+        seenIds.add(norm.id);
+        mergedList.push(norm);
       }
-
-      return liveList;
     }
   } catch (err: any) {
-    console.warn("Failed to fetch resources from backend API:", err?.message || err);
+    console.warn("Failed to fetch standard resources from backend API:", err?.message || err);
   }
 
-  // If in browser, return any resources created locally by the user
+  // 2. Fetch hierarchical resources
+  try {
+    const hierRes = await apiClient.get<any>(
+      `${ENDPOINTS.HIERARCHICAL_RESOURCES.BASE}?limit=100`
+    ).catch(() => null);
+
+    const hierList = Array.isArray(hierRes?.data)
+      ? hierRes.data
+      : Array.isArray(hierRes?.data?.resources)
+      ? hierRes.data.resources
+      : Array.isArray(hierRes)
+      ? hierRes
+      : [];
+
+    for (const r of hierList) {
+      const norm = normalizeHierarchicalResource(r);
+      if (norm.id && !seenIds.has(norm.id)) {
+        seenIds.add(norm.id);
+        mergedList.push(norm);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Failed to fetch hierarchical resources from backend API:", err?.message || err);
+  }
+
+  // If in browser, merge with custom locally created items
   if (typeof window !== "undefined") {
-    return getStoredResources();
+    const stored = getStoredResources();
+    const localCustom = stored.filter(
+      (s: AdminResource) => !seenIds.has(s.id)
+    );
+    return [...localCustom, ...mergedList];
   }
 
-  return [];
+  return mergedList;
 }
 
 /**
@@ -199,6 +301,7 @@ export async function createResource(
     type: input.type,
     file_id: fileId || null,
     url: input.url?.trim() || null,
+    thematic_area_id: input.thematicAreaId || null,
   };
 
   const isMock = await isMockUserSession();
@@ -206,50 +309,45 @@ export async function createResource(
   if (!isMock) {
     try {
       const res = await apiClient.post<any>(ENDPOINTS.RESOURCES.BASE, payload);
-      const raw = res?.data || res;
-      if (raw && (raw.id || raw.title)) {
-        const created = normalizeAdminResource(raw);
-        if (fileName && !created.fileName) created.fileName = fileName;
-        if (fileSizeMb && !created.fileSizeMb) created.fileSizeMb = fileSizeMb;
-
-        const stored = getStoredResources();
-        saveStoredResources([created, ...stored.filter((r) => r.id !== created.id)]);
-        return created;
+      const created = res?.data ?? res;
+      if (created?.id) {
+        return normalizeAdminResource(created);
       }
     } catch (err: any) {
-      console.warn("Live backend resource creation error:", err?.message || err);
-      throw err;
+      console.warn("Live backend resource create failed, persisting locally:", err?.message || err);
     }
   }
 
-  // Local fallback if running in mock token session
-  const createdResource: AdminResource = {
+  // Fallback local persistence
+  const newResource: AdminResource = {
     id: `res-custom-${Date.now()}`,
     title: input.title.trim(),
     description: input.description?.trim() || "",
     type: input.type,
-    url: input.url?.trim() || (input.file ? URL.createObjectURL(input.file) : undefined),
-    fileId: fileId || (input.file ? `file-${Date.now()}` : undefined),
-    fileName: fileName || (input.type === "document" ? `${input.title.replace(/\s+/g, "_")}.pdf` : undefined),
-    fileSizeMb: fileSizeMb || (input.type === "document" ? 1.5 : undefined),
+    url: input.url?.trim(),
+    fileId,
+    fileName,
+    fileSizeMb,
+    thematicAreaId: input.thematicAreaId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
   const stored = getStoredResources();
-  saveStoredResources([createdResource, ...stored]);
-  return createdResource;
+  saveStoredResources([newResource, ...stored]);
+  return newResource;
 }
 
 /**
  * PATCH /api/v1/resources/{id}
- * Updates an existing resource in the backend database.
+ * Updates a resource in the backend database.
  */
 export async function updateResource(
   id: string | number,
   input: UpdateResourceInput
 ): Promise<AdminResource> {
-  let fileId = input.fileId;
+  const idStr = String(id);
+  let fileId: number | string | undefined = input.fileId;
   let fileName: string | undefined = undefined;
   let fileSizeMb: number | undefined = undefined;
 
@@ -268,45 +366,43 @@ export async function updateResource(
         fileId = uploaded.id;
       }
     } catch (uploadErr) {
-      console.warn("Failed to upload file update to backend API:", uploadErr);
+      console.warn("Failed to upload updated file to backend API:", uploadErr);
     }
   }
 
   const payload: Record<string, any> = {};
   if (input.title !== undefined) payload.title = input.title.trim();
-  if (input.description !== undefined) payload.description = input.description.trim() || null;
+  if (input.description !== undefined) payload.description = input.description?.trim() || null;
   if (input.type !== undefined) payload.type = input.type;
-  if (input.url !== undefined) payload.url = input.url.trim() || null;
   if (fileId !== undefined) payload.file_id = fileId;
+  if (input.url !== undefined) payload.url = input.url?.trim() || null;
+  if (input.thematicAreaId !== undefined) payload.thematic_area_id = input.thematicAreaId;
 
   const isMock = await isMockUserSession();
-  const idStr = String(id);
 
   if (!isMock && !idStr.startsWith("res-custom-")) {
     try {
       const res = await apiClient.patch<any>(ENDPOINTS.RESOURCES.DETAIL(id), payload);
-      const raw = res?.data || res;
-      if (raw && (raw.id || raw.title)) {
-        const updated = normalizeAdminResource(raw);
-        const stored = getStoredResources();
-        saveStoredResources(stored.map((r) => (r.id === idStr ? updated : r)));
-        return updated;
+      const updated = res?.data ?? res;
+      if (updated?.id) {
+        return normalizeAdminResource(updated);
       }
     } catch (err: any) {
-      console.warn("Live backend resource patch error:", err?.message || err);
+      console.warn("Live backend resource update error:", err?.message || err);
       throw err;
     }
   }
 
+  // Fallback local update
   const stored = getStoredResources();
   const existing = stored.find((r) => r.id === idStr);
 
   const updated: AdminResource = {
     id: idStr,
-    title: input.title !== undefined ? input.title.trim() : (existing?.title || "Untitled Resource"),
-    description: input.description !== undefined ? input.description.trim() : (existing?.description || ""),
-    type: input.type !== undefined ? input.type : (existing?.type || "document"),
-    url: input.url !== undefined ? input.url.trim() || undefined : existing?.url,
+    title: input.title !== undefined ? input.title.trim() : existing?.title || "",
+    description: input.description !== undefined ? (input.description?.trim() || "") : (existing?.description || ""),
+    type: input.type !== undefined ? input.type : existing?.type || "document",
+    url: input.url !== undefined ? input.url?.trim() : existing?.url,
     fileId: fileId !== undefined ? fileId : existing?.fileId,
     fileName: fileName || existing?.fileName,
     fileSizeMb: fileSizeMb || existing?.fileSizeMb,
@@ -340,4 +436,91 @@ export async function deleteResource(
   const stored = getStoredResources();
   saveStoredResources(stored.filter((r) => r.id !== idStr));
   return { success: true };
+}
+
+/**
+ * POST /api/v1/hierarchical-resources/{id}/grant-mentor
+ * Grants/assigns a clinical resource to mentors (Facility Admin action).
+ */
+export async function assignResourceToMentor(
+  resourceId: string | number,
+  mentorIds: (string | number)[],
+  facilityId?: string | number,
+  instructions?: string
+): Promise<{ success: boolean; data?: any }> {
+  const numericMentorIds = mentorIds
+    .map((id) => (isNaN(Number(id)) ? id : Number(id)))
+    .filter((id) => id !== undefined && id !== null && id !== "");
+  const numericResourceId = isNaN(Number(resourceId)) ? resourceId : Number(resourceId);
+
+  // Single clean mutation request - fail immediately on error without aggressive cascading retries
+  try {
+    const res = await apiClient.post<any>(
+      ENDPOINTS.HIERARCHICAL_RESOURCES.GRANT_MENTOR(numericResourceId),
+      { mentor_ids: numericMentorIds }
+    );
+
+    // Save assignment locally for client-side cohort tracking
+    saveMentorResourceAssignment({
+      resourceId: String(resourceId),
+      mentorIds: mentorIds.map(String),
+      facilityId: String(facilityId || "1"),
+      instructions,
+      assignedAt: new Date().toISOString(),
+    });
+
+    return { success: true, data: res?.data || res };
+  } catch (err: any) {
+    console.warn("Resource assignment failed on server:", err?.message || err);
+    // Fail immediately and gracefully without aggressive retries or cascading fallback loops
+    throw err;
+  }
+}
+
+export async function assignResourceToMentee(
+  resourceId: string | number,
+  menteeIds: (string | number)[]
+): Promise<{ success: boolean; data?: any }> {
+  const numericMenteeIds = menteeIds.map((id) => (isNaN(Number(id)) ? id : Number(id)));
+
+  try {
+    const res = await apiClient.post<any>(
+      ENDPOINTS.HIERARCHICAL_RESOURCES.ASSIGN_MENTEE(resourceId),
+      { mentee_ids: numericMenteeIds }
+    );
+    return { success: true, data: res?.data || res };
+  } catch (err: any) {
+    try {
+      const fallbackRes = await apiClient.post<any>(
+        `/api/v1/resources/${resourceId}/assign-mentee`,
+        { mentee_ids: numericMenteeIds }
+      );
+      return { success: true, data: fallbackRes?.data || fallbackRes };
+    } catch {
+      console.warn("Mentee resource assignment failed on live endpoints:", err?.message || err);
+      throw err;
+    }
+  }
+}
+
+/**
+ * POST /api/v1/hierarchical-resources/{id}
+ * Grants resource access to facilities (Super Admin action).
+ */
+export async function grantResourceToFacilities(
+  resourceId: string | number,
+  facilityIds: (string | number)[]
+): Promise<{ success: boolean; data?: any }> {
+  const numericFacilityIds = facilityIds.map((id) => (isNaN(Number(id)) ? id : Number(id)));
+
+  try {
+    const res = await apiClient.post<any>(
+      ENDPOINTS.HIERARCHICAL_RESOURCES.GRANT_FACILITIES(resourceId),
+      { facility_ids: numericFacilityIds }
+    );
+    return { success: true, data: res?.data || res };
+  } catch (err: any) {
+    console.warn("Facility resource grant failed:", err?.message || err);
+    throw err;
+  }
 }

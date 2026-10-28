@@ -38,6 +38,21 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
 /**
  * Safely resolves the active access token across both Server and Client environments.
  */
+// Client-side in-memory session token cache & deduplication to eliminate session fetching loop
+let clientCachedToken: string | null = null;
+let clientTokenExpiry = 0;
+let inFlightSessionPromise: Promise<string | null> | null = null;
+
+export function clearTokenCache(): void {
+  clientCachedToken = null;
+  clientTokenExpiry = 0;
+  inFlightSessionPromise = null;
+}
+
+/**
+ * Safely resolves the active access token across both Server and Client environments.
+ * Caches client tokens for 60s and deduplicates in-flight calls to eliminate session loops.
+ */
 async function resolveAccessToken(): Promise<string | null> {
   try {
     if (typeof window === "undefined") {
@@ -47,10 +62,38 @@ async function resolveAccessToken(): Promise<string | null> {
       const session = await getServerSession(authOptions);
       return session?.accessToken || (session as any)?.user?.accessToken || null;
     } else {
-      // CLIENT-SIDE: Read session from NextAuth client provider
-      const { getSession } = await import("next-auth/react");
-      const session = await getSession();
-      return session?.accessToken || (session as any)?.user?.accessToken || null;
+      // CLIENT-SIDE: Return cached token if still fresh (valid for at least 30s)
+      if (clientCachedToken && Date.now() < clientTokenExpiry) {
+        return clientCachedToken;
+      }
+
+      // Deduplicate concurrent getSession() requests
+      if (inFlightSessionPromise) {
+        return await inFlightSessionPromise;
+      }
+
+      inFlightSessionPromise = (async () => {
+        try {
+          const { getSession } = await import("next-auth/react");
+          const session = await getSession();
+          const token = session?.accessToken || (session as any)?.user?.accessToken || null;
+          if (token) {
+            clientCachedToken = token;
+            // Cache token for 60 seconds
+            clientTokenExpiry = Date.now() + 60_000;
+          } else {
+            clientCachedToken = null;
+            clientTokenExpiry = 0;
+          }
+          return token;
+        } catch {
+          return null;
+        } finally {
+          inFlightSessionPromise = null;
+        }
+      })();
+
+      return await inFlightSessionPromise;
     }
   } catch (err) {
     // If running in an unauthenticated or public context, proceed without token
@@ -151,17 +194,25 @@ export async function apiClient<T = any>(
     headers.set("Accept", "application/json");
   }
 
-  // 4. Execute fetch
+  // 4. Execute fetch with safe timeout
+  const signal = fetchOptions.signal || AbortSignal.timeout(12000);
   const response = await fetch(url, {
     ...fetchOptions,
     headers,
     body: resolvedBody,
+    signal,
   });
 
   // 5. Handle HTTP errors
   if (!response.ok) {
-    // If request failed with 401 Unauthorized, attempt to rotate access token via refresh token and retry once
-    if (response.status === 401 && !options?._isRetry) {
+    const isServerError = response.status >= 500;
+    const method = (fetchOptions.method || "GET").toUpperCase();
+    const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+
+    // Strictly disable automatic retries for HTTP 500+ errors and mutations.
+    // Only attempt 401 token refresh retry for idempotent GET requests.
+    if (response.status === 401 && !options?._isRetry && !isServerError && !isMutation) {
+      clearTokenCache();
       try {
         let refreshToken: string | null = null;
         if (typeof window !== "undefined") {

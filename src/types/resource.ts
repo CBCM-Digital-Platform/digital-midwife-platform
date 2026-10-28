@@ -44,6 +44,7 @@ export interface CreateResourceInput {
   url?: string;
   file?: File;
   fileId?: number | string;
+  thematicAreaId?: number | string;
 }
 
 export interface UpdateResourceInput {
@@ -53,4 +54,5 @@ export interface UpdateResourceInput {
   url?: string;
   file?: File;
   fileId?: number | string;
+  thematicAreaId?: number | string;
 }

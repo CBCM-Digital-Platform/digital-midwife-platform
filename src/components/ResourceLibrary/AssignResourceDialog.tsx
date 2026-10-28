@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,12 +13,14 @@ import { Button } from "@/components/ui/button";
 import type { AdminResource } from "@/types/resource";
 import type { MentorUser } from "@/types/user";
 import { getMentors } from "@/services/users.service";
+import { assignResourceToMentor } from "@/services/resources.service";
 import {
   UserPlus,
   FileText,
   Video,
   Link2,
   AlertCircle,
+  CheckCircle2,
   Loader2,
   Users,
 } from "lucide-react";
@@ -29,6 +31,7 @@ interface AssignResourceDialogProps {
   resource: AdminResource | null;
   availableMentors?: MentorUser[];
   onAssigned: (resourceTitle: string, mentorName: string) => void;
+  onAssignFailed?: (resourceTitle: string, errorMessage: string) => void;
 }
 
 export function AssignResourceDialog({
@@ -37,6 +40,7 @@ export function AssignResourceDialog({
   resource,
   availableMentors,
   onAssigned,
+  onAssignFailed,
 }: AssignResourceDialogProps) {
   const [mentors, setMentors] = useState<MentorUser[]>(availableMentors || []);
   const [isLoadingMentors, setIsLoadingMentors] = useState<boolean>(false);
@@ -44,15 +48,22 @@ export function AssignResourceDialog({
   const [instructions, setInstructions] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const hasFetchedRef = useRef(false);
 
   // Fetch real mentors from database on dialog open if not already provided
+  // Uses hasFetchedRef to avoid infinite fetch loops on re-render
   useEffect(() => {
     if (open) {
       setSelectedMentorId("");
       setInstructions("");
       setError(null);
+      setSuccessMessage(null);
 
-      if (!availableMentors || availableMentors.length === 0) {
+      if (availableMentors && availableMentors.length > 0) {
+        setMentors(availableMentors);
+      } else if (!hasFetchedRef.current) {
+        hasFetchedRef.current = true;
         setIsLoadingMentors(true);
         getMentors()
           .then((fetched) => {
@@ -65,14 +76,18 @@ export function AssignResourceDialog({
           .finally(() => {
             setIsLoadingMentors(false);
           });
-      } else {
-        setMentors(availableMentors);
       }
+    } else {
+      hasFetchedRef.current = false;
+      setIsSubmitting(false);
+      setError(null);
+      setSuccessMessage(null);
     }
   }, [open, availableMentors]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!resource || isSubmitting) return; // Immediate double-submission prevention
     if (!selectedMentorId) {
       setError("Please select a mentor to assign this resource to.");
       return;
@@ -83,13 +98,37 @@ export function AssignResourceDialog({
 
     setIsSubmitting(true);
     setError(null);
+    setSuccessMessage(null);
 
-    // Simulate assignment completion
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      await assignResourceToMentor(
+        resource.id,
+        [selectedMentorId],
+        undefined,
+        instructions?.trim() || undefined
+      );
+
+      const successText = `"${resource?.title || "Clinical Resource"}" was successfully assigned to ${mentorName}.`;
+      setSuccessMessage(successText);
       onAssigned(resource?.title || "Clinical Resource", mentorName);
-      onOpenChange(false);
-    }, 350);
+
+      // Brief delay to allow user to view the confirmation state before closing dialog
+      setTimeout(() => {
+        onOpenChange(false);
+      }, 700);
+    } catch (err: any) {
+      console.warn("Live assignment error:", err);
+      const msg =
+        err?.message ||
+        err?.data?.error?.message ||
+        "Failed to assign resource on the server. Please try again.";
+      setError(msg);
+      if (onAssignFailed) {
+        onAssignFailed(resource?.title || "Clinical Resource", msg);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!resource) return null;
@@ -142,10 +181,25 @@ export function AssignResourceDialog({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:px-6 space-y-4">
+          {/* Success Confirmation Banner */}
+          {successMessage && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-start gap-2.5 animate-in fade-in-0 duration-200">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
+              <div>
+                <p className="font-semibold text-emerald-900">Assignment Successful</p>
+                <p className="text-[11px] text-emerald-700 mt-0.5">{successMessage}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error Failure Banner */}
           {error && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2.5 animate-in fade-in-0 duration-200">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+              <div>
+                <p className="font-semibold text-red-900">Assignment Failed</p>
+                <p className="text-[11px] text-red-600 mt-0.5">{error}</p>
+              </div>
             </div>
           )}
 
@@ -182,7 +236,7 @@ export function AssignResourceDialog({
                   setSelectedMentorId(e.target.value);
                   if (error) setError(null);
                 }}
-                className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 font-medium transition focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer"
+                disabled={isSubmitting || Boolean(successMessage)} className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 font-medium transition focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="" disabled>
                   -- Choose a mentor ({mentors.length} available) --
@@ -210,7 +264,7 @@ export function AssignResourceDialog({
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="e.g., Please review this protocol with your cohort ahead of next Tuesday's labor ward clinical drill..."
-              className="w-full p-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent resize-none"
+              disabled={isSubmitting || Boolean(successMessage)} className="w-full p-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent resize-none disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -227,13 +281,18 @@ export function AssignResourceDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || mentors.length === 0}
-              className="h-10 px-5 text-xs font-semibold rounded-xl bg-[#194611] hover:bg-[#14380e] text-white shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              disabled={isSubmitting || mentors.length === 0 || !selectedMentorId || Boolean(successMessage)}
+              className="h-10 px-5 text-xs font-semibold rounded-xl bg-[#194611] hover:bg-[#14380e] text-white shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FDD028]" />
                   <span>Assigning...</span>
+                </>
+              ) : successMessage ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-[#FDD028]" />
+                  <span>Assigned!</span>
                 </>
               ) : (
                 <>

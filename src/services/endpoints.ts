@@ -40,6 +40,16 @@ export const ENDPOINTS = {
   RESOURCES: {
     BASE: "/api/v1/resources",
     DETAIL: (id: string | number) => `/api/v1/resources/${id}`,
+    GRANT_MENTOR: (id: string | number) => `/api/v1/hierarchical-resources/${id}/grant-mentor`,
+    ASSIGN_MENTEE: (id: string | number) => `/api/v1/hierarchical-resources/${id}/assign-mentee`,
+  },
+  HIERARCHICAL_RESOURCES: {
+    BASE: "/api/v1/hierarchical-resources",
+    DETAIL: (id: string | number) => `/api/v1/hierarchical-resources/${id}`,
+    GRANT_FACILITIES: (id: string | number) => `/api/v1/hierarchical-resources/${id}`,
+    GRANT_MENTOR: (id: string | number) => `/api/v1/hierarchical-resources/${id}/grant-mentor`,
+    ASSIGN_MENTEE: (id: string | number) => `/api/v1/hierarchical-resources/${id}/assign-mentee`,
+    CONTENT: (id: string | number) => `/api/v1/hierarchical-resources/${id}/content`,
   },
   UPLOADS: {
     BASE: "/api/v1/uploads",
@@ -80,4 +90,3 @@ export const ENDPOINTS = {
     MENTEE_ASSIGNMENTS: (menteeId: string | number) => `/api/v1/assignments/mentees/${menteeId}/assignments`,
   },
 } as const;
-

@@ -6,10 +6,17 @@ import { getResources as getAdminResources } from "@/services/resources.service"
 import { getMentors } from "@/services/users.service";
 import { SuperAdminResourcesTableClient } from "@/components/ResourceLibrary/SuperAdminResourcesTableClient";
 import { FacilityAdminResourcesTableClient } from "@/components/ResourceLibrary/FacilityAdminResourcesTableClient";
+import {
+  getMenteeAssignedResources,
+  getUpcomingSessions,
+  getMenteeAssessments,
+} from "@/services/mentee.service";
+import { MenteeLearningHubClient } from "@/components/MenteeLearning/MenteeLearningHubClient";
 
 export const metadata = {
-  title: "Resource Library | CBCM Platform",
-  description: "Curated clinical guidelines, manuals, and instructional videos for midwife mentors and mentees.",
+  title: "Clinical Resources | CBCM Platform",
+  description:
+    "Curated clinical guidelines, manuals, preceptor sessions, and instructional videos for midwife mentors and mentees.",
 };
 
 export default async function ResourcesPage() {
@@ -44,6 +51,28 @@ export default async function ResourcesPage() {
     return <SuperAdminResourcesTableClient initialResources={adminResources} />;
   }
 
+  const isMentee =
+    normalizedRole.includes("mentee") ||
+    rawRole === "mentee" ||
+    !rawRole;
+
+  if (isMentee) {
+    const [resources, sessions, assessments] = await Promise.all([
+      getMenteeAssignedResources(),
+      getUpcomingSessions(),
+      getMenteeAssessments(),
+    ]);
+
+    return (
+      <MenteeLearningHubClient
+        initialResources={resources}
+        initialSessions={sessions}
+        initialAssessments={assessments}
+      />
+    );
+  }
+
+  // Fallback for mentors or other roles
   const learnerResources = await getLearnerResources();
   return <ResourceLibraryView resources={learnerResources} />;
 }
