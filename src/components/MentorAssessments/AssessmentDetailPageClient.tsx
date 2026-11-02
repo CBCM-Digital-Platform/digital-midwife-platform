@@ -29,6 +29,9 @@ import type {
 import {
     setAssessmentChecklistItems,
     setAssessmentCriteriaScores,
+    setAssessmentTheoryScore,
+    reviewAssessment,
+    finalizeAssessment,
     updateAssessmentStatus,
 } from "@/services/mentor-assessments.service";
 import { cn } from "@/lib/utils";
@@ -43,6 +46,11 @@ export function AssessmentDetailPageClient({
     const router = useRouter();
     const [assessment, setAssessment] = useState<MentorAssessment>(initialAssessment);
     const [feedbackText, setFeedbackText] = useState(assessment.feedback || "");
+    const [theoryScore, setTheoryScore] = useState<number>(
+        assessment.theoryScore !== undefined && assessment.theoryScore !== null
+            ? Number(assessment.theoryScore)
+            : 80
+    );
     const [criteriaScores, setCriteriaScores] = useState<AssessmentCriterionScore[]>(
         assessment.criteriaScores || [
             { criterion: "Aseptic Technique & Hand Hygiene", score: 85 },
@@ -88,6 +96,7 @@ export function AssessmentDetailPageClient({
         setSaveSuccess(null);
         try {
             await setAssessmentCriteriaScores(assessment.id, criteriaScores);
+            await setAssessmentTheoryScore(assessment.id, theoryScore);
             await setAssessmentChecklistItems(assessment.id, checklist);
             const updated = await updateAssessmentStatus(
                 assessment.id,
@@ -111,6 +120,27 @@ export function AssessmentDetailPageClient({
         setIsSaving(true);
         try {
             const finalScore = status === "PASS" ? Math.max(75, averageScore) : Math.min(68, averageScore);
+            // 1. Persist criteria scores, theory knowledge score, and checklist
+            await setAssessmentCriteriaScores(assessment.id, criteriaScores);
+            await setAssessmentTheoryScore(assessment.id, theoryScore);
+            await setAssessmentChecklistItems(assessment.id, checklist);
+
+            // 2. Finalize & Review official endpoints
+            if (status === "PASS") {
+                await finalizeAssessment(assessment.id);
+                await reviewAssessment(
+                    assessment.id,
+                    feedbackText || "Clinical assessment evaluated and passed by mentor preceptor.",
+                    finalScore
+                );
+            } else {
+                await reviewAssessment(
+                    assessment.id,
+                    feedbackText || "Assessment requires remediation and preceptor review.",
+                    finalScore
+                );
+            }
+
             const updated = await updateAssessmentStatus(
                 assessment.id,
                 status,
@@ -273,6 +303,41 @@ export function AssessmentDetailPageClient({
                         </div>
                     </div>
 
+                    {/* Theory Knowledge Score (POST /api/v1/assessments/:id/theory-score) */}
+                    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-xs">
+                        <div className="mb-3 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-base font-semibold text-gray-900">Theory & Protocol Knowledge</h2>
+                                <p className="text-xs text-gray-500">
+                                    Score for written examination, protocol recall, and clinical reasoning.
+                                </p>
+                            </div>
+                            <span className="rounded-md bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800">
+                                {theoryScore}%
+                            </span>
+                        </div>
+                        <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4">
+                            <div className="mb-2 flex items-center justify-between text-sm">
+                                <span className="font-medium text-gray-800">Knowledge Mastery</span>
+                                <span className="font-bold text-gray-900">{theoryScore}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                value={theoryScore}
+                                onChange={(e) => setTheoryScore(Number(e.target.value))}
+                                className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-[#194611]"
+                            />
+                            <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+                                <span>0 - Unsatisfactory</span>
+                                <span>50 - Developing</span>
+                                <span>75 - Competent</span>
+                                <span>100 - Mastered</span>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Procedural Checklist */}
                     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-xs">
                         <h2 className="mb-1 text-base font-semibold text-gray-900">Procedural Checklist</h2>
@@ -386,7 +451,7 @@ export function AssessmentDetailPageClient({
                                         </div>
                                         {ev.file_id && (
                                             <a
-                                                href={`https://cbcm-backend-1.onrender.com/api/v1/uploads/${ev.file_id}/content`}
+                                                href={`https://cbcm-backend-tntq.onrender.com/api/v1/uploads/${ev.file_id}/content`}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-900"

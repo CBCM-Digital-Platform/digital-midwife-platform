@@ -25,6 +25,7 @@ export const ENDPOINTS = {
     FINALIZE: (id: string | number) => `/api/v1/assessments/${id}/finalize`,
     REVIEW: (id: string | number) => `/api/v1/assessments/${id}/review`,
     CRITERIA_SCORES: (id: string | number) => `/api/v1/assessments/${id}/criteria-scores`,
+    THEORY_SCORE: (id: string | number) => `/api/v1/assessments/${id}/theory-score`,
     CHECKLIST_ITEMS: (id: string | number) => `/api/v1/assessments/${id}/checklist-items`,
     EVIDENCE: (id: string | number) => `/api/v1/assessments/${id}/evidence`,
   },
@@ -88,5 +89,16 @@ export const ENDPOINTS = {
     MATCHING: "/api/v1/assignments/matching",
     MENTOR_ASSIGNMENTS: (mentorId: string | number) => `/api/v1/assignments/mentors/${mentorId}/assignments`,
     MENTEE_ASSIGNMENTS: (menteeId: string | number) => `/api/v1/assignments/mentees/${menteeId}/assignments`,
+  },
+  LEARNING: {
+    BASE: "/api/v1/learning/modules",
+    DETAIL: (id: string | number) => `/api/v1/learning/modules/${id}`,
+    MENTOR_ACCESS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/mentor-access`,
+    MENTOR_ACCESS_REVOKE: (moduleId: string | number, mentorId: string | number) =>
+      `/api/v1/learning/modules/${moduleId}/mentor-access/${mentorId}`,
+    MENTEE_ACCESS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/access`,
+    MENTEE_ACCESS_REVOKE: (moduleId: string | number, menteeId: string | number) =>
+      `/api/v1/learning/modules/${moduleId}/access/${menteeId}`,
+    MY_MODULES: "/api/v1/learning/my/modules",
   },
 } as const;

@@ -8,6 +8,13 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createFacility, updateFacility } from "@/services/facilities.service";
 import type { Facility, FacilityStatus } from "@/types/facility";
 import { Building2, Check, Loader2, AlertCircle, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  validateEmail,
+  validatePhone,
+  validateName,
+  validateRequired,
+} from "@/lib/validators";
 
 const FACILITY_TYPES = [
   "Specialized Hospital",
@@ -52,15 +59,22 @@ export function FacilityFormDialog({
   const isEditing = Boolean(facility);
 
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [type, setType] = useState("");
+  const [typeError, setTypeError] = useState<string | null>(null);
   const [region, setRegion] = useState("");
+  const [regionError, setRegionError] = useState<string | null>(null);
   const [zone, setZone] = useState("");
   const [woreda, setWoreda] = useState("");
   const [contactPerson, setContactPerson] = useState("");
+  const [contactPersonError, setContactPersonError] = useState<string | null>(null);
   const [contactEmail, setContactEmail] = useState("");
+  const [contactEmailError, setContactEmailError] = useState<string | null>(null);
   const [contactPhone, setContactPhone] = useState("");
+  const [contactPhoneError, setContactPhoneError] = useState<string | null>(null);
   const [status, setStatus] = useState<FacilityStatus | "">("");
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,31 +104,66 @@ export function FacilityFormDialog({
       setContactPhone("");
       setStatus("");
     }
+    setNameError(null);
+    setTypeError(null);
+    setRegionError(null);
+    setContactPersonError(null);
+    setContactEmailError(null);
+    setContactPhoneError(null);
+    setStatusError(null);
     setError(null);
   }, [facility, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    const nameRes = validateName(name, "Facility Name", 2);
+    setNameError(nameRes.error || null);
+
+    const typeErr = !type ? "Please select a facility type." : null;
+    setTypeError(typeErr);
+
+    const regionErr = !region ? "Please select a region." : null;
+    setRegionError(regionErr);
+
+    const statusErr = !status ? "Please select an operational status." : null;
+    setStatusError(statusErr);
+
+    const emailRes = validateEmail(contactEmail, false);
+    setContactEmailError(emailRes.error || null);
+
+    const phoneRes = validatePhone(contactPhone, false);
+    setContactPhoneError(phoneRes.error || null);
+
+    const contactPersonRes = contactPerson.trim()
+      ? validateName(contactPerson, "Focal Person", 2, false)
+      : { valid: true };
+    setContactPersonError(contactPersonRes.error || null);
+
+    if (
+      !nameRes.valid ||
+      typeErr ||
+      regionErr ||
+      statusErr ||
+      !emailRes.valid ||
+      !phoneRes.valid ||
+      !contactPersonRes.valid
+    ) {
+      setError(
+        nameRes.error ||
+          typeErr ||
+          regionErr ||
+          statusErr ||
+          emailRes.error ||
+          phoneRes.error ||
+          contactPersonRes.error ||
+          "Please resolve the highlighted validation errors."
+      );
+      return;
+    }
+
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Facility Name is required.");
-      return;
-    }
-
-    if (!type) {
-      setError("Please select a facility type.");
-      return;
-    }
-
-    if (!region) {
-      setError("Please select a region.");
-      return;
-    }
-
-    if (!status) {
-      setError("Please select an operational status.");
-      return;
-    }
 
     // Check for duplicate facility name (case-insensitive)
     const duplicate = existingFacilities.find(
@@ -124,6 +173,7 @@ export function FacilityFormDialog({
     );
 
     if (duplicate) {
+      setNameError(`A facility named "${trimmedName}" already exists.`);
       setError(`A facility named "${trimmedName}" already exists. Please enter a unique name.`);
       return;
     }
@@ -157,7 +207,7 @@ export function FacilityFormDialog({
         contactPerson: contactPerson.trim() || undefined,
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
-        status,
+        status: status as FacilityStatus,
       };
 
       let result: Facility;
@@ -225,9 +275,19 @@ export function FacilityFormDialog({
               </Label>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameError) setNameError(null);
+                }}
                 required
+                className={cn(nameError && "border-red-500 focus-visible:ring-red-500")}
               />
+              {nameError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{nameError}</span>
+                </p>
+              )}
             </div>
             <div>
               <Label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -248,11 +308,21 @@ export function FacilityFormDialog({
               <SearchableSelect
                 options={FACILITY_TYPES}
                 value={type}
-                onChange={setType}
+                onChange={(val) => {
+                  setType(val);
+                  if (typeError) setTypeError(null);
+                }}
                 placeholder="Select facility type"
                 searchPlaceholder="Search type..."
                 size="sm"
+                error={typeError || undefined}
               />
+              {typeError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{typeError}</span>
+                </p>
+              )}
             </div>
 
             <div>
@@ -261,15 +331,27 @@ export function FacilityFormDialog({
               </Label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as FacilityStatus)}
+                onChange={(e) => {
+                  setStatus(e.target.value as FacilityStatus);
+                  if (statusError) setStatusError(null);
+                }}
                 required
-                className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
+                className={cn(
+                  "w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 cursor-pointer text-gray-700",
+                  statusError && "border-red-500 focus-visible:ring-red-500"
+                )}
               >
                 <option value="">Select operational status...</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="pending">Pending Onboarding</option>
               </select>
+              {statusError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{statusError}</span>
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -288,11 +370,21 @@ export function FacilityFormDialog({
               <SearchableSelect
                 options={ETHIOPIA_REGIONS}
                 value={region}
-                onChange={setRegion}
+                onChange={(val) => {
+                  setRegion(val);
+                  if (regionError) setRegionError(null);
+                }}
                 placeholder="Select region"
                 searchPlaceholder="Search region..."
                 size="sm"
+                error={regionError || undefined}
               />
+              {regionError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{regionError}</span>
+                </p>
+              )}
             </div>
             <div>
               <Label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -328,8 +420,19 @@ export function FacilityFormDialog({
               </Label>
               <Input
                 value={contactPerson}
-                onChange={(e) => setContactPerson(e.target.value)}
+                onChange={(e) => {
+                  setContactPerson(e.target.value);
+                  if (contactPersonError) setContactPersonError(null);
+                }}
+                placeholder="e.g. Dr. Abebe"
+                className={cn(contactPersonError && "border-red-500 focus-visible:ring-red-500")}
               />
+              {contactPersonError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{contactPersonError}</span>
+                </p>
+              )}
             </div>
             <div>
               <Label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -337,9 +440,20 @@ export function FacilityFormDialog({
               </Label>
               <Input
                 value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
+                onChange={(e) => {
+                  setContactEmail(e.target.value);
+                  if (contactEmailError) setContactEmailError(null);
+                }}
                 type="email"
+                placeholder="contact@facility.org"
+                className={cn(contactEmailError && "border-red-500 focus-visible:ring-red-500")}
               />
+              {contactEmailError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{contactEmailError}</span>
+                </p>
+              )}
             </div>
             <div>
               <Label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -347,9 +461,20 @@ export function FacilityFormDialog({
               </Label>
               <Input
                 value={contactPhone}
-                onChange={(e) => setContactPhone(e.target.value)}
+                onChange={(e) => {
+                  setContactPhone(e.target.value);
+                  if (contactPhoneError) setContactPhoneError(null);
+                }}
                 type="tel"
+                placeholder="+251... or 09..."
+                className={cn(contactPhoneError && "border-red-500 focus-visible:ring-red-500")}
               />
+              {contactPhoneError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <span>{contactPhoneError}</span>
+                </p>
+              )}
             </div>
           </div>
         </div>

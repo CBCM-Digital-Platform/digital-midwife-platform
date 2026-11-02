@@ -105,7 +105,8 @@ export function AssignResourceDialog({
         resource.id,
         [selectedMentorId],
         undefined,
-        instructions?.trim() || undefined
+        instructions?.trim() || undefined,
+        resource.isLearningModule
       );
 
       const successText = `"${resource?.title || "Clinical Resource"}" was successfully assigned to ${mentorName}.`;

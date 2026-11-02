@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validateUrl } from "@/lib/validators";
 
 export const resourceTypeOptions = [
   { value: "document", label: "Document (PDF, Manual, Guideline)" },
@@ -31,27 +32,22 @@ export const resourceFormSchema = z
   .superRefine((data, ctx) => {
     // If resource type is "link", a valid URL or web reference is required
     if (data.type === "link") {
-      if (!data.url || data.url.trim().length === 0) {
+      const urlResult = validateUrl(data.url, true);
+      if (!urlResult.valid) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["url"],
-          message: "A destination URL is required for Link resources.",
+          message: urlResult.error || "Please enter a valid web URL (e.g. https://who.int/guideline).",
         });
-      } else {
-        const trimmed = data.url.trim();
-        // Allow http://, https://, or standard url format
-        const isValidUrl =
-          trimmed.startsWith("http://") ||
-          trimmed.startsWith("https://") ||
-          trimmed.startsWith("/") ||
-          trimmed.includes(".");
-        if (!isValidUrl) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["url"],
-            message: "Please enter a valid web URL (e.g. https://who.int/...)",
-          });
-        }
+      }
+    } else if (data.url && data.url.trim().length > 0) {
+      const urlResult = validateUrl(data.url, false);
+      if (!urlResult.valid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url"],
+          message: urlResult.error || "Please enter a valid web URL.",
+        });
       }
     }
   });

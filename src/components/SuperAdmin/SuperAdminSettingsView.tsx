@@ -21,6 +21,12 @@ import {
   Calendar,
 } from "lucide-react";
 import { formatWelcomeName } from "@/lib/utils";
+import {
+  validateEmail,
+  validatePhone,
+  validateName,
+  validatePassword,
+} from "@/lib/validators";
 import type { ProfileData } from "@/types/settings";
 import { updateProfile, changePassword } from "@/services/settings-data.service";
 
@@ -77,17 +83,34 @@ export function SuperAdminSettingsView({
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setToastMessage(null);
+
+    const nameRes = validateName(fullName, "Full name", 3);
+    if (!nameRes.valid) {
+      setToastMessage({ type: "error", text: nameRes.error || "Please enter a valid full name." });
+      return;
+    }
+    const emailRes = validateEmail(email, true);
+    if (!emailRes.valid) {
+      setToastMessage({ type: "error", text: emailRes.error || "Please enter a valid email address." });
+      return;
+    }
+    const phoneRes = validatePhone(phone, true);
+    if (!phoneRes.valid) {
+      setToastMessage({ type: "error", text: phoneRes.error || "Please enter a valid phone number." });
+      return;
+    }
+
+    setIsSaving(true);
 
     try {
       await updateProfile({
-        fullName,
-        phone,
-        position: designation,
-        email,
-        facilityName: organization,
-        region: officeLocation,
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        position: designation.trim(),
+        email: email.trim().toLowerCase(),
+        facilityName: organization.trim(),
+        region: officeLocation.trim(),
       });
       setIsSaving(false);
       setToastMessage({
@@ -121,8 +144,9 @@ export function SuperAdminSettingsView({
       setToastMessage({ type: "error", text: "Please enter your current password." });
       return;
     }
-    if (newPassword.length < 8) {
-      setToastMessage({ type: "error", text: "New password must be at least 8 characters long." });
+    const passRes = validatePassword(newPassword, { minLength: 8, requireLetter: true, requireNumber: true });
+    if (!passRes.valid) {
+      setToastMessage({ type: "error", text: passRes.error || "New password must be at least 8 characters long." });
       return;
     }
     if (newPassword !== confirmPassword) {

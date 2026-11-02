@@ -5,6 +5,13 @@ import { ModalWrapper } from "@/components/common/ModalWrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import {
+  validateEmail,
+  validatePhone,
+  validateName,
+  validatePassword,
+} from "@/lib/validators";
 import { createFacilityAdmin } from "@/services/facility-admins.service";
 import type { FacilityAdmin } from "@/types/facility-admin";
 import type { Facility } from "@/types/facility";
@@ -25,6 +32,8 @@ interface FacilityAdminFormDialogProps {
   facilities: Facility[];
   onSuccess: (admin: FacilityAdmin) => void;
 }
+
+export const validateEmailAddress = (val: string) => validateEmail(val, true);
 
 /**
  * Generates a secure random temporary password (12 characters, mixed case, numbers, symbol).
@@ -60,13 +69,20 @@ export function FacilityAdminFormDialog({
   onSuccess,
 }: FacilityAdminFormDialogProps) {
   const [firstName, setFirstName] = useState("");
+  const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastName, setLastName] = useState("");
+  const [lastNameError, setLastNameError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailTouched, setEmailTouched] = useState(false);
   const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [facilityId, setFacilityId] = useState<string>("");
+  const [facilityError, setFacilityError] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [qualification, setQualification] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,13 +90,20 @@ export function FacilityAdminFormDialog({
 
   const resetForm = () => {
     setFirstName("");
+    setFirstNameError(null);
     setLastName("");
+    setLastNameError(null);
     setEmail("");
+    setEmailError(null);
+    setEmailTouched(false);
     setPassword(generateSecurePassword());
+    setPasswordError(null);
     setShowPassword(false);
     setCopiedPassword(false);
     setFacilityId("");
+    setFacilityError(null);
     setPhone("");
+    setPhoneError(null);
     setQualification("");
     setErrorMessage(null);
   };
@@ -118,42 +141,98 @@ export function FacilityAdminFormDialog({
     }
   };
 
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setEmail(val);
+    if (emailTouched) {
+      const result = validateEmailAddress(val);
+      setEmailError(result.error || null);
+    }
+  };
+
+  const handleEmailBlur = () => {
+    setEmailTouched(true);
+    const result = validateEmailAddress(email);
+    setEmailError(result.error || null);
+  };
+
+  const handleFirstNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFirstName(val);
+    if (firstNameError) {
+      const res = validateName(val, "First name", 2);
+      setFirstNameError(res.error || null);
+    }
+  };
+
+  const handleLastNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLastName(val);
+    if (lastNameError) {
+      const res = validateName(val, "Last name", 2);
+      setLastNameError(res.error || null);
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setPhone(val);
+    if (phoneError) {
+      const res = validatePhone(val, false);
+      setPhoneError(res.error || null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    const trimmedFirst = firstName.trim();
-    const trimmedLast = lastName.trim();
+    const firstRes = validateName(firstName, "First name", 2);
+    setFirstNameError(firstRes.error || null);
 
-    // Validation
-    if (!trimmedFirst) {
-      setErrorMessage("First name is required.");
-      return;
-    }
-    if (!trimmedLast) {
-      setErrorMessage("Last name is required.");
-      return;
-    }
-    if (!email.trim() || !email.includes("@")) {
-      setErrorMessage("A valid email address is required.");
-      return;
-    }
-    if (!facilityId) {
-      setErrorMessage("Please select an accredited facility to assign.");
-      return;
-    }
-    if (!password.trim() || password.length < 8) {
-      setErrorMessage("Password must be at least 8 characters long.");
+    const lastRes = validateName(lastName, "Last name", 2);
+    setLastNameError(lastRes.error || null);
+
+    const emailValidation = validateEmailAddress(email);
+    setEmailTouched(true);
+    setEmailError(emailValidation.error || null);
+
+    const phoneRes = validatePhone(phone, false);
+    setPhoneError(phoneRes.error || null);
+
+    const facError = !facilityId ? "Please select an accredited facility to assign." : null;
+    setFacilityError(facError);
+
+    const passRes = validatePassword(password, { minLength: 8 });
+    setPasswordError(passRes.error || null);
+
+    // Fail if any validation error
+    if (
+      !firstRes.valid ||
+      !lastRes.valid ||
+      !emailValidation.valid ||
+      !phoneRes.valid ||
+      facError ||
+      !passRes.valid
+    ) {
+      const firstError =
+        firstRes.error ||
+        lastRes.error ||
+        emailValidation.error ||
+        phoneRes.error ||
+        facError ||
+        passRes.error;
+      setErrorMessage(firstError || "Please correct all highlighted fields.");
       return;
     }
 
     try {
       setIsSubmitting(true);
-      const fullName = `${trimmedFirst} ${trimmedLast}`;
+      const fullName = `${firstName.trim()} ${lastName.trim()}`;
       const created = await createFacilityAdmin({
         name: fullName,
-        firstName: trimmedFirst,
-        lastName: trimmedLast,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         email: email.trim().toLowerCase(),
         password: password.trim(),
         facilityId: Number(facilityId),
@@ -198,11 +277,18 @@ export function FacilityAdminFormDialog({
             <Input
               id="admin-first-name"
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              onChange={handleFirstNameChange}
               required
               autoComplete="off"
-              className="h-9 text-sm"
+              className={cn("h-9 text-sm", firstNameError && "border-red-500 focus-visible:ring-red-500")}
+              aria-invalid={!!firstNameError}
             />
+            {firstNameError && (
+              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{firstNameError}</span>
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -212,11 +298,18 @@ export function FacilityAdminFormDialog({
             <Input
               id="admin-last-name"
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              onChange={handleLastNameChange}
               required
               autoComplete="off"
-              className="h-9 text-sm"
+              className={cn("h-9 text-sm", lastNameError && "border-red-500 focus-visible:ring-red-500")}
+              aria-invalid={!!lastNameError}
             />
+            {lastNameError && (
+              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{lastNameError}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -230,11 +323,27 @@ export function FacilityAdminFormDialog({
               id="admin-email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
+              onBlur={handleEmailBlur}
               required
               autoComplete="off"
-              className="h-9 text-sm"
+              placeholder="admin@facility.org"
+              className={cn(
+                "h-9 text-sm",
+                emailError && "border-red-500 focus-visible:ring-red-500"
+              )}
+              aria-invalid={!!emailError}
+              aria-describedby={emailError ? "admin-email-error" : undefined}
             />
+            {emailError && (
+              <p
+                id="admin-email-error"
+                className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1"
+              >
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{emailError}</span>
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -245,10 +354,18 @@ export function FacilityAdminFormDialog({
               id="admin-phone"
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={handlePhoneChange}
               autoComplete="off"
-              className="h-9 text-sm"
+              placeholder="e.g. +251911234567 or 0911234567"
+              className={cn("h-9 text-sm", phoneError && "border-red-500 focus-visible:ring-red-500")}
+              aria-invalid={!!phoneError}
             />
+            {phoneError && (
+              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{phoneError}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -260,9 +377,15 @@ export function FacilityAdminFormDialog({
           <select
             id="admin-facility"
             value={facilityId}
-            onChange={(e) => setFacilityId(e.target.value)}
+            onChange={(e) => {
+              setFacilityId(e.target.value);
+              if (facilityError) setFacilityError(null);
+            }}
             required
-            className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer"
+            className={cn(
+              "w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer",
+              facilityError && "border-red-500 focus:ring-red-500"
+            )}
           >
             <option value="">Select a healthcare facility...</option>
             {facilities.map((f) => (
@@ -271,6 +394,12 @@ export function FacilityAdminFormDialog({
               </option>
             ))}
           </select>
+          {facilityError && (
+            <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+              <span>{facilityError}</span>
+            </p>
+          )}
         </div>
 
         {/* Professional Qualification */}
@@ -302,10 +431,17 @@ export function FacilityAdminFormDialog({
                 id="admin-password"
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError(null);
+                }}
                 required
                 autoComplete="new-password"
-                className="h-9 font-mono text-xs font-medium text-gray-800 pr-9 bg-gray-50/50"
+                className={cn(
+                  "h-9 font-mono text-xs font-medium text-gray-800 pr-9 bg-gray-50/50",
+                  passwordError && "border-red-500 focus-visible:ring-red-500"
+                )}
+                aria-invalid={!!passwordError}
               />
               <button
                 type="button"
@@ -339,6 +475,13 @@ export function FacilityAdminFormDialog({
               )}
             </button>
           </div>
+
+          {passwordError && (
+            <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+              <span>{passwordError}</span>
+            </p>
+          )}
 
           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1">
             <p className="flex items-center gap-1">

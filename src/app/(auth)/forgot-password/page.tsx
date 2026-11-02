@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { validateEmail } from "@/lib/validators";
 import { requestPasswordReset } from "@/services/auth.service";
 
 export default function ForgotPasswordPage() {
@@ -25,6 +26,13 @@ export default function ForgotPasswordPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const emailRes = validateEmail(email, true);
+    if (!emailRes.valid) {
+      setError(emailRes.error || "Please enter a valid email address.");
+      return;
+    }
+
     setLoading(true);
 
     try {

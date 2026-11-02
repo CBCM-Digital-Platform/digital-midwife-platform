@@ -8,7 +8,7 @@ import type { MentorAssessment } from "@/types/mentor-assessment";
 import { AssessmentsTable, type SortKey, type SortState } from "./AssessmentsTable";
 import { AssessmentsPagination } from "./AssessmentsPagination";
 import { AssessmentDetailDialog } from "./AssessmentDetailDialog";
-import { getStoredAssessments } from "@/services/mentor-assessments.service";
+import { getAssessments, getStoredAssessments } from "@/services/mentor-assessments.service";
 
 type Tab = "ALL" | "PENDING" | "COMPLETED";
 
@@ -25,8 +25,15 @@ export function AssessmentsView({ assessments: initialAssessments }: { assessmen
     const [selectedAssessment, setSelectedAssessment] = useState<MentorAssessment | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    // Sync client-side stored assessments
+    // Sync client-side stored assessments & live backend query
     useEffect(() => {
+        let isMounted = true;
+        getAssessments().then((fresh) => {
+            if (isMounted && fresh && fresh.length > 0) {
+                setAssessments(fresh);
+            }
+        }).catch(() => null);
+
         const syncStored = () => {
             const stored = getStoredAssessments();
             if (!stored || stored.length === 0) return;
@@ -42,6 +49,7 @@ export function AssessmentsView({ assessments: initialAssessments }: { assessmen
 
         window.addEventListener("cbcm-assessments-updated", syncStored);
         return () => {
+            isMounted = false;
             window.removeEventListener("cbcm-assessments-updated", syncStored);
         };
     }, []);

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowUpDown, ChevronDown, Clock, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MentorAssessment } from "@/types/mentor-assessment";
@@ -114,25 +115,24 @@ export function AssessmentsTable({
                                 </td>
                                 <td className="px-4 py-4 text-gray-800">{formatSessionDate(a.date)}</td>
                                 <td className="px-4 py-4 text-gray-800">
-                                    <button
-                                        type="button"
-                                        onClick={() => onSelectAssessment && onSelectAssessment(a)}
-                                        className="text-left font-medium hover:text-[#194611] hover:underline"
+                                    <Link
+                                        href={`/my-assessments/${a.id}`}
+                                        className="text-left font-medium text-gray-900 hover:text-[#194611] hover:underline block"
                                     >
                                         {a.type}
-                                    </button>
+                                    </Link>
                                 </td>
                                 <td className="px-4 py-4">
                                     <StatusBadge a={a} />
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button
-                                        type="button"
-                                        onClick={() => onSelectAssessment && onSelectAssessment(a)}
-                                        className="text-xs font-semibold text-[#194611] hover:underline cursor-pointer"
+                                    <Link
+                                        href={`/my-assessments/${a.id}`}
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-[#194611] hover:underline"
                                     >
-                                        View
-                                    </button>
+                                        <span>Evaluate</span>
+                                        <span>→</span>
+                                    </Link>
                                 </td>
                             </tr>
                         ))

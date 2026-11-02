@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, HelpCircle } from "lucide-react";
 import { signIn } from "next-auth/react";
+import { validateEmail } from "@/lib/validators";
 
 function LoginForm() {
   const router = useRouter();
@@ -35,6 +36,17 @@ function LoginForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const emailRes = validateEmail(email, true);
+    if (!emailRes.valid) {
+      setError(emailRes.error || "Please enter a valid email address.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
     setLoading(true);
 
     try {

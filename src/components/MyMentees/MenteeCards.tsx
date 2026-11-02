@@ -112,7 +112,7 @@ export function MenteeCards({ mentees, onSelectAssessment, highlightMenteeId }: 
                                     <div className="mt-1.5 flex items-center justify-between rounded-lg border border-dashed border-gray-200 p-2.5 text-xs text-gray-500">
                                         <span>No active task</span>
                                         <Link
-                                            href={`/my-assessments/new?menteeId=${m.id}`}
+                                            href={`/my-assessments?menteeId=${m.id}`}
                                             className="font-semibold text-[#194611] hover:underline flex items-center gap-0.5"
                                         >
                                             <Plus className="h-3 w-3" />
@@ -136,17 +136,16 @@ export function MenteeCards({ mentees, onSelectAssessment, highlightMenteeId }: 
 
                             <div className="flex items-center gap-2">
                                 {assigned && onSelectAssessment && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onSelectAssessment(assigned, m)}
-                                        className="text-xs font-semibold text-gray-600 hover:text-[#194611] transition"
+                                    <Link
+                                        href={`/my-assessments/${assigned.id}`}
+                                        className="text-xs font-semibold text-[#194611] hover:underline transition"
                                     >
-                                        Details
-                                    </button>
+                                        Evaluate
+                                    </Link>
                                 )}
 
                                 <Link
-                                    href={`/my-assessments/new?menteeId=${m.id}`}
+                                    href={`/my-assessments?menteeId=${m.id}`}
                                     className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-[#194611] hover:bg-[#14380e] text-white text-xs font-semibold transition shadow-2xs"
                                 >
                                     {assigned ? "Assess Again" : "Assess"}

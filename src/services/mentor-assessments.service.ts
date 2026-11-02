@@ -110,6 +110,13 @@ export function normalizeAssessment(raw: any): MentorAssessment {
     const dueDate = raw.due_date || raw.dueDate || date;
     const status = mapBackendStatus(raw.status);
 
+    const theoryScore =
+        raw.theory_score !== undefined && raw.theory_score !== null
+            ? Number(raw.theory_score)
+            : raw.theoryScore !== undefined && raw.theoryScore !== null
+            ? Number(raw.theoryScore)
+            : null;
+
     const scorePct =
         raw.aggregate_score !== undefined && raw.aggregate_score !== null
             ? Number(raw.aggregate_score)
@@ -125,11 +132,7 @@ export function normalizeAssessment(raw: any): MentorAssessment {
           }))
         : Array.isArray(raw.criteriaScores)
         ? raw.criteriaScores
-        : [
-              { criterion: "Aseptic Technique & Hand Hygiene", score: scorePct ? Math.min(100, scorePct + 5) : 85 },
-              { criterion: "Clinical Patient Communication", score: scorePct ? scorePct : 80 },
-              { criterion: "Procedural Adherence & Safety", score: scorePct ? Math.max(50, scorePct - 4) : 75 },
-          ];
+        : [];
 
     const checklistItems: AssessmentChecklistItem[] = Array.isArray(raw.checklist_items)
         ? raw.checklist_items.map((i: any) => ({
@@ -139,11 +142,7 @@ export function normalizeAssessment(raw: any): MentorAssessment {
           }))
         : Array.isArray(raw.checklistItems)
         ? raw.checklistItems
-        : [
-              { item: "Pre-procedure patient explanation and consent", checked: true },
-              { item: "Emergency supplies and medication tray prepared", checked: true },
-              { item: "Immediate postpartum vitals and monitoring documented", checked: status === "PASS" },
-          ];
+        : [];
 
     const evidence: AssessmentEvidence[] = Array.isArray(raw.evidence)
         ? raw.evidence.map((e: any) => ({
@@ -166,10 +165,8 @@ export function normalizeAssessment(raw: any): MentorAssessment {
         type,
         status,
         scorePct,
-        instructions:
-            raw.instructions ||
-            raw.feedback ||
-            "Review procedural checklist, emergency equipment setup, and patient triage protocols.",
+        theoryScore,
+        instructions: raw.instructions || raw.feedback || "",
         referenceLink: raw.reference_link || raw.referenceLink || "",
         feedback: raw.feedback || "",
         attachmentNames: raw.attachmentNames || (evidence.length > 0 ? evidence.map((e) => e.title) : []),
@@ -203,115 +200,17 @@ export async function getAssessments(): Promise<MentorAssessment[]> {
         if (rawList.length > 0) {
             const liveAssessments = rawList.map(normalizeAssessment);
             const liveIds = new Set(liveAssessments.map((a: MentorAssessment) => a.id));
-            // Include client-stored additions that haven't synced yet
             const unSyncedStored = stored.filter((s) => !liveIds.has(s.id));
             return [...unSyncedStored, ...liveAssessments];
-
         }
     } catch (err) {
-        console.warn("Could not fetch assessments from backend API (using local/seed data):", err);
+        console.warn("Could not fetch assessments from backend API:", err);
     }
 
-    // Seed list fallback
-    const mentees = await getMyMentees();
-    if (mentees.length === 0) return stored;
-
-    const make = (
-        id: string,
-        mentee: MyMentee,
-        date: string,
-        type: string,
-        status: AssessmentStatus,
-        scorePct: number | null,
-        instructions?: string,
-        dueDate?: string
-    ): MentorAssessment => ({
-        id,
-        menteeId: mentee.id,
-        menteeName: mentee.name,
-        menteeTitle: mentee.title,
-        date,
-        dueDate: dueDate || date,
-        type,
-        status,
-        scorePct,
-        instructions: instructions || "Review procedural checklist and clinical case scenarios with mentor.",
-        criteriaScores: [
-            { criterion: "Aseptic Technique & Hand Hygiene", score: scorePct ? Math.min(100, scorePct + 4) : 85 },
-            { criterion: "Clinical Patient Communication", score: scorePct ? scorePct : 80 },
-            { criterion: "Procedural Adherence & Safety", score: scorePct ? Math.max(50, scorePct - 5) : 75 },
-        ],
-        checklistItems: [
-            { item: "Pre-procedure patient explanation and consent", checked: true },
-            { item: "Emergency supplies and oxytocin refrigeration check", checked: true },
-            { item: "Immediate postpartum vitals and monitoring documented", checked: status === "PASS" },
-        ],
-    });
-
-    const firstThree = [
-        {
-            type: "Labor & Delivery Competency",
-            status: "PASS" as const,
-            score: 92,
-            date: "2023-10-24",
-            instructions: "Conduct normal spontaneous vaginal delivery with active management of 3rd stage.",
-        },
-        {
-            type: "Postpartum Care Setup",
-            status: "PENDING" as const,
-            score: null,
-            date: "2023-11-02",
-            instructions: "Set up delivery room emergency tray, oxytocin refrigeration check, and postpartum triage.",
-        },
-        {
-            type: "Fetal Monitoring Basics",
-            status: "NEEDS_REVIEW" as const,
-            score: 68,
-            date: "2023-09-15",
-            instructions: "Interpret 3 consecutive CTG / Pinard fetal heart sound traces for deceleration signs.",
-        },
-    ] as const;
-
-    const head = firstThree
-        .slice(0, mentees.length)
-        .map((row, i) =>
-            make(
-                `a${i + 1}`,
-                mentees[i],
-                row.date,
-                row.type,
-                row.status,
-                row.score,
-                row.instructions,
-                row.date
-            )
-        );
-
-    const extra = Array.from({ length: 21 }, (_, i) => {
-        const mentee = mentees[(i + 3) % mentees.length];
-        const status: AssessmentStatus =
-            i === 7 || i === 15 ? "PENDING" : i % 6 === 2 ? "NEEDS_REVIEW" : "PASS";
-        const score =
-            status === "PENDING" ? null : status === "PASS" ? 70 + ((i * 7) % 29) : 52 + ((i * 5) % 17);
-        const date = new Date(Date.UTC(2023, 9, 1 + ((i * 3) % 28))).toISOString().slice(0, 10);
-        return make(
-            `a${i + 4}`,
-            mentee,
-            date,
-            ASSESSMENT_TYPES[i % ASSESSMENT_TYPES.length],
-            status,
-            score
-        );
-    });
-
-    const defaultList = [...head, ...extra];
-    const storedIds = new Set(stored.map((s) => s.id));
-    return [...stored, ...defaultList.filter((d) => !storedIds.has(d.id))];
+    // Only return assessments explicitly stored in session (e.g. newly created by mentor)
+    return stored;
 }
 
-/**
- * Retrieves a single assessment by ID from the backend API.
- */
 export async function getAssessmentById(id: string | number): Promise<MentorAssessment | null> {
     try {
         const res = await apiClient.get<any>(ENDPOINTS.ASSESSMENTS.DETAIL(id));
@@ -325,7 +224,13 @@ export async function getAssessmentById(id: string | number): Promise<MentorAsse
 
     // Check stored and fallback list
     const all = await getAssessments();
-    return all.find((a) => String(a.id) === String(id)) || null;
+    const found = all.find((a) => String(a.id) === String(id));
+    if (found) return found;
+
+    const byMentee = all.find((a) => String(a.menteeId) === String(id));
+    if (byMentee) return byMentee;
+
+    return null;
 }
 
 /**
@@ -486,21 +391,27 @@ export async function updateAssessmentStatus(
             }
 
             if (status === "PASS") {
-                // Finalize assessment
-                await apiClient.post(ENDPOINTS.ASSESSMENTS.FINALIZE(numId)).catch(async () => {
-                    // If already finalized, review
-                    await apiClient.post(ENDPOINTS.ASSESSMENTS.REVIEW(numId), {
-                        feedback: feedback || "Clinical assessment evaluated and passed by mentor preceptor.",
-                        aggregate_score: scorePct ?? 90,
-                    }).catch(() => null);
+                // 1. Finalize assessment
+                await apiClient.post(ENDPOINTS.ASSESSMENTS.FINALIZE(numId)).catch(() => null);
+                // 2. Submit official review
+                await apiClient.post(ENDPOINTS.ASSESSMENTS.REVIEW(numId), {
+                    feedback: feedback || "Clinical assessment evaluated and passed by mentor preceptor.",
+                    aggregate_score: scorePct ?? 90,
+                }).catch(() => null);
+            } else if (status === "NEEDS_REVIEW") {
+                await apiClient.post(ENDPOINTS.ASSESSMENTS.REVIEW(numId), {
+                    feedback: feedback || "Assessment requires remediation and preceptor review.",
+                    aggregate_score: scorePct ?? 65,
+                }).catch(async () => {
+                    if (feedback) {
+                        await apiClient.patch(ENDPOINTS.ASSESSMENTS.DETAIL(numId), { feedback }).catch(() => null);
+                    }
                 });
             } else if (feedback) {
-                await apiClient.patch(ENDPOINTS.ASSESSMENTS.DETAIL(numId), {
-                    feedback,
-                }).catch(() => null);
+                await apiClient.patch(ENDPOINTS.ASSESSMENTS.DETAIL(numId), { feedback }).catch(() => null);
             }
         } catch (e) {
-            console.warn(`Failed to update assessment ${assessmentId} on backend:`, e);
+            console.warn('Failed to update assessment ' + assessmentId + ' on backend:', e);
         }
     }
 
@@ -572,6 +483,118 @@ export async function setAssessmentChecklistItems(
             return true;
         } catch (err) {
             console.warn("Failed to set checklist items on backend:", err);
+        }
+    }
+    return true;
+}
+
+
+/**
+ * Sets theory score on an assessment (POST /api/v1/assessments/:id/theory-score).
+ */
+export async function setAssessmentTheoryScore(
+    assessmentId: string | number,
+    theoryScore: number
+): Promise<boolean> {
+    const numId = Number(assessmentId);
+    if (!isNaN(numId) && numId > 0) {
+        try {
+            await apiClient.post(ENDPOINTS.ASSESSMENTS.THEORY_SCORE(numId), {
+                theory_score: Math.max(0, Math.min(100, Number(theoryScore))),
+            });
+            return true;
+        } catch (err) {
+            console.warn("Failed to set theory score on backend:", err);
+        }
+    }
+    return true;
+}
+
+/**
+ * Adds evidence file to an assessment (POST /api/v1/assessments/:id/evidence).
+ */
+export async function addAssessmentEvidence(
+    assessmentId: string | number,
+    title: string,
+    fileId: number
+): Promise<AssessmentEvidence | null> {
+    const numId = Number(assessmentId);
+    if (!isNaN(numId) && numId > 0) {
+        try {
+            const res = await apiClient.post<any>(ENDPOINTS.ASSESSMENTS.EVIDENCE(numId), {
+                title,
+                file_id: Number(fileId),
+            });
+            const data = res?.data ?? res;
+            return {
+                id: data.id,
+                title: data.title || title,
+                file_id: data.file_id || fileId,
+                fileId: data.file_id || fileId,
+                url: data.url,
+                created_at: data.created_at || new Date().toISOString(),
+            };
+        } catch (err) {
+            console.warn("Failed to add evidence to assessment on backend:", err);
+        }
+    }
+    return null;
+}
+
+/**
+ * Reviews an assessment (POST /api/v1/assessments/:id/review).
+ */
+export async function reviewAssessment(
+    assessmentId: string | number,
+    feedback: string,
+    aggregateScore?: number
+): Promise<boolean> {
+    const numId = Number(assessmentId);
+    if (!isNaN(numId) && numId > 0) {
+        try {
+            const body: { feedback: string; aggregate_score?: number } = { feedback };
+            if (aggregateScore !== undefined && aggregateScore !== null) {
+                body.aggregate_score = Number(aggregateScore);
+            }
+            await apiClient.post(ENDPOINTS.ASSESSMENTS.REVIEW(numId), body);
+            return true;
+        } catch (err) {
+            console.warn("Failed to review assessment on backend:", err);
+        }
+    }
+    return true;
+}
+
+/**
+ * Finalizes an assessment (POST /api/v1/assessments/:id/finalize).
+ */
+export async function finalizeAssessment(assessmentId: string | number): Promise<boolean> {
+    const numId = Number(assessmentId);
+    if (!isNaN(numId) && numId > 0) {
+        try {
+            await apiClient.post(ENDPOINTS.ASSESSMENTS.FINALIZE(numId));
+            return true;
+        } catch (err) {
+            console.warn("Failed to finalize assessment on backend:", err);
+        }
+    }
+    return true;
+}
+
+/**
+ * Partially updates an assessment (PATCH /api/v1/assessments/:id).
+ */
+export async function patchAssessment(
+    assessmentId: string | number,
+    data: { feedback?: string; prerequisites_met?: boolean }
+): Promise<boolean> {
+    const numId = Number(assessmentId);
+    if (!isNaN(numId) && numId > 0) {
+        try {
+            await apiClient.patch(ENDPOINTS.ASSESSMENTS.DETAIL(numId), data);
+            return true;
+        } catch (err) {
+            console.warn("Failed to patch assessment on backend:", err);
         }
     }
     return true;

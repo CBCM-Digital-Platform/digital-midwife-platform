@@ -37,6 +37,7 @@ export interface MentorAssessment {
     type: string;
     status: AssessmentStatus;
     scorePct: number | null;
+    theoryScore?: number | null;
     dueDate?: string;
     instructions?: string;
     referenceLink?: string;

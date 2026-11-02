@@ -33,6 +33,8 @@ export interface AdminResource {
   fileSizeMb?: number;
   thematicAreaId?: number | string;
   thematicAreaName?: string;
+  moduleId?: number | string;
+  isLearningModule?: boolean;
   createdAt: string;
   updatedAt: string;
 }

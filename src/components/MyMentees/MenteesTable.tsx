@@ -116,7 +116,7 @@ export function MenteesTable({ mentees, onSelectAssessment, highlightMenteeId }:
                                             <div className="flex items-center gap-2 text-xs text-gray-500">
                                                 <span>None active</span>
                                                 <Link
-                                                    href={`/my-assessments/new?menteeId=${m.id}`}
+                                                    href={`/my-assessments?menteeId=${m.id}`}
                                                     className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-[#194611] hover:underline"
                                                 >
                                                     <Plus className="h-3 w-3" />
@@ -156,7 +156,7 @@ export function MenteesTable({ mentees, onSelectAssessment, highlightMenteeId }:
                                             )}
 
                                             <Link
-                                                href={`/my-assessments/new?menteeId=${m.id}`}
+                                                href={`/my-assessments?menteeId=${m.id}`}
                                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#194611] hover:bg-[#14380e] text-white text-xs font-semibold transition shadow-2xs"
                                             >
                                                 <span>{assigned ? "Assess Again" : "Assess"}</span>
