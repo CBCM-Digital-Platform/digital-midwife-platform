@@ -587,8 +587,8 @@ export function ModuleDetailClient({
             </span>
           </TabsTrigger>
 
-          {/* RBAC: Hide Mentor Access tab entirely for Super Admin; Conditionally render ONLY for Facility Admin */}
-          {isFacilityAdmin && (
+          {/* Mentor Access Tab: Available to Facility Admin and Super Admin for preceptor authorization */}
+          {(isFacilityAdmin || isSuperAdmin) && (
             <TabsTrigger value="mentor-access" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Mentor Access</span>
@@ -941,8 +941,8 @@ export function ModuleDetailClient({
           </div>
         </TabsContent>
 
-        {/* 3. MENTOR ACCESS TAB: Strictly Conditionally Rendered ONLY for Facility Admin */}
-        {isFacilityAdmin && (
+        {/* 3. MENTOR ACCESS TAB: Available to Facility Admin and Super Admin */}
+        {(isFacilityAdmin || isSuperAdmin) && (
           <TabsContent value="mentor-access" className="space-y-6">
             <MentorAccessTab
               moduleId={currentModule.id}

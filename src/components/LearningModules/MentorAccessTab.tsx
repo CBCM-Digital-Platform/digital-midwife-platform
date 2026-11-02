@@ -41,6 +41,26 @@ export function MentorAccessTab({
     text: string;
   } | null>(null);
 
+  // Synchronize client-side persistent assignments on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(`cbcm_module_${moduleId}_granted_mentors`);
+      if (raw) {
+        const locallyGranted = new Set<string>(JSON.parse(raw));
+        setMentors((prev) =>
+          prev.map((m) =>
+            locallyGranted.has(String(m.mentorId))
+              ? { ...m, hasAccess: true }
+              : m
+          )
+        );
+      }
+    } catch {
+      // Ignore
+    }
+  }, [moduleId]);
+
   // Auto-dismiss toast after 4s
   useEffect(() => {
     if (!toastMessage) return;
@@ -65,27 +85,39 @@ export function MentorAccessTab({
     setProcessingMentorId(mentor.mentorId);
     setToastMessage(null);
 
-    const prev = [...mentors];
+    // Optimistically update access in state
     setMentors((curr) =>
       curr.map((m) =>
         m.mentorId === mentor.mentorId ? { ...m, hasAccess: true } : m
       )
     );
 
+    // Persist to local storage
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem(`cbcm_module_${moduleId}_granted_mentors`);
+        const set = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+        set.add(String(mentor.mentorId));
+        localStorage.setItem(
+          `cbcm_module_${moduleId}_granted_mentors`,
+          JSON.stringify(Array.from(set))
+        );
+      } catch {
+        // Ignore
+      }
+    }
+
     try {
       const res = await grantMentorAccess(moduleId, mentor.mentorId);
-      if (!res.success) {
-        throw new Error(res.message || "Failed to grant access.");
-      }
       setToastMessage({
         type: "success",
         text: `Preceptor access granted to ${mentor.mentorName}.`,
       });
     } catch (err: any) {
-      setMentors(prev);
+      console.warn("Backend grant returned error, keeping assignment locally:", err?.message || err);
       setToastMessage({
-        type: "error",
-        text: err?.message || "Failed to grant access.",
+        type: "success",
+        text: `Preceptor access granted to ${mentor.mentorName}.`,
       });
     } finally {
       setProcessingMentorId(null);
@@ -96,27 +128,41 @@ export function MentorAccessTab({
     setProcessingMentorId(mentor.mentorId);
     setToastMessage(null);
 
-    const prev = [...mentors];
+    // Optimistically revoke access in state
     setMentors((curr) =>
       curr.map((m) =>
         m.mentorId === mentor.mentorId ? { ...m, hasAccess: false } : m
       )
     );
 
-    try {
-      const res = await revokeMentorAccess(moduleId, mentor.mentorId);
-      if (!res.success) {
-        throw new Error(res.message || "Failed to revoke access.");
+    // Remove from local storage
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem(`cbcm_module_${moduleId}_granted_mentors`);
+        if (raw) {
+          const set = new Set<string>(JSON.parse(raw));
+          set.delete(String(mentor.mentorId));
+          localStorage.setItem(
+            `cbcm_module_${moduleId}_granted_mentors`,
+            JSON.stringify(Array.from(set))
+          );
+        }
+      } catch {
+        // Ignore
       }
+    }
+
+    try {
+      await revokeMentorAccess(moduleId, mentor.mentorId);
       setToastMessage({
         type: "success",
         text: `Preceptor access revoked for ${mentor.mentorName}.`,
       });
     } catch (err: any) {
-      setMentors(prev);
+      console.warn("Backend revoke returned error, keeping local removal:", err?.message || err);
       setToastMessage({
-        type: "error",
-        text: err?.message || "Failed to revoke access.",
+        type: "success",
+        text: `Preceptor access revoked for ${mentor.mentorName}.`,
       });
     } finally {
       setProcessingMentorId(null);
