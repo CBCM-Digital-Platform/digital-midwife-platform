@@ -38,8 +38,11 @@ export const ENDPOINTS = {
     CONTACTS: "/api/v1/messages/contacts",
   },
   RESOURCES: {
-    BASE: "/api/v1/resources",
-    DETAIL: (id: string | number) => `/api/v1/resources/${id}`,
+    BASE: "/api/v1/hierarchical-resources",
+    DETAIL: (id: string | number) => `/api/v1/hierarchical-resources/${id}`,
+    CONTENT: (id: string | number) => `/api/v1/hierarchical-resources/${id}/content`,
+    GRANT_MENTOR: (id: string | number) => `/api/v1/hierarchical-resources/${id}/grant-mentor`,
+    ASSIGN_MENTEE: (id: string | number) => `/api/v1/hierarchical-resources/${id}/assign-mentee`,
   },
   UPLOADS: {
     BASE: "/api/v1/uploads",

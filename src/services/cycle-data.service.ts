@@ -117,7 +117,12 @@ function calculateCycleProgress(status: CycleStatus, startDate?: string, endDate
  * Fetches all mentorship cycles from the backend API,
  * enriched with live facility counts, and active mentors/mentees from real users.
  */
-export async function getCycles(options?: { status?: string; page?: number; limit?: number }): Promise<Cycle[]> {
+export async function getCycles(options?: {
+    status?: string;
+    page?: number;
+    limit?: number;
+    facilityId?: string | number | null;
+}): Promise<Cycle[]> {
     try {
         const params: Record<string, string | number> = {
             limit: options?.limit ?? 50,
@@ -125,6 +130,10 @@ export async function getCycles(options?: { status?: string; page?: number; limi
         };
         if (options?.status) {
             params.status = options.status.toLowerCase();
+        }
+        // Scope cycles to a specific facility when provided
+        if (options?.facilityId !== undefined && options.facilityId !== null) {
+            params.facility_id = Number(options.facilityId);
         }
 
         const [res, assignmentsRes, mentorsRes, menteesRes, facilitiesRes] = await Promise.all([
@@ -137,7 +146,7 @@ export async function getCycles(options?: { status?: string; page?: number; limi
 
         const rawCycles = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
         if (!rawCycles || rawCycles.length === 0) {
-            return MOCK_CYCLES;
+            return [];
         }
 
         const allAssignments = Array.isArray(assignmentsRes?.data?.items)
@@ -536,7 +545,7 @@ export async function getFacilities(): Promise<Facility[]> {
  * Creates a new mentorship cycle in the backend, reliably links selected facilities,
  * and links selected thematic areas.
  */
-export async function createCycle(input: CreateCycleInput): Promise<{ id: string }> {
+export async function createCycle(input: CreateCycleInput & { ownerFacilityId?: string | number | null }): Promise<{ id: string }> {
     // 1. Backend POST /api/v1/mentorship-cycles has strict schema: { name, start_date?, end_date? }
     const payload: { name: string; start_date?: string | null; end_date?: string | null } = {
         name: input.name.trim(),
@@ -561,11 +570,17 @@ export async function createCycle(input: CreateCycleInput): Promise<{ id: string
         throw new Error("Cycle creation did not return a valid cycle ID.");
     }
 
-    // 2. Link facilities sequentially to avoid concurrent race conditions
-    const targetFacilityIds =
-        Array.isArray(input.facilityIds) && input.facilityIds.length > 0
-            ? input.facilityIds
-            : ["1", "2"]; // default to regional hospitals if none selected
+    // 2. Build the list of facilities to link.
+    //    - Always include ownerFacilityId (the facility admin's own facility).
+    //    - Also include any additional facilities explicitly selected in the form.
+    const selectedIds: string[] = Array.isArray(input.facilityIds) ? input.facilityIds : [];
+    const ownerFacId = input.ownerFacilityId != null ? String(input.ownerFacilityId) : null;
+
+    const facilityIdSet = new Set<string>(selectedIds);
+    if (ownerFacId) facilityIdSet.add(ownerFacId);
+
+    // If still empty (super admin creating without selecting any), skip linking
+    const targetFacilityIds = Array.from(facilityIdSet);
 
     for (const facId of targetFacilityIds) {
         const numericId = Number(facId);

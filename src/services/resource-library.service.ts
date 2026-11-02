@@ -204,7 +204,12 @@ function normalizeResource(raw: any, starredIds: Set<string>): Resource {
     const fileId = raw.file_id ?? raw.fileId ?? raw.file?.id;
     let url = raw.url || "#";
     if (!url || url === "#") {
-        if (fileId) {
+        // Prefer the hierarchical-resources content endpoint for streaming/download
+        if (id) {
+            const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com/api/v1").replace(/\/+$/, "");
+            const base = baseUrl.endsWith("/api/v1") ? baseUrl : `${baseUrl}/api/v1`;
+            url = `${base}/hierarchical-resources/${id}/content`;
+        } else if (fileId) {
             const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com/api/v1").replace(/\/+$/, "");
             url = `${baseUrl}/uploads/${fileId}/content`;
         }
@@ -243,35 +248,32 @@ function normalizeResource(raw: any, starredIds: Set<string>): Resource {
 }
 
 /**
- * Fetches learning resources from backend GET /api/v1/resources,
- * falling back to curated clinical guidelines if none are published yet.
+ * Fetches learning resources from backend GET /api/v1/hierarchical-resources.
+ * Falls back to curated mock data only if the backend returns nothing or errors.
  */
 export async function getResources(): Promise<Resource[]> {
     const starredIds = getStarredResourceIds();
 
     try {
         const res = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`);
+
+        // Backend may return { data: [...] }, { resources: [...] }, or a plain array
         const rawList = Array.isArray(res?.data)
             ? res.data
+            : Array.isArray(res?.resources)
+            ? res.resources
             : Array.isArray(res)
             ? res
             : [];
 
         if (rawList.length > 0) {
-            const live = rawList.map((r: any) => normalizeResource(r, starredIds));
-            // Supplement with initial curated list if backend has few records
-            if (live.length < 4) {
-                const liveTitles = new Set(live.map((r: Resource) => r.title.toLowerCase()));
-                const extraCurated = MOCK_RESOURCES.filter((m) => !liveTitles.has(m.title.toLowerCase()));
-                return [...live, ...extraCurated];
-            }
-
-            return live;
+            return rawList.map((r: any) => normalizeResource(r, starredIds));
         }
     } catch (err) {
         console.warn("Failed to fetch resources from backend API (falling back to mock dataset):", err);
     }
 
+    // Only fall back to mock data when the backend returns nothing
     return MOCK_RESOURCES.map((r) => ({
         ...r,
         starred: starredIds.has(r.id) ? true : r.starred,
