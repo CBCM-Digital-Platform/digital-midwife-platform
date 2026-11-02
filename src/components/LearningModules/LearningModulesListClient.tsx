@@ -24,6 +24,9 @@ import {
   FileText,
   Calendar,
   Plus,
+  ShieldCheck,
+  Stethoscope,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +41,13 @@ export function LearningModulesListClient({
 }: LearningModulesListClientProps) {
   const [search, setSearch] = useState("");
   const [selectedThematicArea, setSelectedThematicArea] = useState<string>("ALL");
+
+  // Normalize User Role
+  const rawRole = String(userRole || "mentor").toLowerCase().replace(/[-_\s]/g, "");
+  const isSuperAdmin = rawRole === "superadmin" || rawRole === "admin";
+  const isFacilityAdmin = rawRole === "facilityadmin";
+  const isMentor = rawRole === "mentor";
+  const isMentee = rawRole === "mentee" || (!isSuperAdmin && !isFacilityAdmin && !isMentor);
 
   // Extract unique thematic areas for filtering
   const thematicAreas = useMemo(() => {
@@ -76,31 +86,48 @@ export function LearningModulesListClient({
               <GraduationCap className="w-3.5 h-3.5 text-[#194611]" />
               Hierarchical Clinical Curriculum
             </span>
-            <span className="text-xs text-gray-400">• Standardized Training Modules</span>
+            <span className="text-xs text-gray-400">
+              {isSuperAdmin && "• Master Curriculum Authority"}
+              {isFacilityAdmin && "• Facility Preceptor Coordination"}
+              {isMentor && "• Clinical Mentorship & Verification"}
+              {isMentee && "• Mentee Learning & Procedural Competencies"}
+            </span>
           </div>
+
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#194611]">
             Learning Modules
           </h1>
+
           <p className="text-xs sm:text-sm text-gray-600 mt-1 max-w-2xl">
-            Explore national clinical learning modules, procedural evidence, guidelines, and preceptor-guided competency packages.
+            {isMentee &&
+              "Explore your standardized clinical modules, download procedural guidelines, and prepare for bedside assessments."}
+            {isMentor &&
+              "Access preceptor teaching guides, instructional clinical videos, and evaluate junior midwives on standardized competency packages."}
+            {isFacilityAdmin &&
+              "Coordinate facility preceptors, authorize mentor access to modules, and review curriculum resources."}
+            {isSuperAdmin &&
+              "Manage national clinical learning modules, publish evidence-based materials, and govern competency standards."}
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <span className="text-xs font-medium text-gray-500">
-            Showing <span className="font-bold text-gray-900">{filteredModules.length}</span> of {initialModules.length} modules
+            Showing <span className="font-bold text-gray-900">{filteredModules.length}</span> of{" "}
+            {initialModules.length} modules
           </span>
 
-          <Link
-            href="/admin/modules/create"
-            className={cn(
-              buttonVariants(),
-              "bg-[#194611] hover:bg-[#13360d] text-white shadow-2xs font-semibold h-9 px-3.5 text-xs cursor-pointer"
-            )}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Create Module
-          </Link>
+          {isSuperAdmin && (
+            <Link
+              href="/admin/modules/create"
+              className={cn(
+                buttonVariants(),
+                "bg-[#194611] hover:bg-[#13360d] text-white shadow-2xs font-semibold h-9 px-3.5 text-xs cursor-pointer"
+              )}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Create Module
+            </Link>
+          )}
         </div>
       </div>
 
@@ -168,7 +195,7 @@ export function LearningModulesListClient({
                 setSearch("");
                 setSelectedThematicArea("ALL");
               }}
-              className="text-xs font-semibold text-[#194611] hover:underline"
+              className="text-xs font-semibold text-[#194611] hover:underline cursor-pointer"
             >
               Clear search & filters
             </button>
@@ -211,7 +238,8 @@ export function LearningModulesListClient({
                     </CardTitle>
 
                     <CardDescription className="text-xs text-gray-600 line-clamp-3 leading-relaxed">
-                      {module.description || "Comprehensive clinical training module covering protocol guidelines and supervised procedural rotation requirements."}
+                      {module.description ||
+                        "Comprehensive clinical training module covering protocol guidelines and supervised procedural rotation requirements."}
                     </CardDescription>
                   </CardHeader>
 
@@ -235,7 +263,12 @@ export function LearningModulesListClient({
                   <CardFooter className="pt-3 pb-4 border-t border-gray-50 bg-gray-50/50 flex items-center justify-between text-xs font-semibold text-[#194611] group-hover:bg-emerald-50/50 transition-colors">
                     <span className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-[#FDD028]" />
-                      <span>View Module & Resources</span>
+                      <span>
+                        {isMentee && "Continue Learning & View Materials"}
+                        {isMentor && "Review Curriculum & Evaluate"}
+                        {isFacilityAdmin && "Manage Preceptors & Resources"}
+                        {isSuperAdmin && "Manage Module & Content"}
+                      </span>
                     </span>
                     <ArrowRight className="w-4 h-4 text-[#194611] group-hover:translate-x-1 transition-transform" />
                   </CardFooter>
