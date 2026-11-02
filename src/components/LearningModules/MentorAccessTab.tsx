@@ -92,23 +92,8 @@ export function MentorAccessTab({
       )
     );
 
-    // Persist to local storage
-    if (typeof window !== "undefined") {
-      try {
-        const raw = localStorage.getItem(`cbcm_module_${moduleId}_granted_mentors`);
-        const set = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-        set.add(String(mentor.mentorId));
-        localStorage.setItem(
-          `cbcm_module_${moduleId}_granted_mentors`,
-          JSON.stringify(Array.from(set))
-        );
-      } catch {
-        // Ignore
-      }
-    }
-
     try {
-      const res = await grantMentorAccess(moduleId, mentor.mentorId);
+      await grantMentorAccess(moduleId, mentor.mentorId, mentor.email);
       setToastMessage({
         type: "success",
         text: `Preceptor access granted to ${mentor.mentorName}.`,
@@ -135,25 +120,8 @@ export function MentorAccessTab({
       )
     );
 
-    // Remove from local storage
-    if (typeof window !== "undefined") {
-      try {
-        const raw = localStorage.getItem(`cbcm_module_${moduleId}_granted_mentors`);
-        if (raw) {
-          const set = new Set<string>(JSON.parse(raw));
-          set.delete(String(mentor.mentorId));
-          localStorage.setItem(
-            `cbcm_module_${moduleId}_granted_mentors`,
-            JSON.stringify(Array.from(set))
-          );
-        }
-      } catch {
-        // Ignore
-      }
-    }
-
     try {
-      await revokeMentorAccess(moduleId, mentor.mentorId);
+      await revokeMentorAccess(moduleId, mentor.mentorId, mentor.email);
       setToastMessage({
         type: "success",
         text: `Preceptor access revoked for ${mentor.mentorName}.`,

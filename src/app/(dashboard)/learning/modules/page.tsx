@@ -16,12 +16,16 @@ export default async function LearningModulesPage() {
     getModules(),
   ]);
 
-  const rawRole = (session?.user as any)?.role || "mentee";
+  const user = session?.user as any;
+  const rawRole = user?.role || "mentee";
 
   return (
     <LearningModulesListClient
       initialModules={modules}
       userRole={rawRole}
+      currentUserId={user?.id || user?.userId}
+      currentUserEmail={user?.email}
+      currentUserName={user?.name}
     />
   );
 }

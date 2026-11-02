@@ -4,6 +4,9 @@ import type { LearningModule, ModuleContent } from "@/types/learning";
 import {
   normalizeLearningModule,
   normalizeModuleContent,
+  getStoredModules,
+  saveStoredModules,
+  DEFAULT_LEARNING_MODULES,
 } from "@/services/learning.service";
 
 export interface CreateModulePayload {
@@ -81,6 +84,12 @@ export async function createModule(
       status: payload.status || "published",
     });
 
+    // Persist to local storage
+    if (typeof window !== "undefined") {
+      const stored = getStoredModules();
+      saveStoredModules([normalized, ...stored.filter((m) => String(m.id) !== String(moduleId))]);
+    }
+
     return {
       success: true,
       moduleId,
@@ -100,6 +109,11 @@ export async function createModule(
       status: payload.status || "published",
       created_at: new Date().toISOString(),
     });
+
+    if (typeof window !== "undefined") {
+      const stored = getStoredModules();
+      saveStoredModules([fallbackModule, ...stored]);
+    }
 
     return {
       success: true,
@@ -183,6 +197,18 @@ export async function addContent(
       moduleId
     );
 
+    // Persist content locally
+    if (typeof window !== "undefined") {
+      try {
+        const key = `cbcm_module_${moduleId}_contents`;
+        const raw = localStorage.getItem(key);
+        const list = raw ? JSON.parse(raw) : [];
+        localStorage.setItem(key, JSON.stringify([...list, normalized]));
+      } catch {
+        // Ignore
+      }
+    }
+
     return {
       success: true,
       contentId,
@@ -207,6 +233,17 @@ export async function addContent(
       },
       moduleId
     );
+
+    if (typeof window !== "undefined") {
+      try {
+        const key = `cbcm_module_${moduleId}_contents`;
+        const raw = localStorage.getItem(key);
+        const list = raw ? JSON.parse(raw) : [];
+        localStorage.setItem(key, JSON.stringify([...list, fallbackContent]));
+      } catch {
+        // Ignore
+      }
+    }
 
     return {
       success: true,
@@ -241,13 +278,33 @@ export async function updateModule(
       .patch<any>(ENDPOINTS.LEARNING.DETAIL(numericId), body)
       .catch(() => apiClient.put<any>(ENDPOINTS.LEARNING.DETAIL(numericId), body));
     const raw = res?.data ?? res;
+    const updatedMod = normalizeLearningModule(raw);
+    if (typeof window !== "undefined") {
+      const stored = getStoredModules();
+      saveStoredModules(stored.map((m) => (String(m.id) === String(numericId) ? { ...m, ...updatedMod } : m)));
+    }
     return {
       success: true,
-      module: normalizeLearningModule(raw),
+      module: updatedMod,
       message: "Module updated successfully.",
     };
   } catch (error: any) {
     console.warn(`Update module #${id} fallback:`, error?.message);
+    if (typeof window !== "undefined") {
+      const stored = getStoredModules();
+      saveStoredModules(
+        stored.map((m) =>
+          String(m.id) === String(numericId)
+            ? {
+                ...m,
+                title: payload.title || m.title,
+                description: payload.description || m.description,
+                status: (payload.status as any) || m.status,
+              }
+            : m
+        )
+      );
+    }
     return {
       success: true,
       message: "Module updated (locally)",
@@ -263,6 +320,10 @@ export async function deleteModule(
   id: string | number
 ): Promise<{ success: boolean; message?: string }> {
   const numericId = Number(id) || id;
+  if (typeof window !== "undefined") {
+    const stored = getStoredModules();
+    saveStoredModules(stored.filter((m) => String(m.id) !== String(numericId)));
+  }
   try {
     const res = await apiClient.delete<any>(ENDPOINTS.LEARNING.DETAIL(numericId));
     return {
