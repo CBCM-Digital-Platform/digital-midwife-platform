@@ -253,3 +253,6 @@ export async function getModuleMentorAccessList(
   }
 }
 
+export { createModule, addContent } from "@/services/super-admin.service";
+export type { CreateModulePayload, AddContentPayload } from "@/services/super-admin.service";
+

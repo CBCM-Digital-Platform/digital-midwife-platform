@@ -11,6 +11,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LearningModule } from "@/types/learning";
 import {
@@ -22,6 +23,7 @@ import {
   Sparkles,
   FileText,
   Calendar,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -84,10 +86,21 @@ export function LearningModulesListClient({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <span className="text-xs font-medium text-gray-500">
             Showing <span className="font-bold text-gray-900">{filteredModules.length}</span> of {initialModules.length} modules
           </span>
+
+          <Link
+            href="/admin/modules/create"
+            className={cn(
+              buttonVariants(),
+              "bg-[#194611] hover:bg-[#13360d] text-white shadow-2xs font-semibold h-9 px-3.5 text-xs cursor-pointer"
+            )}
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Create Module
+          </Link>
         </div>
       </div>
 
