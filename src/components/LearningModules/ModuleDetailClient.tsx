@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -22,10 +22,15 @@ import type {
   ModuleMentorAccess,
 } from "@/types/learning";
 import {
-  grantMentorAccess,
-  revokeMentorAccess,
-} from "@/services/learning.service";
-import { addContent, AddContentPayload } from "@/services/super-admin.service";
+  addContent,
+  updateModule,
+  deleteModule,
+  updateContent,
+  deleteContent,
+  AddContentPayload,
+} from "@/services/super-admin.service";
+import { MentorAccessTab } from "@/components/LearningModules/MentorAccessTab";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ArrowLeft,
   BookOpen,
@@ -39,15 +44,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Search,
-  UserCheck,
-  UserX,
   Layers,
-  Calendar,
   Sparkles,
   Info,
-  Clock,
-  Eye,
   Plus,
   Check,
   Award,
@@ -56,6 +55,9 @@ import {
   UploadCloud,
   X,
   Stethoscope,
+  Pencil,
+  Trash2,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -67,24 +69,30 @@ interface ModuleDetailClientProps {
 }
 
 export function ModuleDetailClient({
-  module,
+  module: initialModule,
   initialContents,
   initialMentors = [],
-  userRole = "mentor",
+  userRole: propUserRole = "mentor",
 }: ModuleDetailClientProps) {
-  // Normalize Role
-  const rawRole = String(userRole || "mentor").toLowerCase().replace(/[-_\s]/g, "");
-  const isSuperAdmin = rawRole === "superadmin" || rawRole === "admin";
-  const isFacilityAdmin = rawRole === "facilityadmin";
-  const isAdminRole = isSuperAdmin || isFacilityAdmin;
-  const isMentor = rawRole === "mentor";
-  const isMentee = rawRole === "mentee" || (!isAdminRole && !isMentor);
+  const router = useRouter();
 
-  // Contents & Mentors State
+  // 1. Role Check using auth hook
+  const { user } = useAuth();
+  const effectiveRole = user?.role || propUserRole;
+  const rawRole = String(effectiveRole || "").toLowerCase().trim().replace(/[-_\s]/g, "");
+
+  const isSuperAdmin =
+    rawRole === "systemadmin" ||
+    rawRole === "superadmin" ||
+    rawRole === "admin";
+
+  const isFacilityAdmin = rawRole === "facilityadmin";
+  const isMentor = rawRole === "mentor";
+  const isMentee = rawRole === "mentee" || (!isSuperAdmin && !isFacilityAdmin && !isMentor);
+
+  // Module & Contents State
+  const [currentModule, setCurrentModule] = useState<LearningModule>(initialModule);
   const [contents, setContents] = useState<ModuleContent[]>(initialContents);
-  const [mentors, setMentors] = useState<ModuleMentorAccess[]>(initialMentors);
-  const [mentorSearch, setMentorSearch] = useState("");
-  const [processingMentorId, setProcessingMentorId] = useState<string | number | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -96,14 +104,14 @@ export function ModuleDetailClient({
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const stored = localStorage.getItem(`cbcm_mentee_progress_${module.id}`);
+      const stored = localStorage.getItem(`cbcm_mentee_progress_${currentModule.id}`);
       if (stored) {
         setCompletedContentIds(new Set(JSON.parse(stored)));
       }
     } catch {
       // Ignore
     }
-  }, [module.id]);
+  }, [currentModule.id]);
 
   const toggleMaterialCompletion = (contentId: string | number) => {
     const idStr = String(contentId);
@@ -116,7 +124,7 @@ export function ModuleDetailClient({
       }
       try {
         localStorage.setItem(
-          `cbcm_mentee_progress_${module.id}`,
+          `cbcm_mentee_progress_${currentModule.id}`,
           JSON.stringify(Array.from(next))
         );
       } catch {
@@ -132,7 +140,22 @@ export function ModuleDetailClient({
   const menteeProgressPercent =
     contents.length > 0 ? Math.round((menteeCompletedCount / contents.length) * 100) : 0;
 
-  // Super Admin: Add Material Modal State
+  // ----------------------------------------------------
+  // Super Admin CRUD Modals State
+  // ----------------------------------------------------
+
+  // A. Edit Module Modal
+  const [isEditModuleOpen, setIsEditModuleOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState(currentModule.title);
+  const [editDescription, setEditDescription] = useState(currentModule.description);
+  const [editStatus, setEditStatus] = useState(currentModule.status);
+  const [isSavingModule, setIsSavingModule] = useState(false);
+
+  // B. Delete Module Modal
+  const [isDeleteModuleOpen, setIsDeleteModuleOpen] = useState(false);
+  const [isDeletingModule, setIsDeletingModule] = useState(false);
+
+  // C. Add Learning Material Modal
   const [isAddMaterialOpen, setIsAddMaterialOpen] = useState(false);
   const [newMaterialType, setNewMaterialType] = useState<"pdf" | "video" | "audio" | "link">("pdf");
   const [newMaterialTitle, setNewMaterialTitle] = useState("");
@@ -143,92 +166,88 @@ export function ModuleDetailClient({
   const [materialModalError, setMaterialModalError] = useState<string | null>(null);
   const modalFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-dismiss toast
+  // D. Edit Resource Modal
+  const [editingContent, setEditingContent] = useState<ModuleContent | null>(null);
+  const [editContentTitle, setEditContentTitle] = useState("");
+  const [editContentDesc, setEditContentDesc] = useState("");
+  const [editContentType, setEditContentType] = useState("document");
+  const [editContentUrl, setEditContentUrl] = useState("");
+  const [isSavingContent, setIsSavingContent] = useState(false);
+
+  // E. Delete Resource Modal
+  const [deletingContent, setDeletingContent] = useState<ModuleContent | null>(null);
+  const [isDeletingContent, setIsDeletingContent] = useState(false);
+
+  // Auto-dismiss feedback toast
   useEffect(() => {
     if (!feedbackMessage) return;
     const timer = setTimeout(() => setFeedbackMessage(null), 4500);
     return () => clearTimeout(timer);
   }, [feedbackMessage]);
 
-  const isPublished = module.status.toLowerCase() === "published";
+  const isPublished = currentModule.status.toLowerCase() === "published";
 
-  // Filter mentors in Mentor Access tab
-  const filteredMentors = mentors.filter((m) => {
-    const q = mentorSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      m.mentorName.toLowerCase().includes(q) ||
-      m.email.toLowerCase().includes(q) ||
-      (m.facility && m.facility.toLowerCase().includes(q)) ||
-      (m.specialty && m.specialty.toLowerCase().includes(q))
-    );
-  });
+  // ----------------------------------------------------
+  // Handlers for Super Admin Module Operations
+  // ----------------------------------------------------
 
-  // Handle granting access
-  const handleGrantAccess = async (mentor: ModuleMentorAccess) => {
-    setProcessingMentorId(mentor.mentorId);
-    setFeedbackMessage(null);
+  const handleUpdateModule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTitle.trim()) {
+      setFeedbackMessage({ type: "error", text: "Module title cannot be empty." });
+      return;
+    }
 
-    const prevMentors = [...mentors];
-    setMentors((curr) =>
-      curr.map((m) =>
-        m.mentorId === mentor.mentorId ? { ...m, hasAccess: true } : m
-      )
-    );
-
+    setIsSavingModule(true);
     try {
-      const res = await grantMentorAccess(module.id, mentor.mentorId);
-      if (!res.success) {
-        throw new Error(res.message || "Failed to grant mentor access.");
+      const res = await updateModule(currentModule.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        status: editStatus,
+      });
+
+      if (res.success) {
+        setCurrentModule((prev) => ({
+          ...prev,
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          status: editStatus,
+        }));
+        setIsEditModuleOpen(false);
+        setFeedbackMessage({ type: "success", text: "Module updated successfully." });
+      } else {
+        throw new Error(res.message || "Failed to update module.");
       }
-      setFeedbackMessage({
-        type: "success",
-        text: `Granted access to ${mentor.mentorName} for this module.`,
-      });
     } catch (err: any) {
-      setMentors(prevMentors);
-      setFeedbackMessage({
-        type: "error",
-        text: err?.message || "Failed to grant access.",
-      });
+      setFeedbackMessage({ type: "error", text: err?.message || "Failed to update module." });
     } finally {
-      setProcessingMentorId(null);
+      setIsSavingModule(false);
     }
   };
 
-  // Handle revoking access
-  const handleRevokeAccess = async (mentor: ModuleMentorAccess) => {
-    setProcessingMentorId(mentor.mentorId);
-    setFeedbackMessage(null);
-
-    const prevMentors = [...mentors];
-    setMentors((curr) =>
-      curr.map((m) =>
-        m.mentorId === mentor.mentorId ? { ...m, hasAccess: false } : m
-      )
-    );
-
+  const handleDeleteModule = async () => {
+    setIsDeletingModule(true);
     try {
-      const res = await revokeMentorAccess(module.id, mentor.mentorId);
-      if (!res.success) {
-        throw new Error(res.message || "Failed to revoke mentor access.");
+      const res = await deleteModule(currentModule.id);
+      if (res.success) {
+        setIsDeleteModuleOpen(false);
+        setFeedbackMessage({ type: "success", text: "Module deleted. Redirecting..." });
+        setTimeout(() => {
+          router.push("/learning/modules");
+        }, 1000);
+      } else {
+        throw new Error(res.message || "Failed to delete module.");
       }
-      setFeedbackMessage({
-        type: "success",
-        text: `Revoked access for ${mentor.mentorName} from this module.`,
-      });
     } catch (err: any) {
-      setMentors(prevMentors);
-      setFeedbackMessage({
-        type: "error",
-        text: err?.message || "Failed to revoke access.",
-      });
-    } finally {
-      setProcessingMentorId(null);
+      setFeedbackMessage({ type: "error", text: err?.message || "Failed to delete module." });
+      setIsDeletingModule(false);
     }
   };
 
-  // Handle Super Admin Submitting Material from Dialog
+  // ----------------------------------------------------
+  // Handlers for Super Admin Content Operations
+  // ----------------------------------------------------
+
   const handleAddMaterialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMaterialTitle.trim()) {
@@ -258,7 +277,7 @@ export function ModuleDetailClient({
         isRequired: true,
       };
 
-      const res = await addContent(module.id, payload);
+      const res = await addContent(currentModule.id, payload);
       if (res.success && res.content) {
         setContents((prev) => [...prev, res.content]);
         setIsAddMaterialOpen(false);
@@ -280,6 +299,77 @@ export function ModuleDetailClient({
     }
   };
 
+  const handleOpenEditContent = (item: ModuleContent) => {
+    setEditingContent(item);
+    setEditContentTitle(item.title);
+    setEditContentDesc(item.description || "");
+    setEditContentType(item.type || "document");
+    setEditContentUrl(item.url || "");
+  };
+
+  const handleSaveEditContent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingContent) return;
+    if (!editContentTitle.trim()) {
+      setFeedbackMessage({ type: "error", text: "Resource title is required." });
+      return;
+    }
+
+    setIsSavingContent(true);
+    try {
+      const res = await updateContent(currentModule.id, editingContent.id, {
+        title: editContentTitle.trim(),
+        description: editContentDesc.trim(),
+        type: editContentType,
+        url: editContentUrl.trim() || undefined,
+      });
+
+      if (res.success) {
+        setContents((prev) =>
+          prev.map((c) =>
+            c.id === editingContent.id
+              ? {
+                  ...c,
+                  title: editContentTitle.trim(),
+                  description: editContentDesc.trim(),
+                  type: editContentType,
+                  url: editContentUrl.trim() || c.url,
+                }
+              : c
+          )
+        );
+        setEditingContent(null);
+        setFeedbackMessage({ type: "success", text: "Resource updated successfully." });
+      } else {
+        throw new Error(res.message || "Failed to update resource.");
+      }
+    } catch (err: any) {
+      setFeedbackMessage({ type: "error", text: err?.message || "Failed to update resource." });
+    } finally {
+      setIsSavingContent(false);
+    }
+  };
+
+  const handleConfirmDeleteContent = async () => {
+    if (!deletingContent) return;
+
+    setIsDeletingContent(true);
+    try {
+      const res = await deleteContent(currentModule.id, deletingContent.id);
+      if (res.success) {
+        setContents((prev) => prev.filter((c) => c.id !== deletingContent.id));
+        setDeletingContent(null);
+        setFeedbackMessage({ type: "success", text: "Resource removed from module." });
+      } else {
+        throw new Error(res.message || "Failed to delete resource.");
+      }
+    } catch (err: any) {
+      setFeedbackMessage({ type: "error", text: err?.message || "Failed to delete resource." });
+    } finally {
+      setIsDeletingContent(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-16">
       {/* Top Breadcrumb Navigation */}
@@ -294,7 +384,7 @@ export function ModuleDetailClient({
           </Link>
           <span>/</span>
           <span className="font-semibold text-[#194611] truncate max-w-xs sm:max-w-md">
-            {module.title}
+            {currentModule.title}
           </span>
         </div>
 
@@ -310,14 +400,14 @@ export function ModuleDetailClient({
         </Link>
       </div>
 
-      {/* Module Title Banner & Role Specific Actions */}
+      {/* Module Title Banner & Conditional RBAC Actions */}
       <div className="bg-white rounded-2xl border border-gray-200/90 p-6 sm:p-8 shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-[#194611] border border-emerald-200/80">
                 <Layers className="w-3.5 h-3.5 text-[#194611]" />
-                {module.thematicAreaName || "Clinical Midwifery"}
+                {currentModule.thematicAreaName || "Clinical Midwifery"}
               </span>
 
               <Badge
@@ -329,7 +419,7 @@ export function ModuleDetailClient({
                     : "bg-amber-100 text-amber-800 border-amber-200"
                 )}
               >
-                {module.status}
+                {currentModule.status}
               </Badge>
 
               {/* Role Perspective Badge */}
@@ -343,38 +433,69 @@ export function ModuleDetailClient({
                   isMentee && "bg-emerald-50 text-[#194611] border-emerald-200"
                 )}
               >
-                {isSuperAdmin && "Super Admin Curriculum View"}
-                {isFacilityAdmin && "Facility Preceptor Coordinator View"}
+                {isSuperAdmin && "Super Admin (Full CRUD Control)"}
+                {isFacilityAdmin && "Facility Admin (Content Distribution)"}
                 {isMentor && "Clinical Preceptor View"}
                 {isMentee && "Junior Midwife Learning View"}
               </Badge>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 leading-tight">
-              {module.title}
+              {currentModule.title}
             </h1>
 
-            <p className="text-xs sm:text-sm text-gray-600 max-w-3xl leading-relaxed">
-              {module.description ||
+            <p className="text-xs sm:text-sm text-gray-600 max-w-3xl leading-relaxed whitespace-pre-line">
+              {currentModule.description ||
                 "Standardized adolescent health, procedural obstetrics, and evidence-based clinical protocols."}
             </p>
           </div>
 
-          {/* Role Header Actions */}
+          {/* Top Actions: Super Admin CRUD vs Facility Admin Read-Only */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+            {/* 2. Super Admin: Conditionally Render Edit Module & Delete Module */}
             {isSuperAdmin && (
-              <Button
-                onClick={() => setIsAddMaterialOpen(true)}
-                className="bg-[#194611] hover:bg-[#13360d] text-white shadow-2xs font-semibold h-9 px-3.5 text-xs cursor-pointer"
+              <>
+                <Button
+                  onClick={() => {
+                    setEditTitle(currentModule.title);
+                    setEditDescription(currentModule.description);
+                    setEditStatus(currentModule.status);
+                    setIsEditModuleOpen(true);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-300 text-gray-700 hover:bg-gray-100 h-9 px-3 text-xs font-semibold cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5 mr-1.5 text-gray-600" />
+                  Edit Module
+                </Button>
+
+                <Button
+                  onClick={() => setIsDeleteModuleOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 h-9 px-3 text-xs font-semibold cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete Module
+                </Button>
+              </>
+            )}
+
+            {/* 3. Facility Admin: Strict Read-Only Indicator */}
+            {isFacilityAdmin && (
+              <Badge
+                variant="outline"
+                className="bg-gray-50 border-gray-200 text-gray-600 px-3 py-1.5 text-xs font-medium flex items-center gap-1.5"
               >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Add Learning Material
-              </Button>
+                <Lock className="w-3.5 h-3.5 text-gray-400" />
+                Read-Only Module
+              </Badge>
             )}
 
             {isMentor && (
               <Link
-                href={`/my-assessments/new?moduleTitle=${encodeURIComponent(module.title)}`}
+                href={`/my-assessments/new?moduleTitle=${encodeURIComponent(currentModule.title)}`}
                 className={cn(
                   buttonVariants(),
                   "bg-[#194611] hover:bg-[#13360d] text-white shadow-2xs font-semibold h-9 px-3.5 text-xs cursor-pointer"
@@ -400,7 +521,7 @@ export function ModuleDetailClient({
           </div>
         </div>
 
-        {/* Mentee Progress Bar (Only visible to Mentees) */}
+        {/* Mentee Progress Bar */}
         {isMentee && (
           <div className="pt-3 border-t border-gray-100 space-y-2">
             <div className="flex items-center justify-between text-xs">
@@ -466,13 +587,13 @@ export function ModuleDetailClient({
             </span>
           </TabsTrigger>
 
-          {/* Tab 3: Context-Aware per Role */}
-          {isAdminRole && (
+          {/* RBAC: Hide Mentor Access tab entirely for Super Admin; Conditionally render ONLY for Facility Admin */}
+          {isFacilityAdmin && (
             <TabsTrigger value="mentor-access" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Mentor Access</span>
               <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-[#194611] font-bold">
-                {mentors.filter((m) => m.hasAccess).length} Active
+                {initialMentors.filter((m) => m.hasAccess).length} Active
               </span>
             </TabsTrigger>
           )}
@@ -498,12 +619,27 @@ export function ModuleDetailClient({
             <div className="lg:col-span-2 space-y-6">
               {/* Dynamic Description Box */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-[#194611]" />
-                  Curriculum Description
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#194611]" />
+                    Curriculum Description
+                  </h3>
+
+                  {isSuperAdmin && (
+                    <Button
+                      onClick={() => setIsEditModuleOpen(true)}
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-gray-500 hover:text-gray-900"
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Edit Description
+                    </Button>
+                  )}
+                </div>
+
                 <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-                  {module.description ||
+                  {currentModule.description ||
                     "This clinical learning module provides evidence-based directives, anatomical guidance, and supervised preceptor rubrics to support hospital-based adolescent and maternal care."}
                 </div>
               </div>
@@ -537,14 +673,26 @@ export function ModuleDetailClient({
                 </div>
               )}
 
-              {isAdminRole && (
+              {isFacilityAdmin && (
                 <div className="bg-blue-50/60 rounded-2xl border border-blue-200/80 p-6 shadow-xs space-y-3">
                   <h3 className="text-sm font-bold text-blue-950 flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-blue-900" />
-                    Curriculum Governance & Credentialing
+                    Facility Content Distribution
                   </h3>
                   <p className="text-xs text-blue-900 leading-relaxed">
-                    This module belongs to the national standardized curriculum. Facility administrators can grant and revoke mentor preceptor access in the <strong>Mentor Access</strong> tab to ensure authorized clinical oversight.
+                    You are in Content Distribution mode for your facility. Review the standardized curriculum materials in the <strong>Resources</strong> tab, and use the <strong>Mentor Access</strong> tab to authorize and dispatch this module to your local midwife mentors.
+                  </p>
+                </div>
+              )}
+
+              {isSuperAdmin && (
+                <div className="bg-purple-50/60 rounded-2xl border border-purple-200/80 p-6 shadow-xs space-y-3">
+                  <h3 className="text-sm font-bold text-purple-950 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-900" />
+                    Curriculum Master Administration
+                  </h3>
+                  <p className="text-xs text-purple-900 leading-relaxed">
+                    As Super Admin, you have full curriculum governance. Use the actions above and within the <strong>Resources</strong> tab to edit or delete this module, attach new materials, and maintain nationwide clinical learning standards.
                   </p>
                 </div>
               )}
@@ -560,13 +708,13 @@ export function ModuleDetailClient({
                 <div className="space-y-3.5 text-xs">
                   <div className="flex items-center justify-between py-2 border-b border-gray-100">
                     <span className="text-gray-500">Module ID</span>
-                    <span className="font-semibold text-gray-900">#{module.id}</span>
+                    <span className="font-semibold text-gray-900">#{currentModule.id}</span>
                   </div>
 
                   <div className="flex items-center justify-between py-2 border-b border-gray-100">
                     <span className="text-gray-500">Thematic Area</span>
                     <span className="font-semibold text-gray-900 text-right">
-                      {module.thematicAreaName || "General Midwifery"}
+                      {currentModule.thematicAreaName || "General Midwifery"}
                     </span>
                   </div>
 
@@ -576,7 +724,7 @@ export function ModuleDetailClient({
                       variant="outline"
                       className="text-[10px] uppercase font-bold text-emerald-800 bg-emerald-50 border-emerald-200"
                     >
-                      {module.status}
+                      {currentModule.status}
                     </Badge>
                   </div>
 
@@ -585,11 +733,11 @@ export function ModuleDetailClient({
                     <span className="font-semibold text-gray-900">{contents.length} Items</span>
                   </div>
 
-                  {isAdminRole && (
+                  {isFacilityAdmin && (
                     <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Authorized Mentors</span>
+                      <span className="text-gray-500">Local Facility Preceptors</span>
                       <span className="font-bold text-[#194611]">
-                        {mentors.filter((m) => m.hasAccess).length} Preceptors
+                        {initialMentors.filter((m) => m.hasAccess).length} Authorized
                       </span>
                     </div>
                   )}
@@ -616,17 +764,20 @@ export function ModuleDetailClient({
                   Curated Clinical Materials
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Downloadable clinical protocols, instructional surgical videos, podcasts, and reference links.
+                  {isFacilityAdmin
+                    ? "Read-only view of national clinical protocols, videos, and reference guides."
+                    : "Downloadable clinical protocols, instructional surgical videos, podcasts, and reference links."}
                 </p>
               </div>
 
+              {/* Conditionally Render "+ Add Learning Material" ONLY for Super Admins */}
               {isSuperAdmin && (
                 <Button
                   onClick={() => setIsAddMaterialOpen(true)}
                   className="bg-[#194611] hover:bg-[#13360d] text-white shadow-2xs font-semibold h-8 px-3 text-xs cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" />
-                  Add Material
+                  + Add Learning Material
                 </Button>
               )}
             </div>
@@ -637,7 +788,7 @@ export function ModuleDetailClient({
                 <h4 className="text-sm font-semibold text-gray-700">No Learning Materials Attached</h4>
                 <p className="text-xs text-gray-400 max-w-sm mx-auto">
                   {isSuperAdmin
-                    ? "Click 'Add Material' above to upload your first PDF, instructional video, or external guide."
+                    ? "Click '+ Add Learning Material' above to upload your first PDF, instructional video, or external guide."
                     : "Curriculum materials are currently being prepared by the national clinical team."}
                 </p>
                 {isSuperAdmin && (
@@ -714,8 +865,8 @@ export function ModuleDetailClient({
                         </div>
                       </div>
 
-                      {/* Action Links & Progress Trigger */}
-                      <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                      {/* Action Links & Conditional Edit/Trash for Super Admin */}
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                         {/* Mentee Mark Completed Toggle */}
                         {isMentee && (
                           <button
@@ -733,6 +884,7 @@ export function ModuleDetailClient({
                           </button>
                         )}
 
+                        {/* View/Download link (available to all roles) */}
                         {item.url && item.url !== "#" ? (
                           <a
                             href={item.url}
@@ -755,6 +907,31 @@ export function ModuleDetailClient({
                         ) : (
                           <span className="text-xs text-gray-400 italic">Attached file</span>
                         )}
+
+                        {/* Super Admin Individual Resource CRUD: Edit & Trash */}
+                        {isSuperAdmin && (
+                          <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-200">
+                            <Button
+                              onClick={() => handleOpenEditContent(item)}
+                              variant="ghost"
+                              size="icon"
+                              title="Edit Resource"
+                              className="h-8 w-8 text-gray-500 hover:text-gray-900 hover:bg-gray-100 cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+
+                            <Button
+                              onClick={() => setDeletingContent(item)}
+                              variant="ghost"
+                              size="icon"
+                              title="Delete Resource"
+                              className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -764,121 +941,18 @@ export function ModuleDetailClient({
           </div>
         </TabsContent>
 
-        {/* 3A. MENTOR ACCESS TAB (For Super Admin and Facility Admin) */}
-        {isAdminRole && (
+        {/* 3. MENTOR ACCESS TAB: Strictly Conditionally Rendered ONLY for Facility Admin */}
+        {isFacilityAdmin && (
           <TabsContent value="mentor-access" className="space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
-                <div>
-                  <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-[#194611]" />
-                    Facility Preceptor Module Authorization
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Grant or revoke preceptor privileges for mentors to oversee, teach, and grade clinical assessments for this specific module.
-                  </p>
-                </div>
-
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                  <Input
-                    placeholder="Search preceptor roster..."
-                    value={mentorSearch}
-                    onChange={(e) => setMentorSearch(e.target.value)}
-                    className="pl-8 h-9 text-xs bg-white border-gray-200"
-                  />
-                </div>
-              </div>
-
-              {filteredMentors.length === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl space-y-2">
-                  <UserX className="w-8 h-8 text-gray-400 mx-auto" />
-                  <h4 className="text-sm font-semibold text-gray-700">No Mentors Found</h4>
-                  <p className="text-xs text-gray-400">
-                    No preceptors matched your search criteria or are assigned to your facility.
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50/80 text-gray-600 font-semibold border-b border-gray-100 uppercase tracking-wider">
-                      <tr>
-                        <th className="py-3 px-4">Preceptor / Mentor</th>
-                        <th className="py-3 px-4">Facility & Specialty</th>
-                        <th className="py-3 px-4">Access Status</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-gray-700">
-                      {filteredMentors.map((mentor) => {
-                        const isProcessing = processingMentorId === mentor.mentorId;
-                        return (
-                          <tr key={mentor.mentorId} className="hover:bg-gray-50/50 transition">
-                            <td className="py-3.5 px-4">
-                              <div className="font-bold text-gray-900">{mentor.mentorName}</div>
-                              <div className="text-[11px] text-gray-500">{mentor.email}</div>
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <div className="font-semibold text-gray-800">
-                                {mentor.facility || "Central Maternity Wing"}
-                              </div>
-                              <div className="text-[11px] text-gray-500">{mentor.specialty}</div>
-                            </td>
-                            <td className="py-3.5 px-4">
-                              {mentor.hasAccess ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-[#194611] border border-emerald-200">
-                                  <UserCheck className="w-3.5 h-3.5" />
-                                  Granted
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                                  <UserX className="w-3.5 h-3.5" />
-                                  Revoked
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3.5 px-4 text-right">
-                              {mentor.hasAccess ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={isProcessing}
-                                  onClick={() => handleRevokeAccess(mentor)}
-                                  className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"
-                                >
-                                  {isProcessing ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    "Revoke Access"
-                                  )}
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  disabled={isProcessing}
-                                  onClick={() => handleGrantAccess(mentor)}
-                                  className="h-7 text-xs bg-[#194611] hover:bg-[#13360d] text-white cursor-pointer shadow-2xs"
-                                >
-                                  {isProcessing ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    "Grant Access"
-                                  )}
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            <MentorAccessTab
+              moduleId={currentModule.id}
+              initialMentors={initialMentors}
+              facilityName={user?.facility}
+            />
           </TabsContent>
         )}
 
-        {/* 3B. MENTOR PRECEPTOR EVALUATION TAB (For Midwife Mentors) */}
+        {/* Mentor Preceptor Guidance Tab */}
         {isMentor && (
           <TabsContent value="mentor-evaluation" className="space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-6">
@@ -916,7 +990,7 @@ export function ModuleDetailClient({
                   </p>
                   <div className="pt-2">
                     <Link
-                      href={`/my-assessments/new?moduleTitle=${encodeURIComponent(module.title)}`}
+                      href={`/my-assessments/new?moduleTitle=${encodeURIComponent(currentModule.title)}`}
                       className={cn(
                         buttonVariants({ size: "sm" }),
                         "bg-[#194611] hover:bg-[#13360d] text-white text-xs cursor-pointer shadow-2xs"
@@ -932,7 +1006,7 @@ export function ModuleDetailClient({
           </TabsContent>
         )}
 
-        {/* 3C. MENTEE CLINICAL COMPETENCIES TAB (For Junior Midwives) */}
+        {/* Mentee Clinical Competencies Tab */}
         {isMentee && (
           <TabsContent value="competencies" className="space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-6">
@@ -1005,7 +1079,120 @@ export function ModuleDetailClient({
         )}
       </Tabs>
 
-      {/* SUPER ADMIN: ADD LEARNING MATERIAL DIALOG */}
+      {/* ---------------------------------------------------- */}
+      {/* SUPER ADMIN MODALS: EDIT MODULE, DELETE, ADD/EDIT CONTENT */}
+      {/* ---------------------------------------------------- */}
+
+      {/* Modal 1: Edit Module */}
+      {isSuperAdmin && (
+        <Dialog open={isEditModuleOpen} onOpenChange={setIsEditModuleOpen}>
+          <DialogContent className="max-w-lg bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <DialogTitle className="text-lg font-bold text-[#194611]">
+                Edit Learning Module
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-500 mt-1">
+                Update core module title, syllabus description, and publication state.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleUpdateModule} className="space-y-4 pt-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-800">Module Title *</label>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="h-9 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-800">Status</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full h-9 rounded-lg border border-gray-200 px-3 text-xs bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#194611]"
+                >
+                  <option value="published">Published</option>
+                  <option value="draft">Draft</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-800">Description / Syllabus</label>
+                <Textarea
+                  rows={4}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="text-xs bg-white"
+                />
+              </div>
+
+              <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditModuleOpen(false)}
+                  className="h-8 text-xs border-gray-200"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSavingModule}
+                  className="bg-[#194611] hover:bg-[#13360d] text-white h-8 px-4 text-xs font-semibold shadow-2xs"
+                >
+                  {isSavingModule ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal 2: Delete Module Confirmation */}
+      {isSuperAdmin && (
+        <Dialog open={isDeleteModuleOpen} onOpenChange={setIsDeleteModuleOpen}>
+          <DialogContent className="max-w-md bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <DialogTitle className="text-base font-bold text-red-600 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                Delete Learning Module?
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-600 mt-2 leading-relaxed">
+                Are you sure you want to permanently delete <strong>&quot;{currentModule.title}&quot;</strong>?
+                This action will delete all attached learning materials and cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter className="pt-4 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isDeletingModule}
+                onClick={() => setIsDeleteModuleOpen(false)}
+                className="h-8 text-xs border-gray-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isDeletingModule}
+                onClick={handleDeleteModule}
+                className="bg-red-600 hover:bg-red-700 text-white h-8 px-4 text-xs font-semibold shadow-2xs"
+              >
+                {isDeletingModule ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Yes, Delete Module
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal 3: Add Learning Material */}
       {isSuperAdmin && (
         <Dialog open={isAddMaterialOpen} onOpenChange={setIsAddMaterialOpen}>
           <DialogContent className="max-w-xl bg-white p-6 rounded-2xl shadow-xl">
@@ -1014,7 +1201,7 @@ export function ModuleDetailClient({
                 Add Learning Material to Module
               </DialogTitle>
               <DialogDescription className="text-xs text-gray-500 mt-1">
-                Attach a PDF guide, procedural video, audio debrief, or web link to #{module.id} - {module.title}.
+                Attach a PDF guide, procedural video, audio debrief, or web link to #{currentModule.id} - {currentModule.title}.
               </DialogDescription>
             </DialogHeader>
 
@@ -1026,7 +1213,7 @@ export function ModuleDetailClient({
                 </div>
               )}
 
-              {/* Material Type Radio Group */}
+              {/* Material Type Selection */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-800">
                   Material Type <span className="text-red-500">*</span>
@@ -1179,6 +1366,113 @@ export function ModuleDetailClient({
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal 4: Edit Resource */}
+      {isSuperAdmin && editingContent && (
+        <Dialog open={Boolean(editingContent)} onOpenChange={() => setEditingContent(null)}>
+          <DialogContent className="max-w-lg bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <DialogTitle className="text-base font-bold text-[#194611]">
+                Edit Learning Resource
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-500 mt-1">
+                Modify title, description, or link for this resource.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSaveEditContent} className="space-y-4 pt-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-800">Resource Title *</label>
+                <Input
+                  value={editContentTitle}
+                  onChange={(e) => setEditContentTitle(e.target.value)}
+                  className="h-9 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-800">Description</label>
+                <Textarea
+                  rows={2}
+                  value={editContentDesc}
+                  onChange={(e) => setEditContentDesc(e.target.value)}
+                  className="text-xs bg-white"
+                />
+              </div>
+
+              {editContentType === "link" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-800">Resource URL</label>
+                  <Input
+                    type="url"
+                    value={editContentUrl}
+                    onChange={(e) => setEditContentUrl(e.target.value)}
+                    className="h-9 text-xs bg-white"
+                  />
+                </div>
+              )}
+
+              <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingContent(null)}
+                  className="h-8 text-xs border-gray-200"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSavingContent}
+                  className="bg-[#194611] hover:bg-[#13360d] text-white h-8 px-4 text-xs font-semibold shadow-2xs"
+                >
+                  {isSavingContent ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal 5: Delete Resource Confirmation */}
+      {isSuperAdmin && deletingContent && (
+        <Dialog open={Boolean(deletingContent)} onOpenChange={() => setDeletingContent(null)}>
+          <DialogContent className="max-w-md bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <DialogTitle className="text-base font-bold text-red-600 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                Remove Resource?
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-600 mt-2 leading-relaxed">
+                Are you sure you want to remove <strong>&quot;{deletingContent.title}&quot;</strong> from this learning module?
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter className="pt-4 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isDeletingContent}
+                onClick={() => setDeletingContent(null)}
+                className="h-8 text-xs border-gray-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isDeletingContent}
+                onClick={handleConfirmDeleteContent}
+                className="bg-red-600 hover:bg-red-700 text-white h-8 px-4 text-xs font-semibold shadow-2xs"
+              >
+                {isDeletingContent ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Yes, Remove
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
