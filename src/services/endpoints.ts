@@ -93,6 +93,9 @@ export const ENDPOINTS = {
   LEARNING: {
     BASE: "/api/v1/learning/modules",
     DETAIL: (id: string | number) => `/api/v1/learning/modules/${id}`,
+    CONTENTS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/contents`,
+    CONTENT_DETAIL: (moduleId: string | number, contentId: string | number) =>
+      `/api/v1/learning/modules/${moduleId}/contents/${contentId}`,
     MENTOR_ACCESS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/mentor-access`,
     MENTOR_ACCESS_REVOKE: (moduleId: string | number, mentorId: string | number) =>
       `/api/v1/learning/modules/${moduleId}/mentor-access/${mentorId}`,
