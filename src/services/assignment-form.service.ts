@@ -175,30 +175,20 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ id:
     );
 
     const numericAreaId = matchedArea
-        ? parsePositiveInt(matchedArea.id) ?? 1
-        : (parsePositiveInt(input.thematicAreaId) ?? 1);
-    const officialAreaName = matchedArea?.name || selectedAreaName || "General Clinical Midwifery";
+        ? parsePositiveInt(matchedArea.id)
+        : parsePositiveInt(input.thematicAreaId);
 
-    const cycleIdNum = parsePositiveInt(input.cycleId) ?? 1;
+    const officialAreaName = matchedArea?.name || selectedAreaName || "General Clinical Midwifery";
+    const cycleIdNum = parsePositiveInt(input.cycleId);
     const facilityIdNum = parsePositiveInt(input.facilityId) ?? 1;
 
-    // 1b. Proactively attempt linking the thematic area to the cycle (strict schema: { thematic_area_id })
-    if (cycleIdNum && numericAreaId) {
-        try {
-            await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
-                method: "POST",
-                body: { thematic_area_id: numericAreaId },
-            });
-        } catch (linkErr: any) {
-            // Already linked (409) or non-admin permission (403)
-            console.warn(`Attempted cycle-thematic area association:`, linkErr?.message || linkErr);
-        }
+    if (!cycleIdNum) {
+        throw new Error("A valid mentorship cycle must be selected.");
+    }
+    if (!numericAreaId) {
+        throw new Error("A valid accredited thematic area must be selected.");
     }
 
-    let lastCreatedId: string | null = null;
-    let lastError: Error | null = null;
-
-    // 2. Iterate through selected mentors and mentees to create individual assignment pairs
     const mentorList = Array.isArray(input.mentorIds) && input.mentorIds.length > 0 ? input.mentorIds : [];
     const menteeList = Array.isArray(input.menteeIds) && input.menteeIds.length > 0 ? input.menteeIds : [];
 
@@ -206,6 +196,9 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ id:
         throw new Error("At least one mentor and one mentee must be selected for the assignment.");
     }
 
+    let lastCreatedId: string | null = null;
+
+    // 2. Iterate through selected mentors and mentees to create individual assignment pairs
     for (const mentorId of mentorList) {
         for (const menteeId of menteeList) {
             const mentorIdNum = parsePositiveInt(mentorId);
@@ -216,108 +209,39 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ id:
             }
 
             // Backend schema: CreateAssignmentRequest
-            // { mentor_id, mentee_id, facility_id, cycle_id, thematic_area_id?, matching_reason? }
+            // { mentor_id, mentee_id, facility_id, cycle_id, thematic_area_id, matching_reason }
             const matchingReasonText = input.notes
                 ? `${input.notes} [Domain: ${officialAreaName}]`
                 : `Clinical Mentorship in ${officialAreaName}`;
 
-            const assignmentPayload: Record<string, any> = {
+            const assignmentPayload = {
                 mentor_id: mentorIdNum,
                 mentee_id: menteeIdNum,
                 facility_id: facilityIdNum,
                 cycle_id: cycleIdNum,
+                thematic_area_id: numericAreaId,
                 matching_reason: matchingReasonText,
             };
 
-            if (numericAreaId) {
-                assignmentPayload.thematic_area_id = numericAreaId;
+            // Post assignment to backend
+            const singleRes = await apiClient.post<any>("/api/v1/assignments", assignmentPayload);
+            const createdId = singleRes?.data?.id || singleRes?.id || singleRes?.data?.assignment?.id;
+            if (createdId) {
+                lastCreatedId = String(createdId);
             }
 
-            try {
-                // Post individual assignment to backend
-                const singleRes = await apiClient.post<any>("/api/v1/assignments", assignmentPayload);
-                const createdId = singleRes?.data?.id || singleRes?.id || singleRes?.data?.assignment?.id;
-                if (createdId) {
-                    lastCreatedId = String(createdId);
-                    lastError = null;
-                }
-
-                // Also update user's mentor_id and thematic_area on their user profile if supported
-                await apiClient.patch<any>(`/api/v1/users/${menteeIdNum}`, {
-                    mentor_id: mentorIdNum,
-                    thematic_area: officialAreaName,
-                    thematic_area_id: numericAreaId,
-                    facility_id: facilityIdNum,
-                }).catch(() => null);
-            } catch (err: any) {
-                console.error("Backend assignment creation rejected:", err);
-                const errMsg = String(err?.message || "").toLowerCase();
-
-                // If error is about thematic area not being assigned to the cycle
-                if (errMsg.includes("thematic area") && errMsg.includes("cycle")) {
-                    console.log(`Attempting strict cycle ${cycleIdNum} linking for thematic area ${numericAreaId}...`);
-                    let retrySucceeded = false;
-                    try {
-                        await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
-                            method: "POST",
-                            body: { thematic_area_id: numericAreaId },
-                        });
-                        const retryRes = await apiClient.post<any>("/api/v1/assignments", assignmentPayload);
-                        const retryId = retryRes?.data?.id || retryRes?.id || retryRes?.data?.assignment?.id;
-                        if (retryId) {
-                            lastCreatedId = String(retryId);
-                            lastError = null;
-                            retrySucceeded = true;
-                        }
-                    } catch (retryErr: any) {
-                        console.warn("Cycle linking retry was rejected by backend:", retryErr?.message);
-                    }
-
-                    // Fallback: If thematic area is still rejected for this cycle, create the assignment
-                    // without the strict thematic_area_id constraint so the mentor-mentee link persists!
-                    if (!retrySucceeded) {
-                        console.log("Creating backend assignment with thematic area recorded in matching_reason...");
-                        try {
-                            const fallbackPayload = {
-                                mentor_id: mentorIdNum,
-                                mentee_id: menteeIdNum,
-                                facility_id: facilityIdNum,
-                                cycle_id: cycleIdNum,
-                                matching_reason: matchingReasonText,
-                            };
-                            const fallbackRes = await apiClient.post<any>("/api/v1/assignments", fallbackPayload);
-                            const fallbackId = fallbackRes?.data?.id || fallbackRes?.id || fallbackRes?.data?.assignment?.id;
-                            if (fallbackId) {
-                                lastCreatedId = String(fallbackId);
-                                lastError = null;
-
-                                // Update mentee profile
-                                await apiClient.patch<any>(`/api/v1/users/${menteeIdNum}`, {
-                                    mentor_id: mentorIdNum,
-                                    thematic_area: officialAreaName,
-                                    thematic_area_id: numericAreaId,
-                                    facility_id: facilityIdNum,
-                                }).catch(() => null);
-                            }
-                        } catch (fallbackErr: any) {
-                            console.error("Fallback assignment creation failed:", fallbackErr);
-                            lastError = fallbackErr;
-                        }
-                    }
-                } else {
-                    lastError = err;
-                }
-            }
+            // Sync user profile if supported
+            await apiClient.patch<any>(`/api/v1/users/${menteeIdNum}`, {
+                mentor_id: mentorIdNum,
+                thematic_area: officialAreaName,
+                thematic_area_id: numericAreaId,
+                facility_id: facilityIdNum,
+            }).catch(() => null);
         }
     }
 
     if (lastCreatedId) {
         return { id: lastCreatedId };
-    }
-
-    // If all backend creation calls failed, propagate the real backend error!
-    if (lastError) {
-        throw lastError;
     }
 
     return { id: `assign-${Date.now()}` };
