@@ -34,7 +34,7 @@ export function Sidebar({ role, onNavigate }: SidebarProps) {
       {/* Bottom Sidebar Actions */}
       <div className="p-4 border-t border-gray-100 flex flex-col gap-1 text-sm text-gray-600">
         <Link
-          href="/api/auth/signout"
+          href="/signout"
           onClick={onNavigate}
           className="flex items-center gap-2 px-4 py-2.5 hover:bg-red-50 rounded-lg text-red-600 transition-colors"
         >

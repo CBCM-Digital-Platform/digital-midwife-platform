@@ -452,6 +452,7 @@ export const authOptions: NextAuthOptions = {
   // 3. Custom sign-in route
   pages: {
     signIn: "/login",
+    signOut: "/signout",
   },
 
   session: {
