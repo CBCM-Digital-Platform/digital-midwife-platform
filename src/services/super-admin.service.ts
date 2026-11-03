@@ -4,9 +4,6 @@ import type { LearningModule, ModuleContent } from "@/types/learning";
 import {
   normalizeLearningModule,
   normalizeModuleContent,
-  getStoredModules,
-  saveStoredModules,
-  DEFAULT_LEARNING_MODULES,
 } from "@/services/learning.service";
 
 export interface CreateModulePayload {
@@ -44,7 +41,7 @@ export interface AddContentResult {
 
 /**
  * POST /api/v1/learning/modules
- * Creates a new learning module in the platform curriculum.
+ * Creates a new learning module in the platform database.
  */
 export async function createModule(
   payload: CreateModulePayload
@@ -84,12 +81,6 @@ export async function createModule(
       status: payload.status || "published",
     });
 
-    // Persist to local storage
-    if (typeof window !== "undefined") {
-      const stored = getStoredModules();
-      saveStoredModules([normalized, ...stored.filter((m) => String(m.id) !== String(moduleId))]);
-    }
-
     return {
       success: true,
       moduleId,
@@ -97,30 +88,8 @@ export async function createModule(
       message: "Module created successfully",
     };
   } catch (error: any) {
-    console.warn("Live API module creation failed, checking fallback:", error?.message);
-
-    // If backend endpoint is unavailable or returns an error, provide a safe simulated module for local development
-    const simulatedId = Date.now();
-    const fallbackModule = normalizeLearningModule({
-      id: simulatedId,
-      title: payload.title.trim(),
-      description: payload.description.trim(),
-      thematic_area_id: numericAreaId,
-      status: payload.status || "published",
-      created_at: new Date().toISOString(),
-    });
-
-    if (typeof window !== "undefined") {
-      const stored = getStoredModules();
-      saveStoredModules([fallbackModule, ...stored]);
-    }
-
-    return {
-      success: true,
-      moduleId: simulatedId,
-      module: fallbackModule,
-      message: error?.message || "Module created (local fallback mode)",
-    };
+    console.error("Live API module creation failed:", error?.message || error);
+    throw error;
   }
 }
 
@@ -169,7 +138,7 @@ export async function addContent(
     file_id: fileId || null,
     fileId: fileId || null,
     file_name: fileName,
-    file_size_mb: fileSizeMb,
+    fileSizeMb: fileSizeMb,
     order: payload.order ?? 1,
     is_required: payload.isRequired ?? false,
   };
@@ -180,7 +149,7 @@ export async function addContent(
       contentBody
     );
     const rawData = res?.data ?? res;
-    const contentId = rawData?.id ?? `content-${Date.now()}`;
+    const contentId = rawData?.id ?? rawData?.contentId ?? Date.now();
 
     const normalized = normalizeModuleContent(
       {
@@ -190,24 +159,12 @@ export async function addContent(
         title: payload.title.trim(),
         type: payload.type.toLowerCase(),
         description: payload.description?.trim(),
-        url: payload.url || (fileId ? `/uploads/${fileId}` : undefined),
+        url: payload.url || (fileName ? `#file-${fileName}` : undefined),
         fileName,
         fileSizeMb,
       },
       moduleId
     );
-
-    // Persist content locally
-    if (typeof window !== "undefined") {
-      try {
-        const key = `cbcm_module_${moduleId}_contents`;
-        const raw = localStorage.getItem(key);
-        const list = raw ? JSON.parse(raw) : [];
-        localStorage.setItem(key, JSON.stringify([...list, normalized]));
-      } catch {
-        // Ignore
-      }
-    }
 
     return {
       success: true,
@@ -216,41 +173,8 @@ export async function addContent(
       message: "Learning material added successfully",
     };
   } catch (error: any) {
-    console.warn("Live API addContent failed, fallback simulated:", error?.message);
-
-    const simulatedContentId = `content-${Date.now()}`;
-    const fallbackContent = normalizeModuleContent(
-      {
-        id: simulatedContentId,
-        module_id: moduleId,
-        title: payload.title.trim(),
-        type: payload.type.toLowerCase(),
-        description: payload.description?.trim(),
-        url: payload.url || (fileName ? `#file-${fileName}` : undefined),
-        fileName,
-        fileSizeMb,
-        created_at: new Date().toISOString(),
-      },
-      moduleId
-    );
-
-    if (typeof window !== "undefined") {
-      try {
-        const key = `cbcm_module_${moduleId}_contents`;
-        const raw = localStorage.getItem(key);
-        const list = raw ? JSON.parse(raw) : [];
-        localStorage.setItem(key, JSON.stringify([...list, fallbackContent]));
-      } catch {
-        // Ignore
-      }
-    }
-
-    return {
-      success: true,
-      contentId: simulatedContentId,
-      content: fallbackContent,
-      message: error?.message || "Material attached (local fallback mode)",
-    };
+    console.error("Live API addContent failed:", error?.message || error);
+    throw error;
   }
 }
 
@@ -279,36 +203,14 @@ export async function updateModule(
       .catch(() => apiClient.put<any>(ENDPOINTS.LEARNING.DETAIL(numericId), body));
     const raw = res?.data ?? res;
     const updatedMod = normalizeLearningModule(raw);
-    if (typeof window !== "undefined") {
-      const stored = getStoredModules();
-      saveStoredModules(stored.map((m) => (String(m.id) === String(numericId) ? { ...m, ...updatedMod } : m)));
-    }
     return {
       success: true,
       module: updatedMod,
       message: "Module updated successfully.",
     };
   } catch (error: any) {
-    console.warn(`Update module #${id} fallback:`, error?.message);
-    if (typeof window !== "undefined") {
-      const stored = getStoredModules();
-      saveStoredModules(
-        stored.map((m) =>
-          String(m.id) === String(numericId)
-            ? {
-                ...m,
-                title: payload.title || m.title,
-                description: payload.description || m.description,
-                status: (payload.status as any) || m.status,
-              }
-            : m
-        )
-      );
-    }
-    return {
-      success: true,
-      message: "Module updated (locally)",
-    };
+    console.error(`Update module #${id} failed:`, error?.message);
+    throw error;
   }
 }
 
@@ -320,10 +222,6 @@ export async function deleteModule(
   id: string | number
 ): Promise<{ success: boolean; message?: string }> {
   const numericId = Number(id) || id;
-  if (typeof window !== "undefined") {
-    const stored = getStoredModules();
-    saveStoredModules(stored.filter((m) => String(m.id) !== String(numericId)));
-  }
   try {
     const res = await apiClient.delete<any>(ENDPOINTS.LEARNING.DETAIL(numericId));
     return {
@@ -331,11 +229,8 @@ export async function deleteModule(
       message: res?.message || "Module deleted successfully.",
     };
   } catch (error: any) {
-    console.warn(`Delete module #${id} fallback:`, error?.message);
-    return {
-      success: true,
-      message: "Module deleted (locally)",
-    };
+    console.error(`Delete module #${id} failed:`, error?.message);
+    throw error;
   }
 }
 
@@ -367,11 +262,8 @@ export async function updateContent(
       message: "Resource updated successfully.",
     };
   } catch (error: any) {
-    console.warn(`Update content #${contentId} fallback:`, error?.message);
-    return {
-      success: true,
-      message: "Resource updated (locally)",
-    };
+    console.error(`Update content #${contentId} failed:`, error?.message);
+    throw error;
   }
 }
 
@@ -392,10 +284,7 @@ export async function deleteContent(
       message: res?.message || "Resource deleted successfully.",
     };
   } catch (error: any) {
-    console.warn(`Delete content #${contentId} fallback:`, error?.message);
-    return {
-      success: true,
-      message: "Resource deleted (locally)",
-    };
+    console.error(`Delete content #${contentId} failed:`, error?.message);
+    throw error;
   }
 }
