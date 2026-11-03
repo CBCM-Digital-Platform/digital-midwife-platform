@@ -307,56 +307,17 @@ export async function grantMentorAccess(
   }
 
   // Exact OpenAPI Swagger schema: { "mentorId": <integer> }
-  try {
-    const res = await apiClient.post<any>(
-      ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
-      {
-        mentorId: numericMentorId,
-      }
-    );
-
-    return {
-      success: true,
-      message: res?.message || "Preceptor access granted successfully on the server.",
-    };
-  } catch (err: any) {
-    const errMsg = String(err?.message || "").toLowerCase();
-
-    // If backend requires module to be published and authorized, auto-publish and retry
-    if (
-      errMsg.includes("published") &&
-      (errMsg.includes("authorized") || errMsg.includes("assigned to mentors"))
-    ) {
-      console.log(`Module #${numericModuleId} requires authorization. Auto-authorizing on backend...`);
-      try {
-        await apiClient.patch<any>(ENDPOINTS.LEARNING.DETAIL(numericModuleId), {
-          status: "published",
-          isPublished: true,
-          isAuthorized: true,
-        });
-
-        // Retry granting mentor access
-        const retryRes = await apiClient.post<any>(
-          ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
-          {
-            mentorId: numericMentorId,
-          }
-        );
-
-        return {
-          success: true,
-          message: retryRes?.message || "Module authorized, published, and preceptor access granted successfully.",
-        };
-      } catch (patchErr: any) {
-        console.warn("Auto-authorization rejected by backend:", patchErr?.message);
-        throw new Error(
-          "Only published and authorized modules can be assigned to mentors. Please ensure this module is published and authorized."
-        );
-      }
+  const res = await apiClient.post<any>(
+    ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
+    {
+      mentorId: numericMentorId,
     }
+  );
 
-    throw err;
-  }
+  return {
+    success: true,
+    message: res?.message || "Preceptor access granted successfully on the server.",
+  };
 }
 
 /**

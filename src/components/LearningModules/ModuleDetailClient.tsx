@@ -986,6 +986,17 @@ export function ModuleDetailClient({
                   ? currentModule.thematicArea?.id
                   : currentModule.thematicAreaId
               }
+              moduleStatus={currentModule.status}
+              isPublished={currentModule.isPublished}
+              isAuthorized={currentModule.isAuthorized}
+              onModuleAuthorized={() => {
+                setCurrentModule((prev) => ({
+                  ...prev,
+                  status: "published",
+                  isPublished: true,
+                  isAuthorized: true,
+                }));
+              }}
             />
           </TabsContent>
         )}

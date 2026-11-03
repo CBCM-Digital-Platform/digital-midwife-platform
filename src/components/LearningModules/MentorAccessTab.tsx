@@ -26,6 +26,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface MentorAccessTabProps {
   moduleId: string | number;
@@ -33,6 +34,10 @@ interface MentorAccessTabProps {
   facilityName?: string;
   thematicAreaTitle?: string;
   thematicAreaId?: string | number;
+  moduleStatus?: string;
+  isPublished?: boolean;
+  isAuthorized?: boolean;
+  onModuleAuthorized?: () => void;
 }
 
 export function MentorAccessTab({
@@ -41,7 +46,12 @@ export function MentorAccessTab({
   facilityName,
   thematicAreaTitle,
   thematicAreaId,
+  moduleStatus,
+  isPublished,
+  isAuthorized,
+  onModuleAuthorized,
 }: MentorAccessTabProps) {
+  const { isSuperAdmin } = useAuth();
   const [mentors, setMentors] = useState<ModuleMentorAccess[]>(initialMentors);
   const [searchQuery, setSearchQuery] = useState("");
   const [processingMentorId, setProcessingMentorId] = useState<string | number | null>(null);
@@ -128,6 +138,14 @@ export function MentorAccessTab({
   };
 
   const handleAuthorizeAndPublish = async () => {
+    if (!isSuperAdmin) {
+      setToastMessage({
+        type: "error",
+        text: "Only Super Administrators have authority to authorize and publish clinical modules.",
+      });
+      return;
+    }
+
     setIsPublishing(true);
     setToastMessage(null);
     try {
@@ -137,14 +155,17 @@ export function MentorAccessTab({
         isAuthorized: true,
       });
       setPublishError(null);
+      if (onModuleAuthorized) {
+        onModuleAuthorized();
+      }
       setToastMessage({
         type: "success",
-        text: "Module published and authorized on the server! You can now assign mentors.",
+        text: "Module authorized and published on the server! Preceptors can now be assigned.",
       });
     } catch (err: any) {
       setToastMessage({
         type: "error",
-        text: err?.message || "Failed to authorize module. Administrator role required.",
+        text: err?.message || "Failed to authorize module. Super Administrator role required.",
       });
     } finally {
       setIsPublishing(false);
@@ -226,41 +247,73 @@ export function MentorAccessTab({
 
       {/* Module Authorization Alert Banner */}
       {publishError && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-xs shadow-xs animate-in fade-in-50">
+        <div className={cn(
+          "rounded-xl border p-4 text-xs shadow-xs animate-in fade-in-50",
+          isSuperAdmin
+            ? "border-amber-200 bg-amber-50/90"
+            : "border-blue-200 bg-blue-50/90"
+        )}>
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            {isSuperAdmin ? (
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            ) : (
+              <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+            )}
             <div className="flex-1 space-y-2">
               <div className="flex items-center justify-between">
-                <h4 className="font-bold text-amber-900 text-sm">
-                  Module Authorization Required
+                <h4 className={cn(
+                  "font-bold text-sm",
+                  isSuperAdmin ? "text-amber-900" : "text-blue-900"
+                )}>
+                  {isSuperAdmin
+                    ? "Module Authorization Required (Super Admin)"
+                    : "Module Pending Super Admin Authorization"}
                 </h4>
                 <button
                   type="button"
                   onClick={() => setPublishError(null)}
-                  className="text-amber-500 hover:text-amber-800 transition cursor-pointer"
+                  className={cn(
+                    "transition cursor-pointer",
+                    isSuperAdmin
+                      ? "text-amber-500 hover:text-amber-800"
+                      : "text-blue-500 hover:text-blue-800"
+                  )}
                   aria-label="Close alert"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <p className="text-amber-800 leading-relaxed">
-                The server requires this learning module to be officially <strong>published</strong> and <strong>authorized</strong> before mentors can be assigned.
+              <p className={cn(
+                "leading-relaxed",
+                isSuperAdmin ? "text-amber-800" : "text-blue-800"
+              )}>
+                {isSuperAdmin ? (
+                  <>
+                    The backend requires this clinical module to be officially <strong>published</strong> and <strong>authorized</strong> before preceptors can be assigned. As a Super Administrator, you can review and authorize it now.
+                  </>
+                ) : (
+                  <>
+                    This learning module is currently in draft or pending authorization. Only a <strong>Super Administrator</strong> has the authority to review, authorize, and publish clinical learning modules before mentors can be assigned. Please contact your system administrator to approve this module.
+                  </>
+                )}
               </p>
-              <div className="pt-1 flex items-center gap-3">
-                <Button
-                  size="sm"
-                  disabled={isPublishing}
-                  onClick={handleAuthorizeAndPublish}
-                  className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3.5 font-semibold shadow-xs cursor-pointer"
-                >
-                  {isPublishing ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                  )}
-                  Authorize &amp; Publish Module Now
-                </Button>
-              </div>
+              {isSuperAdmin && (
+                <div className="pt-1 flex items-center gap-3">
+                  <Button
+                    size="sm"
+                    disabled={isPublishing}
+                    onClick={handleAuthorizeAndPublish}
+                    className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3.5 font-semibold shadow-xs cursor-pointer"
+                  >
+                    {isPublishing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Authorize &amp; Publish Module (Admin Action)
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

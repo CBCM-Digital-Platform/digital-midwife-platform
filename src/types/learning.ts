@@ -32,6 +32,8 @@ export interface LearningModule {
   thematicAreaName?: string;
   thematicArea?: { id?: string | number; name?: string; code?: string } | string;
   status: ModuleStatus;
+  isPublished?: boolean;
+  isAuthorized?: boolean;
   order?: number;
   contentsCount?: number;
   contents?: ModuleContent[];
