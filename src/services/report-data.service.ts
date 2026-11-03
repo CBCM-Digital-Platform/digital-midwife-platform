@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api-client";
+import { INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 import type { ReportsData, CohortRecord, DomainBreakdown, MonthlyTrend } from "@/types/report";
 import { FACILITY_ID_MAP } from "@/services/users.service";
 
@@ -99,7 +100,16 @@ export async function getReportsData(): Promise<ReportsData> {
             ? facilitiesRes
             : [];
 
-        const areasList = Array.isArray(areasRes?.data)
+        const areasList = (Array.isArray(areasRes?.data?.items)
+            ? areasRes.data.items
+            : Array.isArray(areasRes?.data)
+            ? areasRes.data
+            : Array.isArray(areasRes?.items)
+            ? areasRes.items
+            : Array.isArray(areasRes) && areasRes.length > 0
+            ? areasRes
+            : INITIAL_THEMATIC_AREAS);
+        const _areasListLegacy = Array.isArray(areasRes?.data)
             ? areasRes.data
             : Array.isArray(areasRes)
             ? areasRes

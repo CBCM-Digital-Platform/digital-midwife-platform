@@ -279,6 +279,7 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         value={thematicAreas}
                         onChange={setThematicAreas}
                         suggestions={options.thematicAreas}
+                        thematicAreaItems={options.thematicAreaItems}
                         invalid={!!errors.thematicAreas}
                     />
                 </Field>

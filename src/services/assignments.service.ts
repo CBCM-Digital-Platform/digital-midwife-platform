@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api-client";
+import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 import type { Assignment, AssignmentStats, MentorLead } from "@/types/assignment";
 
 function getInitials(name?: string): string {
@@ -87,7 +88,10 @@ export async function getAssignments(facilityId?: number | string): Promise<Assi
             facilityMap.set(f.id, f.name);
         }
 
-        const thematicDomains = [
+        const liveAreas = await getThematicAreas().catch(() => INITIAL_THEMATIC_AREAS);
+        const thematicDomains = (liveAreas && liveAreas.length > 0)
+            ? liveAreas.map((ta) => ta.name)
+            : [
             "Maternal & Newborn Care",
             "Emergency Obstetrics",
             "Intrapartum Practice",

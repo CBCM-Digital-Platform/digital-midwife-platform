@@ -29,9 +29,17 @@ export interface CycleOption {
     endDate: string;
 }
 
+export interface ThematicAreaOptionItem {
+    id: string;
+    name: string;
+    code?: string;
+    category?: string;
+}
+
 export interface AssignmentFormOptions {
     cycles: CycleOption[];
     thematicAreas: string[];
+    thematicAreaItems?: ThematicAreaOptionItem[];
     mentors: MentorOption[];
     mentees: MenteeOption[];
 }
@@ -40,6 +48,7 @@ export interface NewAssignmentInput {
     type: AssignmentType;
     cycleId: string;
     thematicAreas: string[];
+    thematicAreaId?: string | number;
     mentorIds: string[];
     menteeIds: string[];
     startDate: string;

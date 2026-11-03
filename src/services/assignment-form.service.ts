@@ -1,5 +1,13 @@
 import { apiClient } from "@/lib/api-client";
-import type { AssignmentFormOptions, CycleOption, MentorOption, MenteeOption, NewAssignmentInput } from "@/types/assignment-form";
+import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
+import type {
+    AssignmentFormOptions,
+    CycleOption,
+    MentorOption,
+    MenteeOption,
+    NewAssignmentInput,
+    ThematicAreaOptionItem,
+} from "@/types/assignment-form";
 
 function getInitials(name?: string): string {
     if (!name) return "U";
@@ -14,11 +22,12 @@ function getInitials(name?: string): string {
 
 export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions> {
     try {
-        const [cyclesRes, facilitiesRes, mentorsRes, menteesRes] = await Promise.all([
+        const [cyclesRes, facilitiesRes, mentorsRes, menteesRes, thematicAreasList] = await Promise.all([
             apiClient<any>("/api/v1/mentorship-cycles").catch(() => null),
             apiClient<any>("/api/v1/facilities").catch(() => null),
             apiClient<any>("/api/v1/users?role=mentor").catch(() => null),
             apiClient<any>("/api/v1/users?role=mentee").catch(() => null),
+            getThematicAreas().catch(() => INITIAL_THEMATIC_AREAS),
         ]);
 
         const rawCycles = Array.isArray(cyclesRes?.data) ? cyclesRes.data : Array.isArray(cyclesRes) ? cyclesRes : [];
@@ -57,20 +66,25 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             facility: facilityMap.get(me.facility_id) || me.facility || "Central Hospital",
         }));
 
-        const thematicAreas = [
-            "Maternal & Newborn Health",
-            "Emergency Obstetric Care",
-            "Intrapartum Care",
-            "Antenatal & Postnatal Care",
-            "Pediatrics & Neonatology",
-            "Family Planning",
-        ];
+        // Use real accredited thematic areas from the database
+        const activeThematicAreas = Array.isArray(thematicAreasList) && thematicAreasList.length > 0
+            ? thematicAreasList
+            : INITIAL_THEMATIC_AREAS;
+
+        const thematicAreas = activeThematicAreas.map((ta) => ta.name);
+        const thematicAreaItems: ThematicAreaOptionItem[] = activeThematicAreas.map((ta) => ({
+            id: String(ta.id),
+            name: ta.name,
+            code: ta.code,
+            category: ta.category,
+        }));
 
         return {
             cycles: cycles.length > 0 ? cycles : [
                 { id: "c-1", name: "2026 Mentorship Cycle 1", startDate: "2026-11-01", endDate: "2027-04-30" }
             ],
             thematicAreas,
+            thematicAreaItems,
             mentors,
             mentees,
         };
@@ -82,44 +96,89 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
 
 /**
  * Creates a new assignment.
- * When backend exposes a dedicated assignment endpoint, this posts to it.
+ * When backend exposes a dedicated assignment endpoint, this posts to it with strict schema matching.
  */
 export async function createAssignment(input: NewAssignmentInput): Promise<{ id: string }> {
     try {
+        // Resolve matching thematic area from live database to obtain the exact numeric ID
+        const allAreas = await getThematicAreas().catch(() => INITIAL_THEMATIC_AREAS);
+        const selectedAreaName = input.thematicAreas?.[0] || "";
+        const matchedArea = allAreas.find(
+            (a) =>
+                a.name.toLowerCase() === selectedAreaName.toLowerCase() ||
+                String(a.id) === String(selectedAreaName) ||
+                (a.code && a.code.toLowerCase() === selectedAreaName.toLowerCase()) ||
+                String(a.id) === String(input.thematicAreaId)
+        );
+
+        const numericAreaId = matchedArea
+            ? Number(matchedArea.id)
+            : (input.thematicAreaId ? Number(input.thematicAreaId) : 1);
+        const officialAreaName = matchedArea?.name || selectedAreaName || "General Clinical Midwifery";
+
         // 1. Try submitting bulk payload to backend
-        const res = await apiClient.post<any>("/api/v1/assignments", input).catch(() => null);
+        const res = await apiClient.post<any>("/api/v1/assignments", {
+            ...input,
+            thematic_area_id: numericAreaId,
+            thematicAreaId: numericAreaId,
+            thematic_area: officialAreaName,
+            thematic_area_name: officialAreaName,
+            thematic_domain: officialAreaName,
+            thematicDomain: officialAreaName,
+        }).catch(() => null);
+
         if (res?.data?.id || res?.id) {
             return { id: String(res.data?.id || res.id) };
         }
 
         // 2. Also submit normalized individual assignment pairs for backend database compatibility
         if (Array.isArray(input.mentorIds) && Array.isArray(input.menteeIds)) {
+            let lastCreatedId: string | null = null;
             for (const mentorId of input.mentorIds) {
                 for (const menteeId of input.menteeIds) {
                     const mentorIdNum = Number(mentorId);
                     const menteeIdNum = Number(menteeId);
                     const cycleIdNum = Number(input.cycleId);
 
-                    await apiClient.post<any>("/api/v1/assignments", {
+                    const singleRes = await apiClient.post<any>("/api/v1/assignments", {
                         mentor_id: !isNaN(mentorIdNum) ? mentorIdNum : mentorId,
                         mentee_id: !isNaN(menteeIdNum) ? menteeIdNum : menteeId,
                         cycle_id: !isNaN(cycleIdNum) ? cycleIdNum : 1,
+                        thematic_area_id: numericAreaId,
+                        thematicAreaId: numericAreaId,
+                        thematic_area: officialAreaName,
+                        thematic_area_name: officialAreaName,
+                        thematic_domain: officialAreaName,
+                        thematicDomain: officialAreaName,
                         status: "active",
-                        thematic_area: input.thematicAreas?.[0] || "Maternal & Newborn Care",
+                        start_date: input.startDate,
+                        end_date: input.endDate,
                         notes: input.notes,
-                    }).catch(() => null);
+                    }).catch((err) => {
+                        console.warn("Direct assignment creation warning:", err?.message || err);
+                        return null;
+                    });
+
+                    if (singleRes?.data?.id || singleRes?.id) {
+                        lastCreatedId = String(singleRes.data?.id || singleRes.id);
+                    }
 
                     // Also link mentor on the mentee user record directly
                     if (!isNaN(menteeIdNum)) {
                         await apiClient.patch<any>(`/api/v1/users/${menteeId}`, {
                             mentor_id: !isNaN(mentorIdNum) ? mentorIdNum : mentorId,
+                            thematic_area: officialAreaName,
+                            thematic_area_id: numericAreaId,
                         }).catch(() => null);
                     }
                 }
             }
+            if (lastCreatedId) {
+                return { id: lastCreatedId };
+            }
         }
-    } catch {
-        // Fallback gracefully
+    } catch (e: any) {
+        console.error("Failed to create assignment on backend:", e?.message || e);
     }
     return { id: `a-${Date.now()}` };
 }

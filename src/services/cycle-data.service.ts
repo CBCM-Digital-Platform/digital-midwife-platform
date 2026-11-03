@@ -10,6 +10,7 @@ import type {
 } from "@/types/cycle";
 import type { CreateCycleInput, Facility } from "@/types/newCycle";
 import { FACILITY_ID_MAP } from "@/services/users.service";
+import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 
 const MOCK_CYCLES: Cycle[] = [
     {
@@ -582,9 +583,19 @@ export async function createCycle(input: CreateCycleInput): Promise<{ id: string
     }
 
     // 3. Link selected thematic areas via POST /api/v1/mentorship-cycles/{cycleId}/thematic-areas
+    const allAreas = await getThematicAreas().catch(() => INITIAL_THEMATIC_AREAS);
     if (Array.isArray(input.thematicAreas) && input.thematicAreas.length > 0) {
         for (const areaId of input.thematicAreas) {
-            const numericId = Number(areaId);
+            let numericId = Number(areaId);
+            if (isNaN(numericId) || numericId <= 0) {
+                const found = (allAreas as any[]).find(
+                    (a) => a.name.toLowerCase() === String(areaId).toLowerCase() ||
+                           (a.code && a.code.toLowerCase() === String(areaId).toLowerCase())
+                );
+                if (found) {
+                    numericId = Number(found.id);
+                }
+            }
             if (!isNaN(numericId) && numericId > 0) {
                 try {
                     await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleId), {

@@ -24,6 +24,7 @@ import {
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
+import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 import { FACILITY_ID_MAP } from "@/services/users.service";
 import {
   Dialog,
@@ -260,6 +261,17 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
   const watchedLastName = watch("last_name");
   const watchedHighestQualification = watch("highest_qualification");
   const watchedThematicArea = watch("thematic_area");
+  const [dynamicThematicAreas, setDynamicThematicAreas] = useState<string[]>(() => {
+    return Array.from(thematicAreasList);
+  });
+
+  useEffect(() => {
+    getThematicAreas().then((list) => {
+      if (list && list.length > 0) {
+        setDynamicThematicAreas(list.map((ta) => ta.name));
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     register("highest_qualification");
@@ -558,7 +570,7 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
                     Primary Thematic Area <span className="text-red-500">*</span>
                   </Label>
                   <SearchableSelect
-                    options={thematicAreasList}
+                    options={dynamicThematicAreas}
                     value={watchedThematicArea}
                     onChange={(val) =>
                       setValue("thematic_area", val, { shouldValidate: true })
