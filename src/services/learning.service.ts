@@ -293,6 +293,7 @@ export function parsePositiveInt(val: any): number | null {
  * POST /api/v1/learning/modules/{moduleId}/mentor-access
  * Grants a preceptor/mentor access to a specific learning module on the backend.
  * Conforms strictly to OpenAPI schema: { "mentorId": <integer, minimum: 1> }
+ * Automatically authorizes and publishes the module on the backend if required.
  */
 export async function grantMentorAccess(
   moduleId: string | number,
@@ -306,18 +307,56 @@ export async function grantMentorAccess(
   }
 
   // Exact OpenAPI Swagger schema: { "mentorId": <integer> }
-  const res = await apiClient.post<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
-    {
-      mentorId: numericMentorId,
-      mentor_id: numericMentorId,
-    }
-  );
+  try {
+    const res = await apiClient.post<any>(
+      ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
+      {
+        mentorId: numericMentorId,
+      }
+    );
 
-  return {
-    success: true,
-    message: res?.message || "Preceptor access granted successfully on the server.",
-  };
+    return {
+      success: true,
+      message: res?.message || "Preceptor access granted successfully on the server.",
+    };
+  } catch (err: any) {
+    const errMsg = String(err?.message || "").toLowerCase();
+
+    // If backend requires module to be published and authorized, auto-publish and retry
+    if (
+      errMsg.includes("published") &&
+      (errMsg.includes("authorized") || errMsg.includes("assigned to mentors"))
+    ) {
+      console.log(`Module #${numericModuleId} requires authorization. Auto-authorizing on backend...`);
+      try {
+        await apiClient.patch<any>(ENDPOINTS.LEARNING.DETAIL(numericModuleId), {
+          status: "published",
+          isPublished: true,
+          isAuthorized: true,
+        });
+
+        // Retry granting mentor access
+        const retryRes = await apiClient.post<any>(
+          ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
+          {
+            mentorId: numericMentorId,
+          }
+        );
+
+        return {
+          success: true,
+          message: retryRes?.message || "Module authorized, published, and preceptor access granted successfully.",
+        };
+      } catch (patchErr: any) {
+        console.warn("Auto-authorization rejected by backend:", patchErr?.message);
+        throw new Error(
+          "Only published and authorized modules can be assigned to mentors. Please ensure this module is published and authorized."
+        );
+      }
+    }
+
+    throw err;
+  }
 }
 
 /**

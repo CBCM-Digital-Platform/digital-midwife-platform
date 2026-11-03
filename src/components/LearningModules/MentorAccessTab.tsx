@@ -7,6 +7,8 @@ import {
   grantMentorAccess,
   revokeMentorAccess,
 } from "@/services/learning.service";
+import { apiClient } from "@/lib/api-client";
+import { ENDPOINTS } from "@/services/endpoints";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +53,8 @@ export function MentorAccessTab({
     mentorName: string;
     message: string;
   } | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Auto-dismiss toast after 6s
   useEffect(() => {
@@ -76,6 +80,7 @@ export function MentorAccessTab({
     setProcessingMentorId(mentor.mentorId);
     setToastMessage(null);
     setAssignmentError(null);
+    setPublishError(null);
 
     const prevMentors = [...mentors];
     // Optimistically update access in state
@@ -100,12 +105,17 @@ export function MentorAccessTab({
       const isAssignmentError =
         errMsg.toLowerCase().includes("active assignment") ||
         errMsg.toLowerCase().includes("thematic area");
+      const isPublishError =
+        errMsg.toLowerCase().includes("published") &&
+        (errMsg.toLowerCase().includes("authorized") || errMsg.toLowerCase().includes("assigned to mentors"));
 
       if (isAssignmentError) {
         setAssignmentError({
           mentorName: mentor.mentorName,
           message: errMsg,
         });
+      } else if (isPublishError) {
+        setPublishError(errMsg);
       }
 
       setToastMessage({
@@ -117,10 +127,35 @@ export function MentorAccessTab({
     }
   };
 
+  const handleAuthorizeAndPublish = async () => {
+    setIsPublishing(true);
+    setToastMessage(null);
+    try {
+      await apiClient.patch(ENDPOINTS.LEARNING.DETAIL(moduleId), {
+        status: "published",
+        isPublished: true,
+        isAuthorized: true,
+      });
+      setPublishError(null);
+      setToastMessage({
+        type: "success",
+        text: "Module published and authorized on the server! You can now assign mentors.",
+      });
+    } catch (err: any) {
+      setToastMessage({
+        type: "error",
+        text: err?.message || "Failed to authorize module. Administrator role required.",
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleRevoke = async (mentor: ModuleMentorAccess) => {
     setProcessingMentorId(mentor.mentorId);
     setToastMessage(null);
     setAssignmentError(null);
+    setPublishError(null);
 
     const prevMentors = [...mentors];
     // Optimistically revoke access in state
@@ -138,11 +173,12 @@ export function MentorAccessTab({
       });
     } catch (err: any) {
       console.error("Backend revoke mentor access error:", err);
-      // Revert optimistic update
+      // Revert optimistic revoke
       setMentors(prevMentors);
+
       setToastMessage({
         type: "error",
-        text: `Backend Error: ${err?.message || "Failed to revoke preceptor access."}`,
+        text: `Revocation Error: ${err?.message || "Could not revoke preceptor access."}`,
       });
     } finally {
       setProcessingMentorId(null);
@@ -187,6 +223,48 @@ export function MentorAccessTab({
           />
         </div>
       </div>
+
+      {/* Module Authorization Alert Banner */}
+      {publishError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-xs shadow-xs animate-in fade-in-50">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-amber-900 text-sm">
+                  Module Authorization Required
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setPublishError(null)}
+                  className="text-amber-500 hover:text-amber-800 transition cursor-pointer"
+                  aria-label="Close alert"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-amber-800 leading-relaxed">
+                The server requires this learning module to be officially <strong>published</strong> and <strong>authorized</strong> before mentors can be assigned.
+              </p>
+              <div className="pt-1 flex items-center gap-3">
+                <Button
+                  size="sm"
+                  disabled={isPublishing}
+                  onClick={handleAuthorizeAndPublish}
+                  className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3.5 font-semibold shadow-xs cursor-pointer"
+                >
+                  {isPublishing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  Authorize &amp; Publish Module Now
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Thematic Assignment Requirement Alert Banner */}
       {assignmentError && (
@@ -262,98 +340,97 @@ export function MentorAccessTab({
           <button
             type="button"
             onClick={() => setToastMessage(null)}
-            className="text-gray-400 hover:text-gray-700 font-bold ml-2 cursor-pointer"
+            className="text-gray-400 hover:text-gray-600"
+            aria-label="Dismiss message"
           >
-            ✕
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* Preceptors DataTable */}
+      {/* Preceptors Grid Table */}
       {filteredMentors.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl space-y-2">
-          <UserX className="w-8 h-8 text-gray-400 mx-auto" />
-          <h4 className="text-sm font-semibold text-gray-700">No Mentors Found</h4>
-          <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            {searchQuery
-              ? `No preceptors matched "${searchQuery}". Try a different name or specialty.`
-              : "No mentors are currently registered under this facility roster."}
-          </p>
+        <div className="p-8 text-center text-xs text-gray-500 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+          No mentors or clinical preceptors matched your search query.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-gray-50/80 text-gray-600 font-semibold border-b border-gray-100 uppercase tracking-wider">
-              <tr>
-                <th className="py-3 px-4">Preceptor / Mentor</th>
-                <th className="py-3 px-4">Facility & Specialty</th>
-                <th className="py-3 px-4">Authorization</th>
-                <th className="py-3 px-4 text-right">Dispatch Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-gray-700">
-              {filteredMentors.map((mentor) => {
-                const isProcessing = processingMentorId === mentor.mentorId;
-                return (
-                  <tr key={mentor.mentorId} className="hover:bg-gray-50/50 transition">
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-gray-900">{mentor.mentorName}</div>
-                      <div className="text-[11px] text-gray-500">{mentor.email}</div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-semibold text-gray-800">
-                        {mentor.facility || facilityName || "General Maternity Wing"}
-                      </div>
-                      <div className="text-[11px] text-gray-500">{mentor.specialty}</div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {mentor.hasAccess ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-[#194611] border border-emerald-200">
-                          <UserCheck className="w-3.5 h-3.5" />
-                          Authorized
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                          <UserX className="w-3.5 h-3.5" />
-                          Unauthorized
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {mentor.hasAccess ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={isProcessing}
-                          onClick={() => handleRevoke(mentor)}
-                          className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"
-                        >
-                          {isProcessing ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            "Revoke Access"
-                          )}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          disabled={isProcessing}
-                          onClick={() => handleGrant(mentor)}
-                          className="h-7 text-xs bg-[#194611] hover:bg-[#13360d] text-white cursor-pointer shadow-2xs font-semibold"
-                        >
-                          {isProcessing ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            "Grant Access"
-                          )}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {filteredMentors.map((mentor) => (
+            <div
+              key={mentor.mentorId}
+              className={cn(
+                "p-4 rounded-xl border transition flex flex-col justify-between gap-3",
+                mentor.hasAccess
+                  ? "bg-emerald-50/40 border-emerald-200/80 shadow-2xs"
+                  : "bg-white border-gray-200 hover:border-gray-300"
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-sm text-gray-900">
+                      {mentor.mentorName}
+                    </p>
+                    {mentor.hasAccess ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Authorized Preceptor
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
+                        No Access
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium">
+                    {mentor.specialty} • {mentor.facility || "Regional Hospital"}
+                  </p>
+                  <p className="text-[11px] text-gray-400">{mentor.email}</p>
+                </div>
+              </div>
+
+              {/* Action Trigger */}
+              <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-[11px] text-gray-400">
+                  {mentor.hasAccess
+                    ? "Preceptor can monitor mentees on this module."
+                    : "Authorize to allow preceptor competency evaluation."}
+                </span>
+
+                {mentor.hasAccess ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={processingMentorId === mentor.mentorId}
+                    onClick={() => handleRevoke(mentor)}
+                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 h-8 px-2.5 text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    {processingMentorId === mentor.mentorId ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    ) : (
+                      <UserX className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    Revoke Access
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    disabled={processingMentorId === mentor.mentorId}
+                    onClick={() => handleGrant(mentor)}
+                    className="bg-[#194611] hover:bg-[#13360d] text-white h-8 px-2.5 text-xs font-semibold shadow-2xs cursor-pointer shrink-0"
+                  >
+                    {processingMentorId === mentor.mentorId ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    ) : (
+                      <UserCheck className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    Grant Access
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

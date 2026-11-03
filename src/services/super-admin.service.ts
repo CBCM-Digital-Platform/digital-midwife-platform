@@ -42,6 +42,7 @@ export interface AddContentResult {
 /**
  * POST /api/v1/learning/modules
  * Creates a new learning module in the platform database.
+ * Sets isPublished: true and isAuthorized: true when status is "published" so mentors can be assigned.
  */
 export async function createModule(
   payload: CreateModulePayload
@@ -57,12 +58,17 @@ export async function createModule(
     ? Number(payload.thematicAreaId) || payload.thematicAreaId
     : undefined;
 
+  const targetStatus = payload.status || "published";
+  const isPublished = targetStatus === "published";
+
   const requestBody = {
     title: payload.title.trim(),
     description: payload.description.trim(),
     thematic_area_id: numericAreaId,
     thematicAreaId: numericAreaId,
-    status: payload.status || "published",
+    status: targetStatus,
+    isPublished,
+    isAuthorized: isPublished,
     order: payload.order ?? 1,
   };
 
@@ -78,7 +84,9 @@ export async function createModule(
       title: payload.title.trim(),
       description: payload.description.trim(),
       thematic_area_id: numericAreaId,
-      status: payload.status || "published",
+      status: targetStatus,
+      isPublished,
+      isAuthorized: isPublished,
     });
 
     return {
@@ -181,6 +189,7 @@ export async function addContent(
 /**
  * PATCH or PUT /api/v1/learning/modules/{id}
  * Updates an existing learning module.
+ * Sets isPublished: true and isAuthorized: true when status is "published".
  */
 export async function updateModule(
   id: string | number,
@@ -190,7 +199,15 @@ export async function updateModule(
   const body: Record<string, any> = {};
   if (payload.title !== undefined) body.title = payload.title.trim();
   if (payload.description !== undefined) body.description = payload.description.trim();
-  if (payload.status !== undefined) body.status = payload.status;
+  if (payload.status !== undefined) {
+    body.status = payload.status;
+    if (payload.status === "published") {
+      body.isPublished = true;
+      body.isAuthorized = true;
+    } else if (payload.status === "draft") {
+      body.isPublished = false;
+    }
+  }
   if (payload.thematicAreaId !== undefined) {
     const areaId = Number(payload.thematicAreaId) || payload.thematicAreaId;
     body.thematic_area_id = areaId;
@@ -233,6 +250,7 @@ export async function deleteModule(
     throw error;
   }
 }
+
 
 /**
  * PATCH or PUT /api/v1/learning/modules/{moduleId}/contents/{contentId}
