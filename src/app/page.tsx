@@ -321,177 +321,201 @@ export default function LandingPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────
-          MODERN BENTO GRID ("HOW IT WORKS")
+          HOW IT WORKS — EDITORIAL NUMBERED ROWS LAYOUT
       ──────────────────────────────────────────────────────────── */}
-      <section id="how-it-works" className="py-28 bg-white scroll-mt-20 relative overflow-hidden">
-        {/* Subtle background texture */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(25,70,17,0.04)_0%,_transparent_60%)] pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(253,208,40,0.05)_0%,_transparent_60%)] pointer-events-none" />
+      <section id="how-it-works" className="py-28 scroll-mt-20 bg-[#194611] relative overflow-hidden">
+        {/* Ambient gold glow */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-[#FDD028]/6 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-[#FDD028]/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className="text-center max-w-3xl mx-auto mb-20">
+
+          {/* Section header — inverted on dark bg */}
+          <div className="text-center max-w-3xl mx-auto mb-24">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
               transition={springTransition}
             >
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#194611]/8 text-[#194611] text-xs font-bold uppercase tracking-widest mb-5 border border-[#194611]/20 shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#194611]" />
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#FDD028]/15 text-[#FDD028] text-xs font-bold uppercase tracking-widest mb-5 border border-[#FDD028]/25">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#FDD028]" />
                 Structured Clinical Workflow
               </div>
-              <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-5 leading-tight">
+              <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
                 How CBCM Powers{" "}
-                <span className="text-[#194611]">Hospital Mentorship</span>
+                <span className="text-[#FDD028]">Hospital Mentorship</span>
               </h2>
-              <p className="text-base sm:text-lg text-slate-500 leading-relaxed">
-                A modern clinical architecture bridging standardized national modules, on-the-floor
-                bedside evaluations, and sequential competency progression.
+              <p className="text-base sm:text-lg text-white/60 leading-relaxed">
+                Three pillars that bridge standardized national curriculum, bedside evaluations,
+                and milestone-locked competency progression.
               </p>
             </motion.div>
           </div>
 
-          {/* Asymmetrical Bento Grid — 3 equal columns, each card uses full image bottom half */}
+          {/* ── ROW 1: OSCE — Image LEFT, text RIGHT */}
           <motion.div
-            className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6"
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-50px" }}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-0 mb-6 rounded-3xl overflow-hidden"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={springTransition}
           >
-            {/* ── CARD 1: OSCE (spans 2 cols) — image fills the bottom half of the card */}
-            <motion.div variants={itemVariants} className="md:col-span-2">
-              <div className="h-full rounded-3xl overflow-hidden border border-slate-200/80 shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 group bg-white flex flex-col">
-                {/* Text content */}
-                <div className="p-8 sm:p-10 flex-none">
-                  <div className="flex items-center justify-between mb-5">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#194611]/10 text-[#194611] text-[11px] font-bold uppercase tracking-wider border border-[#194611]/15">
-                      <Stethoscope className="h-3.5 w-3.5" />
-                      Bedside Clinical Examination
-                    </span>
-                    <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-3 py-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      OSCE Digital Rubric
-                    </span>
-                  </div>
-
-                  <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 group-hover:text-[#194611] transition-colors duration-300 mb-3 leading-tight">
-                    On-The-Floor OSCE Assessments
-                  </h3>
-                  <p className="text-slate-500 text-sm sm:text-[15px] leading-relaxed mb-6 max-w-xl">
-                    Real-time split-screen evaluation lets senior mentors score bedside clinical procedures
-                    live, submitting instant formative feedback for immediate clinical remediation.
-                  </p>
-
-                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-slate-600">
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#194611]" />
-                      <span>Objective Rubrics</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#194611]" />
-                      <span>Live Grading</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#194611]" />
-                      <span>Instant Feedback</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Full-bleed image — no padding, fills remaining height */}
-                <div className="relative flex-1 min-h-[260px] sm:min-h-[320px]">
-                  <img
-                    src="/image2.jpg"
-                    alt="Midwife mentor conducting clinical skills assessment"
-                    className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-[1.03] transition-transform duration-700"
-                  />
-                  {/* Subtle top fade so image blends into card */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-white via-transparent to-transparent h-10 pointer-events-none" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent pointer-events-none" />
-                  {/* Caption chip */}
-                  <div className="absolute bottom-5 left-6">
-                    <div className="bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/70 shadow-lg flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-bold text-slate-900">Active Station • Neonatal Resuscitation</span>
-                    </div>
-                  </div>
-                </div>
+            {/* Image panel */}
+            <div className="relative h-72 sm:h-80 lg:h-auto lg:min-h-[420px] order-1 lg:order-1">
+              <img
+                src="/image2.jpg"
+                alt="Midwife mentor conducting OSCE clinical assessment"
+                className="absolute inset-0 w-full h-full object-cover object-center"
+              />
+              {/* Subtle right-side fade into text panel */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/30 hidden lg:block pointer-events-none" />
+              {/* Step number watermark */}
+              <div className="absolute top-5 left-6 bg-black/30 backdrop-blur-sm text-white/80 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full border border-white/20">
+                Step 01
               </div>
-            </motion.div>
+            </div>
 
-            {/* Right column: 2 stacked cards */}
-            <div className="flex flex-col gap-5 sm:gap-6 md:col-span-1">
-
-              {/* ── CARD 2: Standardized Curriculum (image-topped card) */}
-              <motion.div variants={itemVariants} className="flex-1">
-                <div className="h-full rounded-3xl overflow-hidden border border-slate-200/80 shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 group bg-white flex flex-col">
-                  {/* Full-bleed image on top */}
-                  <div className="relative h-44 flex-none">
-                    <img
-                      src="/image1.jpg"
-                      alt="Midwives in standardized curriculum training"
-                      className="absolute inset-0 w-full h-full object-cover object-[50%_30%] group-hover:scale-[1.04] transition-transform duration-700"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-white via-black/10 to-transparent pointer-events-none" />
-                    <div className="absolute top-4 left-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm text-[#194611] text-[10px] font-bold uppercase tracking-wider border border-white/60 shadow-sm">
-                        Super Admin Authored
-                      </span>
+            {/* Text panel */}
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-8 sm:p-12 flex flex-col justify-center order-2 lg:order-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FDD028]/15 text-[#FDD028] text-[11px] font-bold uppercase tracking-wider border border-[#FDD028]/20 mb-5 w-fit">
+                <Stethoscope className="h-3.5 w-3.5" />
+                Bedside Clinical Examination
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 leading-snug">
+                On-The-Floor OSCE Assessments
+              </h3>
+              <p className="text-white/65 text-sm sm:text-[15px] leading-relaxed mb-8">
+                Real-time split-screen evaluation lets senior mentors score bedside procedures live
+                and submit instant formative feedback — directly linked to the mentee's learning plan.
+              </p>
+              <div className="space-y-3">
+                {["Objective clinical scoring rubrics", "Live split-screen grading interface", "Instant formative feedback loop"].map((item) => (
+                  <div key={item} className="flex items-center gap-3">
+                    <div className="h-5 w-5 rounded-full bg-[#FDD028]/20 border border-[#FDD028]/40 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="h-3 w-3 text-[#FDD028]" />
                     </div>
+                    <span className="text-sm text-white/75 font-medium">{item}</span>
                   </div>
-                  {/* Text content */}
-                  <div className="p-6 flex-1 flex flex-col">
-                    <div className="h-10 w-10 rounded-xl bg-[#194611]/10 text-[#194611] group-hover:bg-[#194611] group-hover:text-[#FDD028] flex items-center justify-center transition-colors duration-300 mb-4 shadow-sm">
-                      <BookOpen className="h-5 w-5" />
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-[#194611] transition-colors mb-2">
-                      Standardized Curriculum
-                    </h3>
-                    <p className="text-slate-500 text-xs leading-relaxed flex-1">
-                      Centralized learning modules aligned to national healthcare directives, authored and
-                      approved by Super Administrators across all accredited hospitals.
-                    </p>
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-semibold text-[#194611]">
-                      <span>Nationally Approved</span>
-                      <FileCheck2 className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* ── CARD 3: Drip-Feed Learning (dark accent card) */}
-              <motion.div variants={itemVariants} className="flex-1">
-                <div className="h-full rounded-3xl overflow-hidden border border-[#194611]/20 shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 group bg-[#194611] flex flex-col relative">
-                  {/* Decorative ambient glow */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#FDD028]/15 rounded-full blur-2xl pointer-events-none" />
-                  <div className="p-6 flex-1 flex flex-col relative z-10">
-                    <div className="h-10 w-10 rounded-xl bg-[#FDD028]/20 text-[#FDD028] flex items-center justify-center mb-4 shadow-sm">
-                      <Layers className="h-5 w-5" />
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FDD028]/15 text-[#FDD028] border border-[#FDD028]/25 text-[10px] font-bold uppercase tracking-wider mb-3 w-fit">
-                      <Clock className="h-3 w-3" />
-                      <span>Milestone-Paced</span>
-                    </div>
-                    <h3 className="text-lg font-bold text-white mb-2">
-                      Drip-Feed Learning
-                    </h3>
-                    <p className="text-white/65 text-xs leading-relaxed flex-1">
-                      Modules unlock sequentially as mentees master prerequisite competencies — preventing
-                      cognitive overload and reinforcing foundational clinical skills.
-                    </p>
-                    <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-2 text-[11px] font-semibold text-[#FDD028]/80">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#FDD028]" />
-                      <span>Gate-locked module progression</span>
-                    </div>
-                  </div>
-                  {/* Small decorative bar at bottom */}
-                  <div className="h-1.5 w-full bg-gradient-to-r from-[#FDD028]/40 via-[#FDD028] to-[#FDD028]/40 flex-none" />
-                </div>
-              </motion.div>
-
+                ))}
+              </div>
             </div>
           </motion.div>
+
+          {/* ── ROW 2: Curriculum — text LEFT, image RIGHT */}
+          <motion.div
+            className="grid grid-cols-1 lg:grid-cols-2 gap-0 mb-6 rounded-3xl overflow-hidden"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ ...springTransition, delay: 0.1 }}
+          >
+            {/* Text panel */}
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-8 sm:p-12 flex flex-col justify-center order-2 lg:order-1">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FDD028]/15 text-[#FDD028] text-[11px] font-bold uppercase tracking-wider border border-[#FDD028]/20 mb-5 w-fit">
+                <BookOpen className="h-3.5 w-3.5" />
+                Super Admin Authored
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 leading-snug">
+                Standardized National Curriculum
+              </h3>
+              <p className="text-white/65 text-sm sm:text-[15px] leading-relaxed mb-8">
+                Super Administrators centralize clinical learning modules across thematic areas, ensuring
+                every facility adheres to national healthcare directives and accredited protocols.
+              </p>
+              <div className="space-y-3">
+                {["National healthcare directive alignment", "Thematic module authoring & versioning", "Approved clinical resource library"].map((item) => (
+                  <div key={item} className="flex items-center gap-3">
+                    <div className="h-5 w-5 rounded-full bg-[#FDD028]/20 border border-[#FDD028]/40 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="h-3 w-3 text-[#FDD028]" />
+                    </div>
+                    <span className="text-sm text-white/75 font-medium">{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Image panel */}
+            <div className="relative h-72 sm:h-80 lg:h-auto lg:min-h-[420px] order-1 lg:order-2">
+              <img
+                src="/image1.jpg"
+                alt="Midwives attending standardized curriculum training"
+                className="absolute inset-0 w-full h-full object-cover object-[50%_30%]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/30 hidden lg:block pointer-events-none" />
+              <div className="absolute top-5 right-6 bg-black/30 backdrop-blur-sm text-white/80 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full border border-white/20">
+                Step 02
+              </div>
+            </div>
+          </motion.div>
+
+          {/* ── ROW 3: Drip-Feed — wide banner with icon strip */}
+          <motion.div
+            className="rounded-3xl overflow-hidden border border-[#FDD028]/20"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ ...springTransition, delay: 0.2 }}
+          >
+            <div className="bg-[#FDD028]/10 backdrop-blur-sm p-8 sm:p-12">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FDD028]/20 text-[#FDD028] text-[11px] font-bold uppercase tracking-wider border border-[#FDD028]/30 w-fit">
+                  <Clock className="h-3.5 w-3.5" />
+                  Milestone-Paced
+                </div>
+                <span className="bg-black/20 text-white/60 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full border border-white/10">
+                  Step 03
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                <div>
+                  <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 leading-snug">
+                    Drip-Feed Learning &amp; Gate-Locked Progression
+                  </h3>
+                  <p className="text-white/65 text-sm sm:text-[15px] leading-relaxed">
+                    Modules unlock sequentially as mentees master prerequisite competencies —
+                    preventing cognitive overload and ensuring solid foundational clinical skills
+                    before advancing to complex procedures.
+                  </p>
+                </div>
+
+                {/* Progress strip */}
+                <div className="flex flex-col gap-3">
+                  {[
+                    { label: "Module 1 — Maternal Triage", pct: 100, done: true },
+                    { label: "Module 2 — Active Labor", pct: 100, done: true },
+                    { label: "Module 3 — Neonatal Emergency", pct: 60, done: false },
+                    { label: "Module 4 — Postpartum Care", pct: 0, done: false, locked: true },
+                  ].map((mod) => (
+                    <div key={mod.label} className="bg-white/8 rounded-xl px-4 py-3 border border-white/10">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-white/80">{mod.label}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          mod.locked
+                            ? "bg-white/10 text-white/40"
+                            : mod.done
+                            ? "bg-[#FDD028]/20 text-[#FDD028]"
+                            : "bg-emerald-500/20 text-emerald-400"
+                        }`}>
+                          {mod.locked ? "Locked" : mod.done ? "Complete" : `${mod.pct}%`}
+                        </span>
+                      </div>
+                      <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ${
+                            mod.done ? "bg-[#FDD028]" : mod.locked ? "bg-transparent" : "bg-emerald-400"
+                          }`}
+                          style={{ width: `${mod.pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
         </div>
       </section>
 
@@ -730,10 +754,10 @@ export default function LandingPage() {
                               ))}
                             </div>
                           </div>
-                          {/* Right: full-height image */}
+                          {/* Right: full-height image — mentor uses image1.jpg */}
                           <div className="relative min-h-[380px] lg:min-h-0">
                             <img
-                              src="/image3.jpg"
+                              src="/image1.jpg"
                               alt="Senior preceptors reviewing clinical mentorship protocols"
                               className="absolute inset-0 w-full h-full object-cover object-[50%_20%]"
                             />
