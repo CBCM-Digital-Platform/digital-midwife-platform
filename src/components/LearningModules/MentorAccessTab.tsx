@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import type { ModuleMentorAccess } from "@/types/learning";
 import {
   grantMentorAccess,
@@ -17,8 +18,10 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   X,
-  Users,
+  ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,12 +29,16 @@ interface MentorAccessTabProps {
   moduleId: string | number;
   initialMentors?: ModuleMentorAccess[];
   facilityName?: string;
+  thematicAreaTitle?: string;
+  thematicAreaId?: string | number;
 }
 
 export function MentorAccessTab({
   moduleId,
   initialMentors = [],
   facilityName,
+  thematicAreaTitle,
+  thematicAreaId,
 }: MentorAccessTabProps) {
   const [mentors, setMentors] = useState<ModuleMentorAccess[]>(initialMentors);
   const [searchQuery, setSearchQuery] = useState("");
@@ -39,6 +46,10 @@ export function MentorAccessTab({
   const [toastMessage, setToastMessage] = useState<{
     type: "success" | "error";
     text: string;
+  } | null>(null);
+  const [assignmentError, setAssignmentError] = useState<{
+    mentorName: string;
+    message: string;
   } | null>(null);
 
   // Auto-dismiss toast after 6s
@@ -64,6 +75,7 @@ export function MentorAccessTab({
   const handleGrant = async (mentor: ModuleMentorAccess) => {
     setProcessingMentorId(mentor.mentorId);
     setToastMessage(null);
+    setAssignmentError(null);
 
     const prevMentors = [...mentors];
     // Optimistically update access in state
@@ -83,9 +95,22 @@ export function MentorAccessTab({
       console.error("Backend grant mentor access error:", err);
       // Revert optimistic update
       setMentors(prevMentors);
+
+      const errMsg = err?.message || "Failed to grant preceptor access.";
+      const isAssignmentError =
+        errMsg.toLowerCase().includes("active assignment") ||
+        errMsg.toLowerCase().includes("thematic area");
+
+      if (isAssignmentError) {
+        setAssignmentError({
+          mentorName: mentor.mentorName,
+          message: errMsg,
+        });
+      }
+
       setToastMessage({
         type: "error",
-        text: `Backend Error: ${err?.message || "Failed to grant preceptor access."}`,
+        text: `Backend Error: ${errMsg}`,
       });
     } finally {
       setProcessingMentorId(null);
@@ -95,6 +120,7 @@ export function MentorAccessTab({
   const handleRevoke = async (mentor: ModuleMentorAccess) => {
     setProcessingMentorId(mentor.mentorId);
     setToastMessage(null);
+    setAssignmentError(null);
 
     const prevMentors = [...mentors];
     // Optimistically revoke access in state
@@ -161,6 +187,59 @@ export function MentorAccessTab({
           />
         </div>
       </div>
+
+      {/* Thematic Assignment Requirement Alert Banner */}
+      {assignmentError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-xs shadow-xs animate-in fade-in-50">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-amber-900 text-sm">
+                  Active Mentorship Assignment Required
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setAssignmentError(null)}
+                  className="text-amber-500 hover:text-amber-800 transition"
+                  aria-label="Close alert"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-amber-800 leading-relaxed">
+                The server rejected preceptor authorization for{" "}
+                <span className="font-semibold">{assignmentError.mentorName}</span> because this mentor
+                does not have an active mentorship assignment in this module&apos;s thematic area
+                {thematicAreaTitle ? (
+                  <span className="font-semibold"> ({thematicAreaTitle})</span>
+                ) : (
+                  ""
+                )}.
+              </p>
+              <div className="text-[11px] text-amber-700 bg-amber-100/70 p-2 rounded-lg font-mono">
+                Backend constraint: &quot;{assignmentError.message}&quot;
+              </div>
+              <div className="pt-1 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/assignments/new"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#194611] hover:bg-[#13360d] text-white font-semibold text-xs shadow-xs transition"
+                >
+                  Create Mentorship Assignment
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+                <Link
+                  href="/assignments"
+                  className="inline-flex items-center gap-1 text-xs text-amber-900 hover:text-amber-950 font-semibold underline underline-offset-2"
+                >
+                  View Active Facility Assignments
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Action Feedback Notification */}
       {toastMessage && (

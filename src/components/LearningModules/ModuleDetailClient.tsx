@@ -948,6 +948,16 @@ export function ModuleDetailClient({
               moduleId={currentModule.id}
               initialMentors={initialMentors}
               facilityName={user?.facility}
+              thematicAreaTitle={
+                typeof currentModule.thematicArea === "object"
+                  ? currentModule.thematicArea?.name
+                  : (currentModule.thematicAreaName || (typeof currentModule.thematicArea === "string" ? currentModule.thematicArea : undefined))
+              }
+              thematicAreaId={
+                typeof currentModule.thematicArea === "object"
+                  ? currentModule.thematicArea?.id
+                  : currentModule.thematicAreaId
+              }
             />
           </TabsContent>
         )}
