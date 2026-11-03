@@ -137,18 +137,37 @@ export async function addContent(
     }
   }
 
-  // 2. Format content payload
+  // Determine standard OpenAPI content type: "pdf", "video", "article", or "quiz"
+  const rawType = (payload.type || "document").toLowerCase();
+  const openApiType =
+    rawType.includes("vid") || rawType.includes("mp4")
+      ? "video"
+      : rawType.includes("aud") || rawType.includes("pod")
+      ? "audio"
+      : rawType.includes("link") || rawType.includes("url")
+      ? "article"
+      : "pdf";
+
+  // 2. Format content payload with isPublished and isAuthorized to ensure mentor visibility
   const contentBody = {
     title: payload.title.trim(),
-    type: payload.type.toLowerCase(),
+    type: openApiType,
     description: payload.description?.trim() || null,
+    contentText: payload.description?.trim() || payload.title.trim(),
     url: payload.url?.trim() || (payload.type === "link" ? "" : null),
+    contentUrl: payload.url?.trim() || null,
     file_id: fileId || null,
     fileId: fileId || null,
     file_name: fileName,
     fileSizeMb: fileSizeMb,
     order: payload.order ?? 1,
+    orderNumber: payload.order ?? 1,
     is_required: payload.isRequired ?? false,
+    isRequired: payload.isRequired ?? false,
+    isPublished: true,
+    is_published: true,
+    isAuthorized: true,
+    is_authorized: true,
   };
 
   try {
@@ -261,11 +280,30 @@ export async function updateContent(
   contentId: string | number,
   payload: Partial<AddContentPayload>
 ): Promise<{ success: boolean; content?: ModuleContent; message?: string }> {
+  const rawType = payload.type ? payload.type.toLowerCase() : undefined;
+  const openApiType = rawType
+    ? rawType.includes("vid") || rawType.includes("mp4")
+      ? "video"
+      : rawType.includes("link")
+      ? "article"
+      : "pdf"
+    : undefined;
+
   const body: Record<string, any> = {};
   if (payload.title !== undefined) body.title = payload.title.trim();
-  if (payload.description !== undefined) body.description = payload.description.trim();
-  if (payload.type !== undefined) body.type = payload.type.toLowerCase();
-  if (payload.url !== undefined) body.url = payload.url.trim();
+  if (payload.description !== undefined) {
+    body.description = payload.description.trim();
+    body.contentText = payload.description.trim();
+  }
+  if (openApiType !== undefined) body.type = openApiType;
+  if (payload.url !== undefined) {
+    body.url = payload.url.trim();
+    body.contentUrl = payload.url.trim();
+  }
+  body.isPublished = true;
+  body.is_published = true;
+  body.isAuthorized = true;
+  body.is_authorized = true;
 
   try {
     const res = await apiClient

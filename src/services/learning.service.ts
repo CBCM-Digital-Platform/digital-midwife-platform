@@ -145,6 +145,11 @@ export function normalizeLearningModule(
       ? "archived"
       : "published";
 
+  const rawContents = Array.isArray(raw.contents) ? raw.contents : [];
+  const contents = rawContents.length > 0
+    ? rawContents.map((c: any) => normalizeModuleContent(c, id))
+    : undefined;
+
   return {
     id,
     title,
@@ -153,8 +158,11 @@ export function normalizeLearningModule(
     thematicAreaName,
     thematicArea: raw.thematic_area || raw.thematicArea || thematicAreaName,
     status,
+    isPublished: raw.isPublished ?? (status === "published"),
+    isAuthorized: raw.isAuthorized ?? (status === "published"),
     order: raw.order ?? raw.orderNumber ?? raw.sort_order ?? 1,
-    contentsCount: raw.contents_count ?? (Array.isArray(raw.contents) ? raw.contents.length : undefined),
+    contentsCount: raw.contents_count ?? (contents ? contents.length : undefined),
+    contents,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updated_at || raw.updatedAt || new Date().toISOString(),
   };
@@ -256,15 +264,44 @@ export async function getModuleDetails(id: string | number): Promise<LearningMod
  */
 export async function getModuleContents(moduleId: string | number): Promise<ModuleContent[]> {
   const numericModuleId = parsePositiveInt(moduleId) ?? moduleId;
+  const collectedContents: ModuleContent[] = [];
+  const seenKeys = new Set<string>();
+
+  // 1. Fetch from /api/v1/learning/modules/{moduleId}/contents
   try {
     const res = await apiClient.get<any>(ENDPOINTS.LEARNING.CONTENTS(numericModuleId));
     const raw = res?.data?.contents || res?.data?.items || res?.data || res?.contents || res?.items || res;
     const list = Array.isArray(raw) ? raw : [];
-    return list.map((item: any) => normalizeModuleContent(item, moduleId));
+    for (const item of list) {
+      const normalized = normalizeModuleContent(item, moduleId);
+      const key = String(normalized.id || normalized.title).toLowerCase().trim();
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        collectedContents.push(normalized);
+      }
+    }
   } catch (error: any) {
-    console.error(`Failed to fetch contents for module #${moduleId}:`, error?.message || error);
-    return [];
+    console.warn(`Failed to fetch /contents for module #${moduleId}:`, error?.message || error);
   }
+
+  // 2. Supplementary check on /api/v1/resources?module_id={moduleId}
+  try {
+    const resRes = await apiClient.get<any>(ENDPOINTS.LEARNING.RESOURCES_BY_MODULE(numericModuleId));
+    const rawRes = resRes?.data?.data || resRes?.data?.items || resRes?.data || resRes?.items || resRes;
+    const resList = Array.isArray(rawRes) ? rawRes : [];
+    for (const item of resList) {
+      const normalized = normalizeModuleContent(item, moduleId);
+      const key = String(normalized.id || normalized.title).toLowerCase().trim();
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        collectedContents.push(normalized);
+      }
+    }
+  } catch (resErr: any) {
+    // Optional fallback
+  }
+
+  return collectedContents;
 }
 
 /**
@@ -313,6 +350,19 @@ export async function grantMentorAccess(
       mentorId: numericMentorId,
     }
   );
+
+  // Explicitly grant the mentor permission to view resources under this module
+  try {
+    await apiClient.post<any>(
+      ENDPOINTS.LEARNING.MENTOR_PERMISSIONS(numericModuleId),
+      {
+        mentorId: numericMentorId,
+        permission: "learning.resources.view",
+      }
+    );
+  } catch (permErr: any) {
+    console.warn("Mentor permission grant notification:", permErr?.message || permErr);
+  }
 
   return {
     success: true,

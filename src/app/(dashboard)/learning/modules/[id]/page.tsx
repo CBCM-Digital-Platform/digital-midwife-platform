@@ -41,10 +41,18 @@ export default async function LearningModuleDetailPage({ params }: ModuleDetailP
 
   const userRole = (session?.user as any)?.role || "mentor";
 
+  // Prefer contents fetched from /contents or fallback to module.contents
+  const finalContents =
+    contents && contents.length > 0
+      ? contents
+      : module?.contents && module.contents.length > 0
+      ? module.contents
+      : [];
+
   return (
     <ModuleDetailClient
       module={module}
-      initialContents={contents}
+      initialContents={finalContents}
       initialMentors={mentors}
       userRole={userRole}
     />

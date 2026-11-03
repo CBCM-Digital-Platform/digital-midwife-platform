@@ -32,6 +32,7 @@ import {
 import {
   getThematicAreaNameMap,
   resolveThematicAreaTitle,
+  getModuleContents,
 } from "@/services/learning.service";
 import { MentorAccessTab } from "@/components/LearningModules/MentorAccessTab";
 import { useAuth } from "@/hooks/useAuth";
@@ -101,6 +102,19 @@ export function ModuleDetailClient({
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  // Client-side fallback to fetch contents using client session if SSR initially returned empty
+  useEffect(() => {
+    if (contents.length === 0 && currentModule?.id) {
+      getModuleContents(currentModule.id)
+        .then((fresh: ModuleContent[]) => {
+          if (fresh && fresh.length > 0) {
+            setContents(fresh);
+          }
+        })
+        .catch(() => null);
+    }
+  }, [currentModule?.id, contents.length]);
 
   // Mentee Progress State (Persistent via localStorage)
   const [completedContentIds, setCompletedContentIds] = useState<Set<string>>(new Set());

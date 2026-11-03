@@ -103,5 +103,7 @@ export const ENDPOINTS = {
     MENTEE_ACCESS_REVOKE: (moduleId: string | number, menteeId: string | number) =>
       `/api/v1/learning/modules/${moduleId}/access/${menteeId}`,
     MY_MODULES: "/api/v1/learning/my/modules",
+    MENTOR_PERMISSIONS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/mentor-permissions`,
+    RESOURCES_BY_MODULE: (moduleId: string | number) => `/api/v1/resources?module_id=${moduleId}`,
   },
 } as const;
