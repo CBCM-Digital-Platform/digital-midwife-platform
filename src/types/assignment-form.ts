@@ -11,6 +11,7 @@ export interface MentorOption {
     currentLoad: number;
     maxLoad: number;
     avatarUrl?: string;
+    facilityId?: string | number;
 }
 
 export interface MenteeOption {
@@ -19,6 +20,7 @@ export interface MenteeOption {
     initials: string;
     specialty: string;
     facility: string;
+    facilityId?: string | number;
 }
 
 export interface CycleOption {
@@ -49,6 +51,7 @@ export interface NewAssignmentInput {
     cycleId: string;
     thematicAreas: string[];
     thematicAreaId?: string | number;
+    facilityId?: string | number;
     mentorIds: string[];
     menteeIds: string[];
     startDate: string;

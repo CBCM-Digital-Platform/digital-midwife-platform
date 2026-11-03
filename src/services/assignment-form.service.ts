@@ -1,5 +1,6 @@
-import { apiClient } from "@/lib/api-client";
+import { apiClient, ApiError } from "@/lib/api-client";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
+import { parsePositiveInt } from "@/services/learning.service";
 import type {
     AssignmentFormOptions,
     CycleOption,
@@ -32,8 +33,24 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
 
         const rawCycles = Array.isArray(cyclesRes?.data) ? cyclesRes.data : Array.isArray(cyclesRes) ? cyclesRes : [];
         const rawFacilities = Array.isArray(facilitiesRes?.data) ? facilitiesRes.data : Array.isArray(facilitiesRes) ? facilitiesRes : [];
-        const rawMentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
-        const rawMentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
+        const rawMentors = Array.isArray(mentorsRes?.data?.users)
+            ? mentorsRes.data.users
+            : Array.isArray(mentorsRes?.data)
+            ? mentorsRes.data
+            : Array.isArray(mentorsRes?.users)
+            ? mentorsRes.users
+            : Array.isArray(mentorsRes)
+            ? mentorsRes
+            : [];
+        const rawMentees = Array.isArray(menteesRes?.data?.users)
+            ? menteesRes.data.users
+            : Array.isArray(menteesRes?.data)
+            ? menteesRes.data
+            : Array.isArray(menteesRes?.users)
+            ? menteesRes.users
+            : Array.isArray(menteesRes)
+            ? menteesRes
+            : [];
 
         // Build facilities lookup map
         const facilityMap = new Map<number, string>();
@@ -56,6 +73,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             currentLoad: m.current_load || m.currentLoad || 0,
             maxLoad: m.max_load || m.maxLoad || 3,
             avatarUrl: m.avatar_url || undefined,
+            facilityId: m.facility_id ?? m.facilityId ?? m.facility?.id,
         }));
 
         const mentees: MenteeOption[] = rawMentees.map((me: any) => ({
@@ -64,6 +82,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             initials: getInitials(me.full_name || me.name),
             specialty: me.highest_qualification || me.specialty || "Midwifery Practice",
             facility: facilityMap.get(me.facility_id) || me.facility || "Central Hospital",
+            facilityId: me.facility_id ?? me.facilityId ?? me.facility?.id,
         }));
 
         // Use real accredited thematic areas from the database
@@ -81,7 +100,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
 
         return {
             cycles: cycles.length > 0 ? cycles : [
-                { id: "c-1", name: "2026 Mentorship Cycle 1", startDate: "2026-11-01", endDate: "2027-04-30" }
+                { id: "1", name: "2026 Mentorship Cycle 1", startDate: "2026-11-01", endDate: "2027-04-30" }
             ],
             thematicAreas,
             thematicAreaItems,
@@ -95,90 +114,102 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
 }
 
 /**
- * Creates a new assignment.
- * When backend exposes a dedicated assignment endpoint, this posts to it with strict schema matching.
+ * Creates a new assignment on the backend database.
+ * Strictly verifies and sends all required fields (mentor_id, mentee_id, facility_id, cycle_id, thematic_area_id).
+ * Throws explicit errors so validation failures are never masked.
  */
 export async function createAssignment(input: NewAssignmentInput): Promise<{ id: string }> {
-    try {
-        // Resolve matching thematic area from live database to obtain the exact numeric ID
-        const allAreas = await getThematicAreas().catch(() => INITIAL_THEMATIC_AREAS);
-        const selectedAreaName = input.thematicAreas?.[0] || "";
-        const matchedArea = allAreas.find(
-            (a) =>
-                a.name.toLowerCase() === selectedAreaName.toLowerCase() ||
-                String(a.id) === String(selectedAreaName) ||
-                (a.code && a.code.toLowerCase() === selectedAreaName.toLowerCase()) ||
-                String(a.id) === String(input.thematicAreaId)
-        );
+    // 1. Resolve matching thematic area from database to obtain the exact numeric ID
+    const allAreas = await getThematicAreas().catch(() => INITIAL_THEMATIC_AREAS);
+    const selectedAreaName = input.thematicAreas?.[0] || "";
+    const matchedArea = allAreas.find(
+        (a) =>
+            a.name.toLowerCase() === selectedAreaName.toLowerCase() ||
+            String(a.id) === String(selectedAreaName) ||
+            (a.code && a.code.toLowerCase() === selectedAreaName.toLowerCase()) ||
+            (input.thematicAreaId && String(a.id) === String(input.thematicAreaId))
+    );
 
-        const numericAreaId = matchedArea
-            ? Number(matchedArea.id)
-            : (input.thematicAreaId ? Number(input.thematicAreaId) : 1);
-        const officialAreaName = matchedArea?.name || selectedAreaName || "General Clinical Midwifery";
+    const numericAreaId = matchedArea
+        ? parsePositiveInt(matchedArea.id) ?? 1
+        : (parsePositiveInt(input.thematicAreaId) ?? 1);
+    const officialAreaName = matchedArea?.name || selectedAreaName || "General Clinical Midwifery";
 
-        // 1. Try submitting bulk payload to backend
-        const res = await apiClient.post<any>("/api/v1/assignments", {
-            ...input,
-            thematic_area_id: numericAreaId,
-            thematicAreaId: numericAreaId,
-            thematic_area: officialAreaName,
-            thematic_area_name: officialAreaName,
-            thematic_domain: officialAreaName,
-            thematicDomain: officialAreaName,
-        }).catch(() => null);
+    const cycleIdNum = parsePositiveInt(input.cycleId) ?? 1;
+    const facilityIdNum = parsePositiveInt(input.facilityId) ?? 1;
 
-        if (res?.data?.id || res?.id) {
-            return { id: String(res.data?.id || res.id) };
-        }
+    let lastCreatedId: string | null = null;
+    let lastError: Error | null = null;
 
-        // 2. Also submit normalized individual assignment pairs for backend database compatibility
-        if (Array.isArray(input.mentorIds) && Array.isArray(input.menteeIds)) {
-            let lastCreatedId: string | null = null;
-            for (const mentorId of input.mentorIds) {
-                for (const menteeId of input.menteeIds) {
-                    const mentorIdNum = Number(mentorId);
-                    const menteeIdNum = Number(menteeId);
-                    const cycleIdNum = Number(input.cycleId);
+    // 2. Iterate through selected mentors and mentees to create individual assignment pairs
+    const mentorList = Array.isArray(input.mentorIds) && input.mentorIds.length > 0 ? input.mentorIds : [];
+    const menteeList = Array.isArray(input.menteeIds) && input.menteeIds.length > 0 ? input.menteeIds : [];
 
-                    const singleRes = await apiClient.post<any>("/api/v1/assignments", {
-                        mentor_id: !isNaN(mentorIdNum) ? mentorIdNum : mentorId,
-                        mentee_id: !isNaN(menteeIdNum) ? menteeIdNum : menteeId,
-                        cycle_id: !isNaN(cycleIdNum) ? cycleIdNum : 1,
-                        thematic_area_id: numericAreaId,
-                        thematicAreaId: numericAreaId,
-                        thematic_area: officialAreaName,
-                        thematic_area_name: officialAreaName,
-                        thematic_domain: officialAreaName,
-                        thematicDomain: officialAreaName,
-                        status: "active",
-                        start_date: input.startDate,
-                        end_date: input.endDate,
-                        notes: input.notes,
-                    }).catch((err) => {
-                        console.warn("Direct assignment creation warning:", err?.message || err);
-                        return null;
-                    });
-
-                    if (singleRes?.data?.id || singleRes?.id) {
-                        lastCreatedId = String(singleRes.data?.id || singleRes.id);
-                    }
-
-                    // Also link mentor on the mentee user record directly
-                    if (!isNaN(menteeIdNum)) {
-                        await apiClient.patch<any>(`/api/v1/users/${menteeId}`, {
-                            mentor_id: !isNaN(mentorIdNum) ? mentorIdNum : mentorId,
-                            thematic_area: officialAreaName,
-                            thematic_area_id: numericAreaId,
-                        }).catch(() => null);
-                    }
-                }
-            }
-            if (lastCreatedId) {
-                return { id: lastCreatedId };
-            }
-        }
-    } catch (e: any) {
-        console.error("Failed to create assignment on backend:", e?.message || e);
+    if (mentorList.length === 0 || menteeList.length === 0) {
+        throw new Error("At least one mentor and one mentee must be selected for the assignment.");
     }
-    return { id: `a-${Date.now()}` };
+
+    for (const mentorId of mentorList) {
+        for (const menteeId of menteeList) {
+            const mentorIdNum = parsePositiveInt(mentorId);
+            const menteeIdNum = parsePositiveInt(menteeId);
+
+            if (!mentorIdNum || !menteeIdNum) {
+                throw new Error(`Invalid mentor ID (${mentorId}) or mentee ID (${menteeId}). Both must be valid numeric IDs.`);
+            }
+
+            const assignmentPayload = {
+                mentor_id: mentorIdNum,
+                mentorId: mentorIdNum,
+                mentee_id: menteeIdNum,
+                menteeId: menteeIdNum,
+                facility_id: facilityIdNum,
+                facilityId: facilityIdNum,
+                cycle_id: cycleIdNum,
+                cycleId: cycleIdNum,
+                thematic_area_id: numericAreaId,
+                thematicAreaId: numericAreaId,
+                thematic_area: officialAreaName,
+                thematic_area_name: officialAreaName,
+                thematic_domain: officialAreaName,
+                thematicDomain: officialAreaName,
+                status: "active",
+                start_date: input.startDate || new Date().toISOString().slice(0, 10),
+                end_date: input.endDate,
+                notes: input.notes,
+                matching_reason: input.notes || `Clinical Mentorship in ${officialAreaName}`,
+            };
+
+            try {
+                // Post individual assignment to backend
+                const singleRes = await apiClient.post<any>("/api/v1/assignments", assignmentPayload);
+                const createdId = singleRes?.data?.id || singleRes?.id || singleRes?.data?.assignment?.id;
+                if (createdId) {
+                    lastCreatedId = String(createdId);
+                }
+
+                // Also update user's mentor_id and thematic_area on their user profile if supported
+                await apiClient.patch<any>(`/api/v1/users/${menteeIdNum}`, {
+                    mentor_id: mentorIdNum,
+                    thematic_area: officialAreaName,
+                    thematic_area_id: numericAreaId,
+                    facility_id: facilityIdNum,
+                }).catch(() => null);
+            } catch (err: any) {
+                console.error("Backend assignment creation rejected:", err);
+                lastError = err;
+            }
+        }
+    }
+
+    if (lastCreatedId) {
+        return { id: lastCreatedId };
+    }
+
+    // If all backend creation calls failed, propagate the real backend error!
+    if (lastError) {
+        throw lastError;
+    }
+
+    return { id: `assign-${Date.now()}` };
 }

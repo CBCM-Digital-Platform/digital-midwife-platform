@@ -310,6 +310,7 @@ export async function grantMentorAccess(
     ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
     {
       mentorId: numericMentorId,
+      mentor_id: numericMentorId,
     }
   );
 

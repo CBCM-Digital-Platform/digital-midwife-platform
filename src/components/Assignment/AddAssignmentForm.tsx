@@ -201,6 +201,7 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
             await createAssignment({
                 type,
                 cycleId,
+                facilityId: selectedMentees[0]?.facilityId || (selectedMentor as any)?.facilityId,
                 thematicAreas,
                 mentorIds,
                 menteeIds,
@@ -208,11 +209,12 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 endDate,
                 notes: notes.trim(),
                 capacityOverrideReason: overloadedMentors.length > 0 ? overrideReason.trim() : undefined,
-            }).catch(() => null);
+            });
 
             router.push("/assignments?tab=new&created=1");
-        } catch {
-            setSubmitError("The assignment couldn't be created. Check your connection and try again.");
+        } catch (err: any) {
+            console.error("Assignment creation error:", err);
+            setSubmitError(err?.message || "The assignment couldn't be created on the backend database.");
             setSubmitting(false);
         }
     }
