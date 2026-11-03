@@ -48,6 +48,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Layers,
   Sparkles,
@@ -185,6 +186,12 @@ export function ModuleDetailClient({
   const [editDescription, setEditDescription] = useState(currentModule.description);
   const [editStatus, setEditStatus] = useState(currentModule.status);
   const [isSavingModule, setIsSavingModule] = useState(false);
+  const [editIsAuthorized, setEditIsAuthorized] = useState(Boolean(currentModule.isAuthorized));
+  const [newMaterialIsPublished, setNewMaterialIsPublished] = useState(true);
+  const [newMaterialIsAuthorized, setNewMaterialIsAuthorized] = useState(true);
+  const [editContentIsPublished, setEditContentIsPublished] = useState(true);
+  const [editContentIsAuthorized, setEditContentIsAuthorized] = useState(true);
+  const [isQuickPublishing, setIsQuickPublishing] = useState(false);
 
   // B. Delete Module Modal
   const [isDeleteModuleOpen, setIsDeleteModuleOpen] = useState(false);
@@ -226,6 +233,39 @@ export function ModuleDetailClient({
   // Handlers for Super Admin Module Operations
   // ----------------------------------------------------
 
+  // Quick one-click action for Super Admin to authorize and publish the module
+  const handleQuickAuthorizePublish = async () => {
+    setIsQuickPublishing(true);
+    try {
+      const res = await updateModule(currentModule.id, {
+        status: "published",
+        isPublished: true,
+        isAuthorized: true,
+      });
+      if (res.success) {
+        setCurrentModule((prev) => ({
+          ...prev,
+          status: "published",
+          isPublished: true,
+          isAuthorized: true,
+        }));
+        setFeedbackMessage({
+          type: "success",
+          text: "Module published and authorized on the platform!",
+        });
+      } else {
+        throw new Error(res.message || "Failed to authorize module.");
+      }
+    } catch (err: any) {
+      setFeedbackMessage({
+        type: "error",
+        text: err?.message || "Failed to authorize module.",
+      });
+    } finally {
+      setIsQuickPublishing(false);
+    }
+  };
+
   const handleUpdateModule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editTitle.trim()) {
@@ -239,6 +279,8 @@ export function ModuleDetailClient({
         title: editTitle.trim(),
         description: editDescription.trim(),
         status: editStatus,
+        isPublished: editStatus === "published",
+        isAuthorized: editIsAuthorized,
       });
 
       if (res.success) {
@@ -247,6 +289,8 @@ export function ModuleDetailClient({
           title: editTitle.trim(),
           description: editDescription.trim(),
           status: editStatus,
+          isPublished: editStatus === "published",
+          isAuthorized: editIsAuthorized,
         }));
         setIsEditModuleOpen(false);
         setFeedbackMessage({ type: "success", text: "Module updated successfully." });
@@ -310,6 +354,8 @@ export function ModuleDetailClient({
         file: newMaterialFile || undefined,
         order: contents.length + 1,
         isRequired: true,
+        isPublished: newMaterialIsPublished,
+        isAuthorized: newMaterialIsAuthorized,
       };
 
       const res = await addContent(currentModule.id, payload);
@@ -340,6 +386,8 @@ export function ModuleDetailClient({
     setEditContentDesc(item.description || "");
     setEditContentType(item.type || "document");
     setEditContentUrl(item.url || "");
+    setEditContentIsPublished(item.isPublished !== false);
+    setEditContentIsAuthorized(item.isAuthorized !== false);
   };
 
   const handleSaveEditContent = async (e: React.FormEvent) => {
@@ -457,6 +505,29 @@ export function ModuleDetailClient({
                 {currentModule.status}
               </Badge>
 
+              {/* Module Clinical QA Authorization Badge */}
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1",
+                  currentModule.isAuthorized
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-amber-50 text-amber-800 border-amber-200"
+                )}
+              >
+                {currentModule.isAuthorized ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    Authorized QA
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                    Pending Approval
+                  </>
+                )}
+              </Badge>
+
               {/* Role Perspective Badge */}
               <Badge
                 variant="outline"
@@ -490,11 +561,28 @@ export function ModuleDetailClient({
             {/* 2. Super Admin: Conditionally Render Edit Module & Delete Module */}
             {isSuperAdmin && (
               <>
+                {isSuperAdmin && (!currentModule.isAuthorized || currentModule.status !== "published") && (
+                  <Button
+                    size="sm"
+                    disabled={isQuickPublishing}
+                    onClick={handleQuickAuthorizePublish}
+                    className="bg-[#194611] hover:bg-[#13360d] text-white h-9 px-3.5 text-xs font-semibold shadow-xs cursor-pointer"
+                  >
+                    {isQuickPublishing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Authorize &amp; Publish Module
+                  </Button>
+                )}
+
                 <Button
                   onClick={() => {
                     setEditTitle(currentModule.title);
                     setEditDescription(currentModule.description);
                     setEditStatus(currentModule.status);
+                    setEditIsAuthorized(Boolean(currentModule.isAuthorized));
                     setIsEditModuleOpen(true);
                   }}
                   variant="outline"
@@ -622,8 +710,8 @@ export function ModuleDetailClient({
             </span>
           </TabsTrigger>
 
-          {/* Mentor Access Tab: Available to Facility Admin and Super Admin for preceptor authorization */}
-          {(isFacilityAdmin || isSuperAdmin) && (
+          {/* Mentor Access Tab: Available EXCLUSIVELY to Facility Admin for preceptor authorization */}
+          {isFacilityAdmin && (
             <TabsTrigger value="mentor-access" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Mentor Access</span>
@@ -888,6 +976,34 @@ export function ModuleDetailClient({
                             >
                               {item.type}
                             </Badge>
+
+                            {/* Super Admin Publication & Authorization Badges */}
+                            {isSuperAdmin && (
+                              <div className="flex items-center gap-1.5">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
+                                    item.isPublished !== false
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                      : "bg-gray-100 text-gray-600 border-gray-200"
+                                  )}
+                                >
+                                  {item.isPublished !== false ? "Published" : "Draft"}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
+                                    item.isAuthorized !== false
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                      : "bg-amber-50 text-amber-800 border-amber-200"
+                                  )}
+                                >
+                                  {item.isAuthorized !== false ? "Authorized" : "Pending QA"}
+                                </Badge>
+                              </div>
+                            )}
                             {isCompleted && (
                               <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
                                 <Check className="w-3 h-3" /> Reviewed
@@ -983,8 +1099,8 @@ export function ModuleDetailClient({
           </div>
         </TabsContent>
 
-        {/* 3. MENTOR ACCESS TAB: Available to Facility Admin and Super Admin */}
-        {(isFacilityAdmin || isSuperAdmin) && (
+        {/* 3. MENTOR ACCESS TAB: Available EXCLUSIVELY to Facility Admin */}
+        {isFacilityAdmin && (
           <TabsContent value="mentor-access" className="space-y-6">
             <MentorAccessTab
               moduleId={currentModule.id}
@@ -1183,6 +1299,20 @@ export function ModuleDetailClient({
                 </select>
               </div>
 
+              {/* Super Admin Module Clinical QA Authorization Checkbox */}
+              <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                <input
+                  type="checkbox"
+                  id="editIsAuthorized"
+                  checked={editIsAuthorized}
+                  onChange={(e) => setEditIsAuthorized(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                />
+                <label htmlFor="editIsAuthorized" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                  Clinical QA Authorization (Accredited by National Administration)
+                </label>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-800">Description / Syllabus</label>
                 <Textarea
@@ -1191,6 +1321,34 @@ export function ModuleDetailClient({
                   onChange={(e) => setEditDescription(e.target.value)}
                   className="text-xs bg-white"
                 />
+              </div>
+
+              {/* Super Admin Material Publication & Authorization Checkboxes */}
+              <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newMaterialIsPublished"
+                    checked={newMaterialIsPublished}
+                    onChange={(e) => setNewMaterialIsPublished(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="newMaterialIsPublished" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Publish Immediately (Visible to preceptors &amp; mentees)
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newMaterialIsAuthorized"
+                    checked={newMaterialIsAuthorized}
+                    onChange={(e) => setNewMaterialIsAuthorized(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="newMaterialIsAuthorized" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Clinical Authorization (QA Approved Protocol)
+                  </label>
+                </div>
               </div>
 
               <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
@@ -1478,6 +1636,34 @@ export function ModuleDetailClient({
                   />
                 </div>
               )}
+
+              {/* Super Admin Edit Resource Publication & Authorization */}
+              <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editContentIsPublished"
+                    checked={editContentIsPublished}
+                    onChange={(e) => setEditContentIsPublished(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="editContentIsPublished" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Published (Visible to facility preceptors and mentees)
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editContentIsAuthorized"
+                    checked={editContentIsAuthorized}
+                    onChange={(e) => setEditContentIsAuthorized(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="editContentIsAuthorized" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Authorized (Clinical QA Protocol Approved)
+                  </label>
+                </div>
+              </div>
 
               <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                 <Button

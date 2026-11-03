@@ -20,6 +20,8 @@ export interface ModuleContent {
   durationLabel?: string;
   order?: number;
   isRequired?: boolean;
+  isPublished?: boolean;
+  isAuthorized?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

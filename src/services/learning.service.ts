@@ -211,6 +211,8 @@ export function normalizeModuleContent(
     durationLabel: raw.duration || raw.duration_label || undefined,
     order: raw.order ?? raw.orderNumber ?? raw.sort_order ?? 1,
     isRequired: Boolean(raw.is_required ?? raw.isRequired ?? false),
+    isPublished: raw.isPublished ?? raw.is_published ?? true,
+    isAuthorized: raw.isAuthorized ?? raw.is_authorized ?? true,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updated_at || raw.updatedAt,
   };

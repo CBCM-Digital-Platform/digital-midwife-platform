@@ -11,6 +11,8 @@ export interface CreateModulePayload {
   description: string;
   thematicAreaId?: string | number;
   status?: "published" | "draft" | "archived" | string;
+  isPublished?: boolean;
+  isAuthorized?: boolean;
   order?: number;
 }
 
@@ -23,6 +25,8 @@ export interface AddContentPayload {
   fileId?: number | string;
   order?: number;
   isRequired?: boolean;
+  isPublished?: boolean;
+  isAuthorized?: boolean;
 }
 
 export interface CreateModuleResult {
