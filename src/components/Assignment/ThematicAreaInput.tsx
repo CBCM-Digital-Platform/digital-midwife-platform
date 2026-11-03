@@ -11,6 +11,7 @@ interface ThematicAreaInputProps {
     thematicAreaItems?: ThematicAreaOptionItem[];
     invalid?: boolean;
     placeholder?: string;
+    cycleThematicAreaNames?: string[];
 }
 
 export default function ThematicAreaInput({
@@ -20,6 +21,7 @@ export default function ThematicAreaInput({
     thematicAreaItems = [],
     invalid = false,
     placeholder = "Select or search accredited thematic areas...",
+    cycleThematicAreaNames,
 }: ThematicAreaInputProps) {
     const [query, setQuery] = useState("");
     const [isOpen, setIsOpen] = useState(false);
@@ -50,17 +52,30 @@ export default function ThematicAreaInput({
         return list;
     }, [suggestions, thematicAreaItems]);
 
-    // Filter available options based on query
+    // Filter available options based on query, prioritizing cycle-assigned areas
     const filteredOptions = useMemo(() => {
         const q = query.trim().toLowerCase();
-        if (!q) return allOptions;
-        return allOptions.filter(
-            (opt) =>
-                opt.name.toLowerCase().includes(q) ||
-                (opt.code && opt.code.toLowerCase().includes(q)) ||
-                (opt.category && opt.category.toLowerCase().includes(q))
-        );
-    }, [allOptions, query]);
+        let list = allOptions;
+        if (q) {
+            list = allOptions.filter(
+                (opt) =>
+                    opt.name.toLowerCase().includes(q) ||
+                    (opt.code && opt.code.toLowerCase().includes(q)) ||
+                    (opt.category && opt.category.toLowerCase().includes(q))
+            );
+        }
+
+        if (cycleThematicAreaNames && cycleThematicAreaNames.length > 0) {
+            const cycleSet = new Set(cycleThematicAreaNames.map((n) => n.toLowerCase()));
+            return [...list].sort((a, b) => {
+                const aInCycle = cycleSet.has(a.name.toLowerCase()) ? 1 : 0;
+                const bInCycle = cycleSet.has(b.name.toLowerCase()) ? 1 : 0;
+                return bInCycle - aInCycle;
+            });
+        }
+
+        return list;
+    }, [allOptions, query, cycleThematicAreaNames]);
 
     // Handle outside clicks to close the dropdown
     useEffect(() => {
@@ -171,6 +186,12 @@ export default function ThematicAreaInput({
                         <ul className="divide-y divide-gray-50">
                             {filteredOptions.map((opt) => {
                                 const isSelected = value.includes(opt.name);
+                                const isCycleArea =
+                                    cycleThematicAreaNames &&
+                                    cycleThematicAreaNames.some(
+                                        (cName) => cName.toLowerCase() === opt.name.toLowerCase()
+                                    );
+
                                 return (
                                     <li key={opt.id || opt.name}>
                                         <button
@@ -188,6 +209,11 @@ export default function ThematicAreaInput({
                                                     {opt.code && (
                                                         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono font-medium text-gray-600">
                                                             {opt.code}
+                                                        </span>
+                                                    )}
+                                                    {isCycleArea && (
+                                                        <span className="rounded bg-emerald-100 px-1.5 py-0.2 text-[10px] font-medium text-[#194611]">
+                                                            In this cycle
                                                         </span>
                                                     )}
                                                 </div>

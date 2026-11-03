@@ -3,7 +3,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Info } from "lucide-react";
+import { Info, Sparkles, CheckCircle2 } from "lucide-react";
 import { createAssignment } from "@/services/assignment-form.service";
 import { saveCreatedAssignment } from "@/services/assignments.service";
 import type { Assignment } from "@/types/assignment";
@@ -69,6 +69,20 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
     const [errors, setErrors] = useState<FormErrors>({});
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState("");
+
+    const selectedCycle = useMemo(
+        () => options.cycles.find((c) => c.id === cycleId),
+        [options.cycles, cycleId]
+    );
+
+    // Compute thematic areas selected that are not yet officially linked to the cycle
+    const unassignedThematicAreas = useMemo(() => {
+        if (!selectedCycle || !selectedCycle.thematicAreaNames || selectedCycle.thematicAreaNames.length === 0) {
+            return [];
+        }
+        const cycleNames = new Set(selectedCycle.thematicAreaNames.map((n) => n.toLowerCase()));
+        return thematicAreas.filter((name) => !cycleNames.has(name.toLowerCase()));
+    }, [selectedCycle, thematicAreas]);
 
     // A selected mentor is "over capacity" when their current load plus the
     // mentees in this assignment (at least 1) would go past their maximum.
@@ -147,7 +161,6 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
             };
 
             const selectedMentees = options.mentees.filter((me) => menteeIds.includes(me.id));
-            const selectedCycle = options.cycles.find((c) => c.id === cycleId);
 
             const newAssignment: Assignment = {
                 id: `assign-new-${Date.now()}`,
@@ -197,10 +210,11 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 sessionStorage.setItem("cbcm_just_created_assignment", JSON.stringify(newAssignment));
             }
 
-            // Attempt backend persistence
+            // Attempt backend persistence with cycle auto-linking
             await createAssignment({
                 type,
                 cycleId,
+                cycleName: selectedCycle?.name,
                 facilityId: selectedMentees[0]?.facilityId || (selectedMentor as any)?.facilityId,
                 thematicAreas,
                 mentorIds,
@@ -244,8 +258,9 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         ).map((option) => (
                             <label
                                 key={option.id}
-                                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm ${type === option.id ? "border-[#194611] bg-gray-50" : "border-gray-200"
-                                    }`}
+                                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
+                                    type === option.id ? "border-[#194611] bg-gray-50" : "border-gray-200"
+                                }`}
                             >
                                 <input
                                     type="radio"
@@ -274,6 +289,38 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         size="lg"
                         error={errors.cycleId}
                     />
+
+                    {selectedCycle && (
+                        <div className="mt-2.5 space-y-1.5 rounded-lg border border-gray-100 bg-gray-50/80 p-3 text-xs">
+                            <div className="flex items-center justify-between text-gray-600">
+                                <span className="font-medium text-gray-700">{selectedCycle.name}</span>
+                                {selectedCycle.startDate && selectedCycle.endDate && (
+                                    <span className="text-[11px] text-gray-500">
+                                        {selectedCycle.startDate} to {selectedCycle.endDate}
+                                    </span>
+                                )}
+                            </div>
+
+                            {selectedCycle.thematicAreaNames && selectedCycle.thematicAreaNames.length > 0 ? (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    <span className="text-gray-500 text-[11px]">Accredited areas in this cycle:</span>
+                                    {selectedCycle.thematicAreaNames.map((name) => (
+                                        <span
+                                            key={name}
+                                            className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-[#194611] border border-emerald-200/60"
+                                        >
+                                            <CheckCircle2 className="size-3 text-[#194611]" />
+                                            {name}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-[11px] text-gray-500">
+                                    All accredited thematic areas are supported and will be linked to this cycle.
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </Field>
 
                 <Field label="Thematic Area" error={errors.thematicAreas}>
@@ -282,8 +329,19 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         onChange={setThematicAreas}
                         suggestions={options.thematicAreas}
                         thematicAreaItems={options.thematicAreaItems}
+                        cycleThematicAreaNames={selectedCycle?.thematicAreaNames}
                         invalid={!!errors.thematicAreas}
                     />
+
+                    {selectedCycle && unassignedThematicAreas.length > 0 && (
+                        <div className="mt-2 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/80 p-2.5 text-xs text-emerald-900 animate-in fade-in-50">
+                            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-[#194611]" />
+                            <span>
+                                <strong>{unassignedThematicAreas.join(", ")}</strong> will be automatically linked to{" "}
+                                <strong>{selectedCycle.name}</strong> upon creating this assignment.
+                            </span>
+                        </div>
+                    )}
                 </Field>
             </Section>
 
@@ -373,9 +431,10 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
             </Section>
 
             {submitError && (
-                <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {submitError}
-                </p>
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                    <p className="font-semibold">Unable to complete assignment</p>
+                    <p className="mt-1 text-xs text-red-700">{submitError}</p>
+                </div>
             )}
 
             <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
@@ -388,7 +447,7 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex h-10 items-center rounded-lg bg-[#194611] px-5 text-sm font-medium text-white hover:bg-[#194611]/90 disabled:opacity-60"
+                    className="inline-flex h-10 items-center rounded-lg bg-[#194611] px-5 text-sm font-medium text-white hover:bg-[#194611]/90 disabled:opacity-60 cursor-pointer"
                 >
                     {submitting ? "Creating..." : "Create Assignment"}
                 </button>

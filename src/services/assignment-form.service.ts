@@ -1,4 +1,5 @@
 import { apiClient, ApiError } from "@/lib/api-client";
+import { ENDPOINTS } from "@/services/endpoints";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 import { parsePositiveInt } from "@/services/learning.service";
 import type {
@@ -58,12 +59,56 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             facilityMap.set(f.id, f.name);
         }
 
-        const cycles: CycleOption[] = rawCycles.map((c: any) => ({
-            id: String(c.id),
-            name: c.name || `Cycle #${c.id}`,
-            startDate: c.start_date || c.startDate || "",
-            endDate: c.end_date || c.endDate || "",
-        }));
+        // Enrich cycles with their assigned thematic areas
+        const cycles: CycleOption[] = await Promise.all(
+            rawCycles.map(async (c: any) => {
+                const thematicAreaIds: string[] = [];
+                const thematicAreaNames: string[] = [];
+
+                // 1. Check if thematic_areas are already embedded on the cycle object
+                const rawAreas = Array.isArray(c.thematic_areas)
+                    ? c.thematic_areas
+                    : Array.isArray(c.thematicAreas)
+                    ? c.thematicAreas
+                    : [];
+
+                for (const a of rawAreas) {
+                    const idStr = String(a.id || a.thematic_area_id || "");
+                    const nameStr = a.name || a.thematic_area_name || "";
+                    if (idStr) thematicAreaIds.push(idStr);
+                    if (nameStr) thematicAreaNames.push(nameStr);
+                }
+
+                // 2. If not embedded, fetch linked thematic areas from cycle endpoint
+                if (thematicAreaIds.length === 0 && c.id) {
+                    try {
+                        const areaRes = await apiClient<any>(ENDPOINTS.CYCLES.THEMATIC_AREAS(c.id)).catch(() => null);
+                        const fetchedAreas = Array.isArray(areaRes?.data)
+                            ? areaRes.data
+                            : Array.isArray(areaRes)
+                            ? areaRes
+                            : [];
+                        for (const a of fetchedAreas) {
+                            const idStr = String(a.id || a.thematic_area_id || "");
+                            const nameStr = a.name || a.thematic_area_name || "";
+                            if (idStr) thematicAreaIds.push(idStr);
+                            if (nameStr) thematicAreaNames.push(nameStr);
+                        }
+                    } catch {
+                        // Ignore endpoint errors gracefully
+                    }
+                }
+
+                return {
+                    id: String(c.id),
+                    name: c.name || `Cycle #${c.id}`,
+                    startDate: c.start_date || c.startDate || "",
+                    endDate: c.end_date || c.endDate || "",
+                    thematicAreaIds: Array.from(new Set(thematicAreaIds)),
+                    thematicAreaNames: Array.from(new Set(thematicAreaNames)),
+                };
+            })
+        );
 
         const mentors: MentorOption[] = rawMentors.map((m: any) => ({
             id: String(m.id),
@@ -115,7 +160,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
 
 /**
  * Creates a new assignment on the backend database.
- * Strictly verifies and sends all required fields (mentor_id, mentee_id, facility_id, cycle_id, thematic_area_id).
+ * Automatically ensures the thematic area is linked to the mentorship cycle.
  * Throws explicit errors so validation failures are never masked.
  */
 export async function createAssignment(input: NewAssignmentInput): Promise<{ id: string }> {
@@ -137,6 +182,22 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ id:
 
     const cycleIdNum = parsePositiveInt(input.cycleId) ?? 1;
     const facilityIdNum = parsePositiveInt(input.facilityId) ?? 1;
+
+    // 1b. Proactively ensure the thematic area is linked to the cycle in the backend
+    if (cycleIdNum && numericAreaId) {
+        try {
+            await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
+                method: "POST",
+                body: {
+                    thematic_area_id: numericAreaId,
+                    thematicAreaId: numericAreaId,
+                },
+            });
+        } catch (linkErr: any) {
+            // Already linked or non-blocking warning
+            console.warn(`Attempted cycle-thematic area association:`, linkErr?.message || linkErr);
+        }
+    }
 
     let lastCreatedId: string | null = null;
     let lastError: Error | null = null;
@@ -186,6 +247,7 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ id:
                 const createdId = singleRes?.data?.id || singleRes?.id || singleRes?.data?.assignment?.id;
                 if (createdId) {
                     lastCreatedId = String(createdId);
+                    lastError = null;
                 }
 
                 // Also update user's mentor_id and thematic_area on their user profile if supported
@@ -197,7 +259,35 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ id:
                 }).catch(() => null);
             } catch (err: any) {
                 console.error("Backend assignment creation rejected:", err);
-                lastError = err;
+                const errMsg = String(err?.message || "").toLowerCase();
+
+                // If error is about thematic area not being assigned to the cycle, link and retry
+                if (errMsg.includes("thematic area") && errMsg.includes("cycle")) {
+                    console.log(`Retrying cycle ${cycleIdNum} linking for thematic area ${numericAreaId}...`);
+                    try {
+                        await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
+                            method: "POST",
+                            body: {
+                                thematic_area_id: numericAreaId,
+                                thematicAreaId: numericAreaId,
+                            },
+                        });
+                        const retryRes = await apiClient.post<any>("/api/v1/assignments", assignmentPayload);
+                        const retryId = retryRes?.data?.id || retryRes?.id || retryRes?.data?.assignment?.id;
+                        if (retryId) {
+                            lastCreatedId = String(retryId);
+                            lastError = null;
+                        }
+                    } catch (retryErr: any) {
+                        console.error("Retry assignment creation failed:", retryErr);
+                        const cycleLabel = input.cycleName || `Cycle #${cycleIdNum}`;
+                        lastError = new Error(
+                            `Thematic area "${officialAreaName}" is not assigned to ${cycleLabel}. Please link it in Cycle Management or select an accredited thematic area for this cycle.`
+                        );
+                    }
+                } else {
+                    lastError = err;
+                }
             }
         }
     }

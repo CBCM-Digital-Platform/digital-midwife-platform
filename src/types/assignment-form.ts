@@ -29,6 +29,8 @@ export interface CycleOption {
     /** ISO date, e.g. "2024-11-01" */
     startDate: string;
     endDate: string;
+    thematicAreaIds?: string[];
+    thematicAreaNames?: string[];
 }
 
 export interface ThematicAreaOptionItem {
@@ -49,6 +51,7 @@ export interface AssignmentFormOptions {
 export interface NewAssignmentInput {
     type: AssignmentType;
     cycleId: string;
+    cycleName?: string;
     thematicAreas: string[];
     thematicAreaId?: string | number;
     facilityId?: string | number;
