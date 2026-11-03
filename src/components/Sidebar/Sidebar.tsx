@@ -55,7 +55,7 @@ export function Sidebar({ role, onNavigate }: SidebarProps) {
           </Link>
         )}
         <Link
-          href="/api/auth/signout"
+          href="/signout"
           onClick={onNavigate}
           className="flex items-center gap-2 px-4 py-2.5 hover:bg-red-50 rounded-lg text-red-600 transition-colors"
         >
