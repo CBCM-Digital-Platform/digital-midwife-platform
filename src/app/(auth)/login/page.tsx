@@ -63,35 +63,35 @@ function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-sm">
+    <div className="w-full max-w-[480px]">
       {/* Brand Logo & Header */}
       <div className="text-center mb-8">
         <Link href="/" className="inline-block">
           <img
             src="/logo.png"
             alt="Center for Adolescent Girls Health"
-            className="h-12 w-auto mx-auto object-contain"
+            className="h-14 sm:h-16 w-auto mx-auto object-contain"
           />
         </Link>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="mt-5 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
           Sign in
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-2 text-sm sm:text-base text-slate-500">
           Enter your credentials to access your account
         </p>
       </div>
 
-      {/* Clean Form Card */}
-      <div className="bg-white px-6 py-8 sm:px-8 border border-slate-200/80 rounded-2xl shadow-sm">
+      {/* Spacious Clean Form Card */}
+      <div className="bg-white px-8 py-9 sm:px-11 sm:py-11 border border-slate-200/90 rounded-3xl shadow-sm">
         {error && (
-          <div className="mb-5 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-600">
+          <div className="mb-6 rounded-xl bg-red-50 border border-red-200 p-3.5 text-sm text-red-600">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="email" className="block text-xs font-medium text-slate-700 mb-1.5">
+            <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
               Email
             </label>
             <input
@@ -105,18 +105,18 @@ function LoginForm() {
                 if (error) setError(null);
               }}
               placeholder="name@facility.org"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-[#194611] focus:ring-1 focus:ring-[#194611]"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-[#194611] focus:ring-2 focus:ring-[#194611]/15"
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="password" className="block text-xs font-medium text-slate-700">
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
                 Password
               </label>
               <Link
                 href="/forgot-password"
-                className="text-xs text-slate-500 hover:text-[#194611] transition-colors"
+                className="text-xs sm:text-sm font-medium text-slate-500 hover:text-[#194611] transition-colors"
               >
                 Forgot password?
               </Link>
@@ -133,26 +133,26 @@ function LoginForm() {
                   if (error) setError(null);
                 }}
                 placeholder="••••••••"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 pr-10 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-[#194611] focus:ring-1 focus:ring-[#194611]"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 pr-12 text-base text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-[#194611] focus:ring-2 focus:ring-[#194611]/15"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
           </div>
 
           <div className="flex items-center pt-1">
-            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+            <label className="flex items-center gap-2.5 text-sm text-slate-600 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-slate-300 text-[#194611] focus:ring-[#194611]"
+                className="h-4 w-4 rounded border-slate-300 text-[#194611] focus:ring-[#194611]"
               />
               <span>Remember me for 30 days</span>
             </label>
@@ -161,7 +161,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-[#194611] hover:bg-[#12360d] py-2.5 px-4 text-sm font-semibold text-white shadow-xs transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+            className="w-full rounded-xl bg-[#194611] hover:bg-[#12360d] py-3.5 px-5 text-base font-semibold text-white shadow-xs transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-3"
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>
@@ -169,10 +169,10 @@ function LoginForm() {
       </div>
 
       {/* Back to Home Link */}
-      <div className="text-center mt-6">
+      <div className="text-center mt-7">
         <Link
           href="/"
-          className="text-xs text-slate-500 hover:text-slate-800 transition-colors"
+          className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
         >
           ← Back to home
         </Link>
@@ -185,7 +185,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="w-full max-w-sm p-8 bg-white rounded-2xl border border-slate-200 text-center text-sm text-slate-500">
+        <div className="w-full max-w-[480px] p-12 bg-white rounded-3xl border border-slate-200 text-center text-sm text-slate-500">
           Loading...
         </div>
       }
