@@ -29,6 +29,10 @@ import {
   deleteContent,
   AddContentPayload,
 } from "@/services/super-admin.service";
+import {
+  getThematicAreaNameMap,
+  resolveThematicAreaTitle,
+} from "@/services/learning.service";
 import { MentorAccessTab } from "@/components/LearningModules/MentorAccessTab";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -100,6 +104,23 @@ export function ModuleDetailClient({
 
   // Mentee Progress State (Persistent via localStorage)
   const [completedContentIds, setCompletedContentIds] = useState<Set<string>>(new Set());
+
+  // Automatically resolve official clinical title for thematic area if missing or generic
+  useEffect(() => {
+    const name = currentModule.thematicAreaName;
+    const id = currentModule.thematicAreaId;
+    if (!name || name.startsWith("Thematic Area #") || !isNaN(Number(name))) {
+      getThematicAreaNameMap().then((map) => {
+        const resolved = resolveThematicAreaTitle(id, name, map);
+        if (resolved && resolved !== name && !resolved.startsWith("Thematic Area #")) {
+          setCurrentModule((prev) => ({
+            ...prev,
+            thematicAreaName: resolved,
+          }));
+        }
+      });
+    }
+  }, [currentModule.thematicAreaId, currentModule.thematicAreaName]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -711,11 +732,18 @@ export function ModuleDetailClient({
                     <span className="font-semibold text-gray-900">#{currentModule.id}</span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-500">Thematic Area</span>
-                    <span className="font-semibold text-gray-900 text-right">
-                      {currentModule.thematicAreaName || "General Midwifery"}
-                    </span>
+                  <div className="flex items-start justify-between py-2 border-b border-gray-100 gap-4">
+                    <span className="text-gray-500 shrink-0">Thematic Area</span>
+                    <div className="text-right">
+                      <span className="font-semibold text-gray-900 block">
+                        {currentModule.thematicAreaName || "General Midwifery"}
+                      </span>
+                      {currentModule.thematicAreaId && (
+                        <span className="text-[11px] text-gray-400 font-medium">
+                          Domain Code / Area #{currentModule.thematicAreaId}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between py-2 border-b border-gray-100">

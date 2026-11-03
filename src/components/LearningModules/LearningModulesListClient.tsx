@@ -28,7 +28,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getModules } from "@/services/learning.service";
+import {
+  getModules,
+  getThematicAreaNameMap,
+  resolveThematicAreaTitle,
+} from "@/services/learning.service";
 
 interface LearningModulesListClientProps {
   initialModules: LearningModule[];
@@ -77,6 +81,40 @@ export function LearningModulesListClient({
       refreshModules();
     }
   }, [initialModules]);
+
+  // Ensure all module thematic area titles are resolved from IDs if generic
+  useEffect(() => {
+    const hasUnresolved = modules.some(
+      (m) =>
+        !m.thematicAreaName ||
+        m.thematicAreaName.startsWith("Thematic Area #") ||
+        !isNaN(Number(m.thematicAreaName))
+    );
+
+    if (hasUnresolved) {
+      getThematicAreaNameMap().then((map) => {
+        setModules((prev) =>
+          prev.map((m) => {
+            if (
+              !m.thematicAreaName ||
+              m.thematicAreaName.startsWith("Thematic Area #") ||
+              !isNaN(Number(m.thematicAreaName))
+            ) {
+              const resolved = resolveThematicAreaTitle(
+                m.thematicAreaId,
+                m.thematicAreaName,
+                map
+              );
+              if (resolved && resolved !== m.thematicAreaName) {
+                return { ...m, thematicAreaName: resolved };
+              }
+            }
+            return m;
+          })
+        );
+      });
+    }
+  }, [modules]);
 
   // Extract unique thematic areas for filtering
   const thematicAreas = useMemo(() => {

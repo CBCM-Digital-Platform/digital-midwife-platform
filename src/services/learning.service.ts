@@ -1,44 +1,141 @@
 import { apiClient } from "@/lib/api-client";
 import { ENDPOINTS } from "@/services/endpoints";
 import { getMentors } from "@/services/users.service";
+import {
+  getThematicAreas,
+  INITIAL_THEMATIC_AREAS,
+} from "@/services/thematic-areas.service";
 import type {
   LearningModule,
   ModuleContent,
   ModuleMentorAccess,
 } from "@/types/learning";
 
+let cachedThematicAreaMap: Map<string, string> | null = null;
+
+/**
+ * Returns a fast lookup map for resolving thematic area IDs and codes to actual clinical titles.
+ */
+export async function getThematicAreaNameMap(): Promise<Map<string, string>> {
+  if (cachedThematicAreaMap && cachedThematicAreaMap.size > 0) {
+    return cachedThematicAreaMap;
+  }
+
+  const map = new Map<string, string>();
+
+  // 1. Seed from known MOH clinical thematic framework
+  INITIAL_THEMATIC_AREAS.forEach((ta) => {
+    map.set(String(ta.id), ta.name);
+    if (ta.code) {
+      map.set(ta.code.toLowerCase(), ta.name);
+    }
+  });
+
+  // 2. Fetch and overlay live backend thematic areas
+  try {
+    const list = await getThematicAreas();
+    if (Array.isArray(list)) {
+      list.forEach((ta) => {
+        if (ta.id) map.set(String(ta.id), ta.name);
+        if (ta.code) map.set(ta.code.toLowerCase(), ta.name);
+      });
+    }
+  } catch {
+    // Retain initial seeded map
+  }
+
+  cachedThematicAreaMap = map;
+  return map;
+}
+
+/**
+ * Resolves a thematic area ID or placeholder into its official clinical title.
+ */
+export function resolveThematicAreaTitle(
+  id?: string | number,
+  rawName?: string,
+  map?: Map<string, string>
+): string {
+  const idStr = id !== undefined && id !== null ? String(id).trim() : "";
+
+  // 1. If we have a thematicAreaId, check the map / cache
+  if (idStr) {
+    const fromMap = map?.get(idStr) || cachedThematicAreaMap?.get(idStr);
+    if (fromMap) return fromMap;
+
+    const fromInitial = INITIAL_THEMATIC_AREAS.find(
+      (a) => String(a.id) === idStr || a.code.toLowerCase() === idStr.toLowerCase()
+    );
+    if (fromInitial) return fromInitial.name;
+  }
+
+  // 2. If rawName is already a descriptive title, return it directly
+  if (
+    rawName &&
+    !rawName.startsWith("Thematic Area #") &&
+    isNaN(Number(rawName)) &&
+    rawName !== "General Midwifery" &&
+    rawName.trim() !== ""
+  ) {
+    return rawName.trim();
+  }
+
+  // 3. If rawName was formatted like "Thematic Area #1", extract ID and resolve
+  if (rawName && rawName.startsWith("Thematic Area #")) {
+    const extractedId = rawName.replace("Thematic Area #", "").trim();
+    const fromMap = map?.get(extractedId) || cachedThematicAreaMap?.get(extractedId);
+    if (fromMap) return fromMap;
+
+    const fromInitial = INITIAL_THEMATIC_AREAS.find(
+      (a) => String(a.id) === extractedId
+    );
+    if (fromInitial) return fromInitial.name;
+  }
+
+  // 4. Fallback if ID is present but unmapped
+  if (idStr) {
+    return `Thematic Area #${idStr}`;
+  }
+
+  return rawName || "General Midwifery";
+}
+
 /**
  * Normalizes raw API response into a typed LearningModule domain model.
  */
-export function normalizeLearningModule(raw: any): LearningModule {
+export function normalizeLearningModule(
+  raw: any,
+  areaMap?: Map<string, string>
+): LearningModule {
   if (!raw) return {} as LearningModule;
 
   const id = raw.id ?? raw._id ?? "";
   const title = String(raw.title || raw.name || "Untitled Module").trim();
   const description = String(raw.description || raw.summary || "").trim();
 
-  // Resolve thematic area info
-  let thematicAreaName = "General Midwifery";
-  let thematicAreaId: string | number | undefined;
+  // Resolve thematic area ID
+  let thematicAreaId: string | number | undefined =
+    raw.thematic_area_id ??
+    raw.thematicAreaId ??
+    (typeof raw.thematic_area === "object" ? raw.thematic_area?.id : undefined) ??
+    (typeof raw.thematicArea === "object" ? raw.thematicArea?.id : undefined);
 
-  if (raw.thematic_area) {
-    if (typeof raw.thematic_area === "string") {
-      thematicAreaName = raw.thematic_area;
-    } else if (raw.thematic_area.name) {
-      thematicAreaName = raw.thematic_area.name;
-      thematicAreaId = raw.thematic_area.id;
-    }
-  } else if (raw.thematicArea) {
-    if (typeof raw.thematicArea === "string") {
-      thematicAreaName = raw.thematicArea;
-    } else if (raw.thematicArea.name) {
-      thematicAreaName = raw.thematicArea.name;
-      thematicAreaId = raw.thematicArea.id;
-    }
-  } else if (raw.thematic_area_id || raw.thematicAreaId) {
-    thematicAreaId = raw.thematic_area_id ?? raw.thematicAreaId;
-    thematicAreaName = `Thematic Area #${thematicAreaId}`;
+  // Resolve raw name string if provided by backend
+  let rawName: string | undefined;
+  if (typeof raw.thematic_area === "string") {
+    rawName = raw.thematic_area;
+  } else if (raw.thematic_area?.name) {
+    rawName = raw.thematic_area.name;
+  } else if (typeof raw.thematicArea === "string") {
+    rawName = raw.thematicArea;
+  } else if (raw.thematicArea?.name) {
+    rawName = raw.thematicArea.name;
+  } else if (raw.thematic_area_name || raw.thematicAreaName) {
+    rawName = raw.thematic_area_name || raw.thematicAreaName;
   }
+
+  // Derive the human-readable clinical title
+  const thematicAreaName = resolveThematicAreaTitle(thematicAreaId, rawName, areaMap);
 
   const rawStatus = String(raw.status || (raw.isPublished ? "published" : "draft")).toLowerCase();
   const status =
@@ -118,10 +215,13 @@ export function normalizeModuleContent(
  */
 export async function getModules(): Promise<LearningModule[]> {
   try {
-    const res = await apiClient.get<any>(ENDPOINTS.LEARNING.BASE);
+    const [res, areaMap] = await Promise.all([
+      apiClient.get<any>(ENDPOINTS.LEARNING.BASE),
+      getThematicAreaNameMap().catch(() => new Map<string, string>()),
+    ]);
     const raw = res?.data?.modules || res?.data?.items || res?.data || res?.modules || res?.items || res;
     const list = Array.isArray(raw) ? raw : [];
-    return list.map(normalizeLearningModule);
+    return list.map((m) => normalizeLearningModule(m, areaMap));
   } catch (error: any) {
     console.error("Failed to fetch learning modules from live API:", error?.message || error);
     return [];
@@ -135,10 +235,13 @@ export async function getModules(): Promise<LearningModule[]> {
 export async function getModuleDetails(id: string | number): Promise<LearningModule | null> {
   const numericId = parsePositiveInt(id) ?? id;
   try {
-    const res = await apiClient.get<any>(ENDPOINTS.LEARNING.DETAIL(numericId));
+    const [res, areaMap] = await Promise.all([
+      apiClient.get<any>(ENDPOINTS.LEARNING.DETAIL(numericId)),
+      getThematicAreaNameMap().catch(() => new Map<string, string>()),
+    ]);
     const raw = res?.data?.module || res?.data || res?.module || res;
     if (raw && (raw.id || raw.title)) {
-      return normalizeLearningModule(raw);
+      return normalizeLearningModule(raw, areaMap);
     }
     return null;
   } catch (error: any) {
