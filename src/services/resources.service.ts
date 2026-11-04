@@ -618,13 +618,13 @@ export async function assignResourceToMentee(
       try {
         const modRes = await apiClient.post<any>(
           ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(moduleId, resourceId),
-          { mentee_id: menteeId }
+          { mentee_id: menteeId, menteeId: menteeId }
         );
         lastData = modRes?.data || modRes;
         assigned = true;
         successCount++;
       } catch (err: any) {
-        lastErrorMsg = err?.data?.message || err?.data?.error || err?.message || null;
+        lastErrorMsg = err?.response?.data?.message || err?.data?.message || err?.data?.error || err?.message || null;
       }
     }
 
@@ -632,29 +632,27 @@ export async function assignResourceToMentee(
     if (!assigned) {
       try {
         const res = await apiClient.post<any>(
-          ENDPOINTS.RESOURCES.ASSIGN_MENTEE(resourceId, menteeId)
+          ENDPOINTS.RESOURCES.ASSIGN_MENTEE(resourceId, menteeId),
+          { mentee_id: menteeId, menteeId: menteeId }
         );
         lastData = res?.data || res;
         assigned = true;
         successCount++;
       } catch (err: any) {
-        lastErrorMsg = err?.data?.message || err?.data?.error || err?.message || lastErrorMsg;
+        lastErrorMsg = err?.response?.data?.message || err?.data?.message || err?.data?.error || err?.message || lastErrorMsg;
       }
     }
   }
 
-  // 3. Fallback: If live backend failed due to mock session or mapping differences, persist locally
+  // If live backend assignment failed, return failure so user is alerted to DB authorization issues
   if (successCount === 0) {
-    console.warn("Live backend assignment failed, persisting locally for preceptor workflow:", lastErrorMsg);
-    storeLocalAssignment();
+    console.error("Live backend resource assignment failed:", lastErrorMsg);
     return {
-      success: true,
-      data: { local: true },
-      message: `Resource successfully assigned to ${numericMenteeIds.length} mentee(s).`,
+      success: false,
+      message: lastErrorMsg || "Failed to assign resource to mentee in the database.",
     };
   }
 
-  storeLocalAssignment();
   return {
     success: true,
     data: lastData,

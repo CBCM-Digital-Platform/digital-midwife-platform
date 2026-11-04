@@ -139,71 +139,17 @@ export function ModuleDetailClient({
     }
   }, [currentModule.id]);
 
-  // Cache contents whenever they are populated
-  useEffect(() => {
-    if (typeof window !== "undefined" && contents.length > 0 && currentModule?.id) {
-      try {
-        localStorage.setItem(`cbcm_module_contents_${currentModule.id}`, JSON.stringify(contents));
-      } catch {
-        // ignore
-      }
-    }
-  }, [contents, currentModule?.id]);
-
-  // Client-side fallback to fetch contents using client session or local cache if SSR initially returned empty
+  // Client-side fetch to load database contents (e.g. mentee assigned resources via /api/v1/learning/my/resources)
   useEffect(() => {
     if (contents.length === 0 && currentModule?.id) {
       getModuleContents(currentModule.id)
         .then((fresh: ModuleContent[]) => {
           if (fresh && fresh.length > 0) {
             setContents(fresh);
-            return;
-          }
-          if (typeof window !== "undefined") {
-            try {
-              const cached = localStorage.getItem(`cbcm_module_contents_${currentModule.id}`);
-              if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  setContents(parsed);
-                  return;
-                }
-              }
-              const assignRaw = localStorage.getItem("cbcm_mentee_resource_assignments");
-              if (assignRaw) {
-                const assignments = JSON.parse(assignRaw);
-                if (Array.isArray(assignments)) {
-                  const matching = assignments
-                    .filter(
-                      (a: any) =>
-                        !a.moduleId || String(a.moduleId) === String(currentModule.id)
-                    )
-                    .map((a: any) => a.resource)
-                    .filter(Boolean);
-                  if (matching.length > 0) {
-                    setContents(matching);
-                  }
-                }
-              }
-            } catch {
-              // ignore
-            }
           }
         })
         .catch(() => {
-          if (typeof window !== "undefined") {
-            try {
-              const cached = localStorage.getItem(`cbcm_module_contents_${currentModule.id}`);
-              if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  setContents(parsed);
-                }
-              }
-            } catch {
-              // ignore
-            }
-          }
+          // Keep empty if none assigned in the database
         });
     }
   }, [currentModule?.id, contents.length]);
@@ -928,43 +874,53 @@ export function ModuleDetailClient({
               )}
 
               {/* Mentee Quick-Access Assigned Materials */}
-              {isMentee && contents.length > 0 && (
-                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                    <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-[#194611]" />
-                      Assigned Learning Materials ({contents.length})
-                    </h3>
-                    <Badge className="bg-emerald-50 text-[#194611] border-emerald-200 text-[10px] font-semibold">
-                      Study Materials Ready
-                    </Badge>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {contents.map((item, idx) => (
-                      <div key={item.id || idx} className="py-3 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-gray-900 truncate">{item.title}</p>
-                          <p className="text-[11px] text-gray-500 capitalize">
-                            {item.type} {item.durationLabel ? `• ${item.durationLabel}` : item.fileSizeMb ? `• ${item.fileSizeMb} MB` : ""}
-                          </p>
+              {isMentee && (
+                contents.length > 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-[#194611]" />
+                        Assigned Learning Materials ({contents.length})
+                      </h3>
+                      <Badge className="bg-emerald-50 text-[#194611] border-emerald-200 text-[10px] font-semibold">
+                        Study Materials Ready
+                      </Badge>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {contents.map((item, idx) => (
+                        <div key={item.id || idx} className="py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-gray-900 truncate">{item.title}</p>
+                            <p className="text-[11px] text-gray-500 capitalize">
+                              {item.type} {item.durationLabel ? `• ${item.durationLabel}` : item.fileSizeMb ? `• ${item.fileSizeMb} MB` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {item.url && item.url !== "#" ? (
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Study</span>
+                              </a>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {item.url && item.url !== "#" ? (
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Study</span>
-                            </a>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-center space-y-2">
+                    <BookOpen className="w-6 h-6 text-gray-300 mx-auto" />
+                    <h4 className="text-xs font-bold text-gray-800">No Learning Materials Assigned Yet</h4>
+                    <p className="text-[11px] text-gray-500 max-w-sm mx-auto leading-relaxed">
+                      Mentees receive access to specific learning resources assigned by their clinical mentor rather than the entire module curriculum. Once your mentor assigns a clinical guide or checklist to you, it will appear here.
+                    </p>
+                  </div>
+                )
               )}
 
               {isMentor && (
