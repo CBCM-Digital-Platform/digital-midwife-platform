@@ -927,6 +927,46 @@ export function ModuleDetailClient({
                 </div>
               )}
 
+              {/* Mentee Quick-Access Assigned Materials */}
+              {isMentee && contents.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-[#194611]" />
+                      Assigned Learning Materials ({contents.length})
+                    </h3>
+                    <Badge className="bg-emerald-50 text-[#194611] border-emerald-200 text-[10px] font-semibold">
+                      Study Materials Ready
+                    </Badge>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {contents.map((item, idx) => (
+                      <div key={item.id || idx} className="py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">{item.title}</p>
+                          <p className="text-[11px] text-gray-500 capitalize">
+                            {item.type} {item.durationLabel ? `• ${item.durationLabel}` : item.fileSizeMb ? `• ${item.fileSizeMb} MB` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {item.url && item.url !== "#" ? (
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Study</span>
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {isMentor && (
                 <div className="bg-amber-50/60 rounded-2xl border border-amber-200/80 p-6 shadow-xs space-y-3">
                   <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
