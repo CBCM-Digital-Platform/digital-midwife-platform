@@ -44,6 +44,7 @@ export type Conversation = {
   online?: boolean;
   messages: ChatMessage[];
   participantId?: number;
+  isPlaceholder?: boolean;
 };
 
 const avatarColors = [
@@ -169,6 +170,9 @@ export function useMessaging(role: MessagingRole) {
   const [contacts, setContacts] = useState<MessagingContact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
 
+  const selectedIdRef = useRef<number | null>(null);
+  selectedIdRef.current = selectedId;
+
   const handledTargetRef = useRef<string | null>(null);
 
   const otherRole = role === "mentor" ? "mentee" : "mentor";
@@ -192,7 +196,7 @@ export function useMessaging(role: MessagingRole) {
   }, [currentUserId, role]);
 
   /**
-   * Load conversations list
+   * Load conversations list (never called on send message)
    */
   const loadConversations = useCallback(
     async (keepSelected = true) => {
@@ -203,7 +207,7 @@ export function useMessaging(role: MessagingRole) {
         );
         setConversations(mapped);
 
-        if (!keepSelected || selectedId == null) {
+        if (!keepSelected || selectedIdRef.current == null) {
           setSelectedId((prev) =>
             prev != null && mapped.some((item) => item.id === prev)
               ? prev
@@ -217,7 +221,7 @@ export function useMessaging(role: MessagingRole) {
         setLoading(false);
       }
     },
-    [currentUserId, role, selectedId]
+    [currentUserId, role]
   );
 
   /**
@@ -225,6 +229,7 @@ export function useMessaging(role: MessagingRole) {
    */
   const loadConversation = useCallback(
     async (conversationId: number) => {
+      if (conversationId <= 0) return;
       try {
         const detail = await getConversationService(conversationId);
         const mapped = mapConversation(detail, role, currentUserId);
@@ -238,7 +243,6 @@ export function useMessaging(role: MessagingRole) {
         // Mark as read in background
         void markConversationReadService(conversationId).catch(() => {});
       } catch (err: any) {
-        // Only set error if not already populated
         setConversations((current) => {
           const exists = current.find((c) => c.id === conversationId);
           if (!exists || exists.messages.length === 0) {
@@ -265,8 +269,9 @@ export function useMessaging(role: MessagingRole) {
         // 1. Check if conversation already exists in memory
         const existing = conversations.find(
           (c) =>
-            c.participantId === participantId ||
-            (fallbackName && c.name.toLowerCase() === fallbackName.toLowerCase())
+            c.id > 0 &&
+            (c.participantId === participantId ||
+              (fallbackName && c.name.toLowerCase() === fallbackName.toLowerCase()))
         );
 
         if (existing) {
@@ -288,7 +293,7 @@ export function useMessaging(role: MessagingRole) {
         const mapped = mapConversation(detail, role, currentUserId);
         setConversations((current) => [
           mapped,
-          ...current.filter((c) => c.id !== mapped.id),
+          ...current.filter((c) => c.id !== mapped.id && c.id !== -participantId),
         ]);
         setSelectedId(mapped.id);
         setIsComposing(false);
@@ -308,7 +313,7 @@ export function useMessaging(role: MessagingRole) {
   );
 
   /**
-   * Initial mount: fetch contacts and conversations
+   * Initial mount: fetch contacts and conversations once
    */
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
@@ -354,39 +359,94 @@ export function useMessaging(role: MessagingRole) {
    * When selected conversation changes, load its message history
    */
   useEffect(() => {
-    if (selectedId == null || sessionStatus !== "authenticated") return;
+    if (selectedId == null || selectedId <= 0 || sessionStatus !== "authenticated") return;
 
     setLoadingMessages(true);
     void loadConversation(selectedId);
   }, [loadConversation, selectedId, sessionStatus]);
 
   /**
-   * Auto-refresh polling: polls active conversation messages every 4 seconds
+   * Auto-refresh polling: polls active conversation messages every 8 seconds only if tab is visible
    */
   useEffect(() => {
-    if (selectedId == null || sessionStatus !== "authenticated") return;
+    if (selectedId == null || selectedId <= 0 || sessionStatus !== "authenticated") return;
 
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       void loadConversation(selectedId);
-    }, 4000);
+    }, 8000);
 
     return () => clearInterval(interval);
   }, [loadConversation, selectedId, sessionStatus]);
 
   /**
-   * Background conversation list polling every 12 seconds
+   * Background conversation list polling every 45 seconds (independent from sending messages)
    */
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
 
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       void loadConversations(true);
-    }, 12000);
+    }, 45000);
 
     return () => clearInterval(interval);
   }, [loadConversations, sessionStatus]);
 
+  /**
+   * Merges active conversations with any assigned mentees/mentors so all assigned users are seen in the list
+   */
+  const allConversations = useMemo(() => {
+    const list: Conversation[] = [...conversations];
+    const existingParticipantIds = new Set<number>();
+
+    for (const c of conversations) {
+      if (c.participantId) {
+        existingParticipantIds.add(c.participantId);
+      }
+    }
+
+    for (const contact of contacts) {
+      const contactId = Number(contact.id);
+      if (!contactId || existingParticipantIds.has(contactId)) continue;
+
+      const nameMatch = conversations.some(
+        (c) => c.name.toLowerCase() === contact.full_name.toLowerCase()
+      );
+      if (nameMatch) continue;
+
+      // Add as placeholder item in the sidebar list so mentor sees all assigned mentees
+      list.push({
+        id: -contactId,
+        participantId: contactId,
+        name: contact.full_name,
+        subtitle: contact.role === "mentor" ? "Assigned Mentor" : "Assigned Mentee",
+        lastMessage: "No messages yet • Click to chat",
+        lastMessageTime: "",
+        initials: contact.full_name
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() ?? "")
+          .join("") || "C",
+        avatarColor: avatarColors[Math.abs(contactId) % avatarColors.length],
+        unread: false,
+        messages: [],
+        isPlaceholder: true,
+      });
+    }
+
+    return list;
+  }, [contacts, conversations]);
+
   function selectConversation(conversationId: number) {
+    if (conversationId < 0) {
+      const placeholder = allConversations.find((c) => c.id === conversationId);
+      if (placeholder?.participantId) {
+        void startConversationWithContact(placeholder.participantId, placeholder.name);
+      }
+      return;
+    }
+
     if (conversationId !== selectedId) {
       setLoadingMessages(true);
       setError(null);
@@ -394,14 +454,14 @@ export function useMessaging(role: MessagingRole) {
     setSelectedId(conversationId);
   }
 
-  const selectedConversation = useMemo(
-    () => conversations.find((c) => c.id === selectedId) ?? null,
-    [conversations, selectedId]
-  );
+  const selectedConversation = useMemo(() => {
+    if (selectedId == null) return null;
+    return allConversations.find((c) => c.id === selectedId) ?? null;
+  }, [allConversations, selectedId]);
 
   const visibleConversations = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return conversations.filter((conversation) => {
+    return allConversations.filter((conversation) => {
       const matchesSearch =
         !query ||
         conversation.name.toLowerCase().includes(query) ||
@@ -409,34 +469,86 @@ export function useMessaging(role: MessagingRole) {
       const matchesFilter = filter === "All" || filter === `${otherRole}s`;
       return matchesSearch && matchesFilter;
     });
-  }, [conversations, filter, otherRole, search]);
+  }, [allConversations, filter, otherRole, search]);
+
+  // If no conversation is selected yet, select the first available conversation or contact
+  useEffect(() => {
+    if (selectedId == null && visibleConversations.length > 0 && !loading) {
+      const first = visibleConversations[0];
+      if (first.id > 0) {
+        setSelectedId(first.id);
+      }
+    }
+  }, [loading, selectedId, visibleConversations]);
 
   /**
-   * Send a new message
+   * Send a new message (only sends the single message POST; strictly DOES NOT fetch all conversations)
    */
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
     if (!text || selectedId == null || sending) return;
 
+    // If active thread is still a placeholder, create it first
+    let activeConversationId = selectedId;
+    if (activeConversationId < 0) {
+      const placeholder = allConversations.find((c) => c.id === activeConversationId);
+      if (placeholder?.participantId) {
+        try {
+          const detail = await createConversationService(
+            placeholder.participantId,
+            "direct",
+            { name: placeholder.name, role: otherRole },
+            currentUserId
+          );
+          activeConversationId = detail.id;
+          setSelectedId(detail.id);
+        } catch (err: any) {
+          setError(err instanceof Error ? err.message : "Could not create conversation.");
+          return;
+        }
+      }
+    }
+
     setSending(true);
     setError(null);
     try {
-      const newMsg = await sendMessageService(selectedId, text, currentUserId);
+      // 1. Single POST call to send the message
+      const newMsg = await sendMessageService(activeConversationId, text, currentUserId);
       const mapped = { ...mapMessage(newMsg, currentUserId), sentByMe: true };
 
-      setConversations((current) =>
-        current.map((c) =>
-          c.id === selectedId
-            ? {
-                ...c,
-                lastMessage: mapped.text,
-                lastMessageTime: mapped.time,
-                messages: [...c.messages, mapped],
-              }
-            : c
-        )
-      );
+      // 2. Locally update the active conversation without re-fetching all conversations
+      setConversations((current) => {
+        const found = current.some((c) => c.id === activeConversationId);
+        if (found) {
+          return current.map((c) =>
+            c.id === activeConversationId
+              ? {
+                  ...c,
+                  lastMessage: mapped.text,
+                  lastMessageTime: mapped.time,
+                  messages: [...c.messages, mapped],
+                }
+              : c
+          );
+        } else {
+          // If was placeholder, add as real conversation
+          const placeholder = allConversations.find((c) => c.id === selectedId);
+          const newConv: Conversation = {
+            id: activeConversationId,
+            name: placeholder?.name || "Mentee",
+            subtitle: placeholder?.subtitle || "Assigned Mentee",
+            lastMessage: mapped.text,
+            lastMessageTime: mapped.time,
+            initials: placeholder?.initials || "M",
+            avatarColor: placeholder?.avatarColor || avatarColors[0],
+            unread: false,
+            participantId: placeholder?.participantId,
+            messages: [mapped],
+          };
+          return [newConv, ...current];
+        }
+      });
       setDraft("");
     } catch (err: any) {
       setError(err instanceof Error ? err.message : "Could not send message.");
@@ -538,7 +650,7 @@ export function useMessaging(role: MessagingRole) {
   }
 
   return {
-    conversations,
+    conversations: allConversations,
     selectedId,
     selectConversation,
     search,

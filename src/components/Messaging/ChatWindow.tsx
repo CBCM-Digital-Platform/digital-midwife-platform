@@ -234,7 +234,7 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
                       {conversation.name}
                     </span>
                     <span className="shrink-0 text-[11px] text-[#758071]">
-                      {conversation.lastMessageTime}
+                      {conversation.lastMessageTime || (conversation.id < 0 ? "Assigned" : "")}
                     </span>
                   </span>
                   <span className="mt-1 block truncate text-xs text-[#697466]">

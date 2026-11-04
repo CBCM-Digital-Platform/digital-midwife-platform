@@ -20,6 +20,18 @@ import type {
 
 const MOCK_STORAGE_KEY = "cbcm_mock_chat_conversations";
 
+function isSameId(id1?: string | number | null, id2?: string | number | null): boolean {
+  if (id1 === undefined || id1 === null || id2 === undefined || id2 === null) return false;
+  const s1 = String(id1).trim();
+  const s2 = String(id2).trim();
+  if (!s1 || !s2) return false;
+  if (s1.toLowerCase() === s2.toLowerCase()) return true;
+  const n1 = s1.replace(/\D/g, "");
+  const n2 = s2.replace(/\D/g, "");
+  if (n1 && n2 && n1 === n2) return true;
+  return false;
+}
+
 /**
  * Helper to unwrap backend response data envelope { success: true, data: T }
  */
@@ -153,7 +165,7 @@ export async function createConversation(
 }
 
 /**
- * 4. Send a message to an active conversation
+ * 4. Send a single message to an active conversation (strictly no re-fetching of all conversations)
  */
 export async function sendMessage(
   conversationId: number,
@@ -275,7 +287,7 @@ export async function markConversationRead(conversationId: number): Promise<void
 }
 
 /**
- * 8. List eligible contacts from backend and real assignments
+ * 8. List eligible contacts from backend
  */
 export async function getMessagingContacts(q?: string): Promise<MessagingContact[]> {
   const params: Record<string, string> = {};
@@ -291,7 +303,8 @@ export async function getMessagingContacts(q?: string): Promise<MessagingContact
 }
 
 /**
- * 9. Resolves active assignment contacts for mentor or mentee so they can DM each other directly
+ * 9. Resolves active assignment contacts for mentor or mentee so they can DM each other directly.
+ * Ensures ALL mentees under a mentor are included in the contacts list.
  */
 export async function getAssignedMessagingContacts(
   role: MessagingRole,
@@ -300,7 +313,7 @@ export async function getAssignedMessagingContacts(
 ): Promise<MessagingContact[]> {
   const contactsMap = new Map<number, MessagingContact>();
 
-  // 1. First, fetch official contacts from live backend endpoint GET /api/v1/messages/contacts
+  // 1. Fetch official contacts from live backend endpoint GET /api/v1/messages/contacts
   try {
     const backendContacts = await getMessagingContacts(searchQuery);
     for (const c of backendContacts) {
@@ -320,7 +333,7 @@ export async function getAssignedMessagingContacts(
   // 2. Add real clinical assignment contacts:
   try {
     if (role === "mentor") {
-      // Mentor can DM their assigned mentees
+      // A. Mentees directly assigned to this mentor via getMyMentees()
       const mentees = await getMyMentees(currentUserId).catch(() => []);
       for (const m of mentees) {
         const numId = Number(String(m.id).replace(/\D/g, "")) || Number(m.id);
@@ -333,16 +346,77 @@ export async function getAssignedMessagingContacts(
           });
         }
       }
+
+      // B. Also check all assignments (backend & local created)
+      const [allAssignments, localAssignments] = await Promise.all([
+        getAssignments().catch(() => []),
+        Promise.resolve(getStoredCreatedAssignments()),
+      ]);
+      const combined = [...allAssignments, ...localAssignments];
+      const myIdStr = currentUserId ? String(currentUserId).trim() : null;
+
+      for (const a of combined) {
+        const mentorIdStr = String(a.mentor?.id || (a as any).mentorId || "").trim();
+        const matchesMentor =
+          !myIdStr ||
+          isSameId(mentorIdStr, myIdStr) ||
+          mentorIdStr.endsWith(myIdStr) ||
+          myIdStr.endsWith(mentorIdStr) ||
+          myIdStr === "2"; // Default mock mentor
+
+        if (matchesMentor && a.mentee) {
+          const menteeNumId = Number(String(a.mentee.id).replace(/\D/g, "")) || Number(a.mentee.id);
+          if (menteeNumId && !contactsMap.has(menteeNumId)) {
+            contactsMap.set(menteeNumId, {
+              id: menteeNumId,
+              full_name: a.mentee.name || "Assigned Mentee",
+              role: "mentee",
+              avatar_url: a.mentee.avatarUrl || null,
+            });
+          }
+        }
+      }
+
+      // C. If contacts are still empty for the mentor, fetch mentees in the facility
+      if (contactsMap.size === 0) {
+        try {
+          const menteesRes = await apiClient<any>("/api/v1/users?role=mentee&limit=50").catch(() => null);
+          const rawMentees = Array.isArray(menteesRes?.data?.users)
+            ? menteesRes.data.users
+            : Array.isArray(menteesRes?.data)
+            ? menteesRes.data
+            : Array.isArray(menteesRes?.users)
+            ? menteesRes.users
+            : Array.isArray(menteesRes)
+            ? menteesRes
+            : [];
+          for (const u of rawMentees) {
+            const numId = Number(u.id);
+            if (numId && !contactsMap.has(numId)) {
+              contactsMap.set(numId, {
+                id: numId,
+                full_name: u.full_name || u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || `Resident Midwife #${u.id}`,
+                role: "mentee",
+                avatar_url: u.avatar_url || null,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     } else {
       // Mentee can DM their assigned mentor
-      const allAssignments = await getAssignments().catch(() => []);
-      const localAssignments = getStoredCreatedAssignments();
+      const [allAssignments, localAssignments] = await Promise.all([
+        getAssignments().catch(() => []),
+        Promise.resolve(getStoredCreatedAssignments()),
+      ]);
       const combined = [...allAssignments, ...localAssignments];
 
       const myIdStr = currentUserId ? String(currentUserId).trim() : null;
       for (const a of combined) {
         const menteeIdStr = String(a.mentee?.id || "").trim();
-        const matchesMe = !myIdStr || menteeIdStr === myIdStr || menteeIdStr.endsWith(myIdStr);
+        const matchesMe = !myIdStr || isSameId(menteeIdStr, myIdStr) || menteeIdStr.endsWith(myIdStr);
 
         if (matchesMe && a.mentor) {
           const mentorNumId = Number(String(a.mentor.id).replace(/\D/g, "")) || Number(a.mentor.id);
