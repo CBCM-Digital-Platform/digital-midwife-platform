@@ -135,7 +135,7 @@ export function MenteesTable({ mentees, onSelectAssessment, highlightMenteeId }:
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-2">
                                             <Link
-                                                href="/messaging"
+                                                href={m.id ? `/messaging?userId=${String(m.id).replace(/\D/g, "") || m.id}&name=${encodeURIComponent(m.name)}` : "/messaging"}
                                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-emerald-50 hover:text-[#194611] transition shadow-2xs"
                                                 title={`Send direct message to ${m.name}`}
                                             >

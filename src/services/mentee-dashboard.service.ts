@@ -3,6 +3,7 @@ import type {
     CurriculumSummary,
     MenteeDashboardData,
     ResumeTarget,
+    AssignedMentor,
 } from "@/types/mentee-dashboard";
 
 const CHAPTERS: Chapter[] = [
@@ -112,8 +113,47 @@ function findResume(chapters: Chapter[]): ResumeTarget | null {
     };
 }
 
-// TODO: replace with a fetch to the backend (the mentee's curriculum, progress, mentor and CPD credits)
 export async function getMenteeDashboard(): Promise<MenteeDashboardData> {
+    let assignedMentor: AssignedMentor = {
+        id: 1,
+        name: "Sister Almaz",
+        credentials: "CNM",
+        role: "Lead Midwifery Preceptor",
+        openSlots: 3,
+        active: true,
+    };
+
+    try {
+        const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
+        let myId: string | null = null;
+        if (typeof window === "undefined") {
+            const { getServerSession } = await import("next-auth/next");
+            const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+            const session = await getServerSession(authOptions);
+            myId = (session?.user as any)?.id ? String((session?.user as any).id) : null;
+        }
+
+        const [assignments, localAssignments] = await Promise.all([
+            getAssignments().catch(() => []),
+            Promise.resolve(getStoredCreatedAssignments()),
+        ]);
+        const all = [...assignments, ...localAssignments];
+        const match = all.find((a) => !myId || String(a.mentee?.id || "") === myId);
+
+        if (match && match.mentor) {
+            assignedMentor = {
+                id: Number(String(match.mentor.id).replace(/\D/g, "")) || 1,
+                name: match.mentor.name || "Assigned Mentor",
+                credentials: match.mentor.subtitle || "CNM",
+                role: "Clinical Mentor",
+                openSlots: 3,
+                active: true,
+            };
+        }
+    } catch {
+        // Fall back gracefully
+    }
+
     return {
         chapters: CHAPTERS,
         summary: summarize(CHAPTERS),
@@ -121,13 +161,7 @@ export async function getMenteeDashboard(): Promise<MenteeDashboardData> {
         modulePassRate: 100,
         cpdHours: 28.5,
         cpdTarget: 40,
-        mentor: {
-            name: "Dr. Sarah Jenkins",
-            credentials: "CNM",
-            role: "Lead Midwifery Preceptor",
-            openSlots: 3,
-            active: true,
-        },
+        mentor: assignedMentor,
         handbook: {
             title: "Maternal-Fetal Clinical & Physical Assessment (PDF)",
             details: "36 Pages • 4.2 MB • WHO/ICM compliant",

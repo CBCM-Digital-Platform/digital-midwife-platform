@@ -126,7 +126,7 @@ export function MenteeCards({ mentees, onSelectAssessment, highlightMenteeId }: 
                         {/* Card Bottom Actions */}
                         <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 gap-2">
                             <Link
-                                href="/messaging"
+                                href={m.id ? `/messaging?userId=${String(m.id).replace(/\D/g, "") || m.id}&name=${encodeURIComponent(m.name)}` : "/messaging"}
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 text-gray-700 hover:text-[#194611] text-xs font-semibold transition shadow-2xs"
                                 title={`Send direct message to ${m.name}`}
                             >
