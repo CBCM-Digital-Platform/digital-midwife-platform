@@ -113,16 +113,98 @@ export function ModuleDetailClient({
     currentModule.isAuthorized !== false &&
     (currentModule.isAuthorized === true || String(currentModule.status).toLowerCase() === "published");
 
-  // Client-side fallback to fetch contents using client session if SSR initially returned empty
+  // Persistent assignments cache for current mentee/module
+  const [assignedResourceIds, setAssignedResourceIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("cbcm_mentee_resource_assignments");
+        if (stored) {
+          const list = JSON.parse(stored);
+          if (Array.isArray(list)) {
+            const ids = list
+              .filter(
+                (a: any) =>
+                  !a.moduleId ||
+                  String(a.moduleId) === String(currentModule.id)
+              )
+              .map((a: any) => String(a.resourceId));
+            setAssignedResourceIds(new Set(ids));
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [currentModule.id]);
+
+  // Cache contents whenever they are populated
+  useEffect(() => {
+    if (typeof window !== "undefined" && contents.length > 0 && currentModule?.id) {
+      try {
+        localStorage.setItem(`cbcm_module_contents_${currentModule.id}`, JSON.stringify(contents));
+      } catch {
+        // ignore
+      }
+    }
+  }, [contents, currentModule?.id]);
+
+  // Client-side fallback to fetch contents using client session or local cache if SSR initially returned empty
   useEffect(() => {
     if (contents.length === 0 && currentModule?.id) {
       getModuleContents(currentModule.id)
         .then((fresh: ModuleContent[]) => {
           if (fresh && fresh.length > 0) {
             setContents(fresh);
+            return;
+          }
+          if (typeof window !== "undefined") {
+            try {
+              const cached = localStorage.getItem(`cbcm_module_contents_${currentModule.id}`);
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  setContents(parsed);
+                  return;
+                }
+              }
+              const assignRaw = localStorage.getItem("cbcm_mentee_resource_assignments");
+              if (assignRaw) {
+                const assignments = JSON.parse(assignRaw);
+                if (Array.isArray(assignments)) {
+                  const matching = assignments
+                    .filter(
+                      (a: any) =>
+                        !a.moduleId || String(a.moduleId) === String(currentModule.id)
+                    )
+                    .map((a: any) => a.resource)
+                    .filter(Boolean);
+                  if (matching.length > 0) {
+                    setContents(matching);
+                  }
+                }
+              }
+            } catch {
+              // ignore
+            }
           }
         })
-        .catch(() => null);
+        .catch(() => {
+          if (typeof window !== "undefined") {
+            try {
+              const cached = localStorage.getItem(`cbcm_module_contents_${currentModule.id}`);
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  setContents(parsed);
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+        });
     }
   }, [currentModule?.id, contents.length]);
 
@@ -244,7 +326,8 @@ export function ModuleDetailClient({
       const res = await assignResourceToMentee(
         assigningResource.id,
         selectedMenteeIds,
-        currentModule.id
+        currentModule.id,
+        assigningResource
       );
       if (res.success) {
         const assignedNames = myMentees
@@ -263,11 +346,23 @@ export function ModuleDetailClient({
               `cbcm_module_resource_assignments_${currentModule.id}`,
               JSON.stringify(updated)
             );
+            // Also ensure all current contents and assigned resource are saved in module contents cache
+            const modKey = `cbcm_module_contents_${currentModule.id}`;
+            const rawMod = localStorage.getItem(modKey);
+            const existingMod = rawMod ? JSON.parse(rawMod) : [...contents];
+            const found = existingMod.some((m: any) => String(m.id) === String(assigningResource.id));
+            if (!found) {
+              existingMod.push(assigningResource);
+            }
+            localStorage.setItem(modKey, JSON.stringify(existingMod));
           } catch {
             // ignore
           }
           return updated;
         });
+
+        // Track resource locally as assigned
+        setAssignedResourceIds((prev) => new Set([...Array.from(prev), String(assigningResource.id)]));
 
         setFeedbackMessage({
           type: "success",
@@ -1003,9 +1098,13 @@ export function ModuleDetailClient({
             ) : contents.length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl space-y-3">
                 <BookOpen className="w-8 h-8 text-gray-300 mx-auto" />
-                <h4 className="text-sm font-semibold text-gray-700">No Learning Materials Attached</h4>
+                <h4 className="text-sm font-semibold text-gray-700">
+                  {isMentee ? "No Clinical Materials Assigned Yet" : "No Learning Materials Attached"}
+                </h4>
                 <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                  {isSuperAdmin
+                  {isMentee
+                    ? "Your clinical preceptor has not yet assigned any materials for this module. Assigned materials, surgical videos, and checklists will appear here once dispatched by your mentor."
+                    : isSuperAdmin
                     ? "Click '+ Add Learning Material' above to upload your first PDF, instructional video, or external guide."
                     : "Curriculum materials are currently being prepared by the national clinical team."}
                 </p>
@@ -1095,6 +1194,11 @@ export function ModuleDetailClient({
                             {isCompleted && (
                               <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
                                 <Check className="w-3 h-3" /> Reviewed
+                              </Badge>
+                            )}
+                            {isMentee && (assignedResourceIds.has(String(item.id)) || Boolean((item as any).assignedBy)) && (
+                              <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
+                                <Sparkles className="w-3 h-3 text-[#194611]" /> Assigned by Preceptor
                               </Badge>
                             )}
                           </div>

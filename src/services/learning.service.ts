@@ -277,6 +277,18 @@ export async function getModuleDetails(id: string | number): Promise<LearningMod
 
     // Gracefully handle expected RBAC facility boundary (403 Forbidden)
     if (status === 403 || msg.toLowerCase().includes("permission")) {
+      // If user is an enrolled mentee, try mentee enrolled module endpoint
+      try {
+        const myModRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_MODULE_DETAIL(numericId));
+        const rawMyMod = myModRes?.data?.module || myModRes?.data || myModRes?.module || myModRes;
+        if (rawMyMod && (rawMyMod.id || rawMyMod.title)) {
+          const areaMap = await getThematicAreaNameMap().catch(() => new Map<string, string>());
+          return normalizeLearningModule(rawMyMod, areaMap);
+        }
+      } catch {
+        // Fall through to facility restricted placeholder
+      }
+
       console.warn(`Learning module #${id} is restricted to its designated facility: ${msg}`);
       return {
         id: numericId,
@@ -357,6 +369,55 @@ export async function getModuleContents(moduleId: string | number): Promise<Modu
     }
   } catch (resErr: any) {
     // Optional fallback
+  }
+
+  // 4. Local client hydration check (runs in browser when mentor assigned or cached)
+  if (typeof window !== "undefined") {
+    try {
+      // Check cached module contents
+      const modCachedRaw =
+        localStorage.getItem(`cbcm_module_contents_${moduleId}`) ||
+        localStorage.getItem(`cbcm_module_contents_${numericModuleId}`);
+      if (modCachedRaw) {
+        const modCached = JSON.parse(modCachedRaw);
+        if (Array.isArray(modCached)) {
+          for (const item of modCached) {
+            const normalized = normalizeModuleContent(item, moduleId);
+            const key = String(normalized.id || normalized.title).toLowerCase().trim();
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              collectedContents.push(normalized);
+            }
+          }
+        }
+      }
+
+      // Check preceptor resource assignments
+      const assignRaw = localStorage.getItem("cbcm_mentee_resource_assignments");
+      if (assignRaw) {
+        const assignments = JSON.parse(assignRaw);
+        if (Array.isArray(assignments)) {
+          for (const entry of assignments) {
+            if (
+              !entry.moduleId ||
+              String(entry.moduleId) === String(moduleId) ||
+              String(entry.moduleId) === String(numericModuleId)
+            ) {
+              if (entry.resource) {
+                const normalized = normalizeModuleContent(entry.resource, moduleId);
+                const key = String(normalized.id || normalized.title).toLowerCase().trim();
+                if (!seenKeys.has(key)) {
+                  seenKeys.add(key);
+                  collectedContents.push(normalized);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   return collectedContents;

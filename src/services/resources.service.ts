@@ -549,7 +549,8 @@ export async function assignResourceToMentor(
 export async function assignResourceToMentee(
   resourceId: string | number,
   menteeIds: (string | number)[],
-  moduleId?: string | number
+  moduleId?: string | number,
+  resourceData?: any
 ): Promise<{ success: boolean; data?: any; message?: string }> {
   const numericMenteeIds = menteeIds
     .map((id) => Number(id))
@@ -575,9 +576,21 @@ export async function assignResourceToMentee(
         moduleId: moduleId ? String(moduleId) : undefined,
         menteeIds: numericMenteeIds.map(String),
         assignedAt: new Date().toISOString(),
+        resource: resourceData || null,
       };
       existing.unshift(newEntry);
       localStorage.setItem(storedKey, JSON.stringify(existing));
+
+      if (moduleId && resourceData) {
+        const modKey = `cbcm_module_contents_${moduleId}`;
+        const rawMod = localStorage.getItem(modKey);
+        const existingMod = rawMod ? JSON.parse(rawMod) : [];
+        const found = existingMod.some((m: any) => String(m.id) === String(resourceId));
+        if (!found) {
+          existingMod.push(resourceData);
+          localStorage.setItem(modKey, JSON.stringify(existingMod));
+        }
+      }
     } catch {
       // ignore
     }
