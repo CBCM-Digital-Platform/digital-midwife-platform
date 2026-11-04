@@ -335,25 +335,22 @@ export async function joinSession(
  */
 export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]> {
   try {
-    // 1. Fetch assigned resources scoped to mentee from hierarchical-resources endpoint
-    const hierRes = await apiClient.get<any>(
-      `${ENDPOINTS.HIERARCHICAL_RESOURCES.BASE}?limit=100`
-    ).catch(() => null);
+    const baseUrl = (
+      process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1"
+    ).replace(/\/+$/, "");
 
-    const hierList = Array.isArray(hierRes?.data)
-      ? hierRes.data
-      : Array.isArray(hierRes?.data?.resources)
-      ? hierRes.data.resources
-      : Array.isArray(hierRes)
-      ? hierRes
+    // 1. Fetch from live Swagger endpoint: GET /api/v1/learning/my/resources
+    const myRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_RESOURCES).catch(() => null);
+    const myResourcesList = Array.isArray(myRes?.data)
+      ? myRes.data
+      : Array.isArray(myRes?.data?.resources)
+      ? myRes.data.resources
+      : Array.isArray(myRes)
+      ? myRes
       : [];
 
-    if (hierList.length > 0) {
-      const baseUrl = (
-        process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1"
-      ).replace(/\/+$/, "");
-
-      return hierList.map((r: any, idx: number) => {
+    if (myResourcesList.length > 0) {
+      return myResourcesList.map((r: any, idx: number) => {
         const rawType = String(r?.type || "").toLowerCase();
         const type: "document" | "video" | "link" = rawType.includes("video")
           ? "video"
@@ -363,18 +360,18 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
 
         return {
           id: String(r.id),
-          title: r.title || "Clinical Resource",
-          description: r.description || "Assigned clinical protocol module.",
+          title: r.title || "Assigned Clinical Resource",
+          description: r.description || "Assigned by preceptor for clinical mastery.",
           type,
-          url: `${baseUrl}/hierarchical-resources/${r.id}/content`,
-          fileName: r.original_filename || r.fileName,
-          assignedBy: "Facility Clinical Preceptor",
-          assignedAt: r.created_at || r.createdAt || new Date(Date.now() - idx * 24 * 60 * 60 * 1000).toISOString(),
+          url: `${baseUrl}/resources/${r.id}/content`,
+          fileName: r.fileName || r.original_filename,
+          assignedBy: r.assignedBy || "Facility Clinical Preceptor",
+          assignedAt: r.assignedAt || r.created_at || new Date().toISOString(),
         };
       });
     }
 
-    // 2. Fall back to master clinical resources
+    // 2. Fall back to standard resources endpoint: GET /api/v1/resources
     const masterList = await getResources();
     if (masterList.length > 0) {
       return masterList.map((r: AdminResource, idx: number) => ({
@@ -382,7 +379,7 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
         title: r.title,
         description: r.description || "Authorized clinical guideline module.",
         type: r.type,
-        url: r.url,
+        url: r.url || `${baseUrl}/resources/${r.id}/content`,
         fileName: r.fileName,
         fileSizeMb: r.fileSizeMb,
         assignedBy: "Facility Clinical Preceptor",

@@ -223,10 +223,27 @@ export function normalizeModuleContent(
  * Fetches real clinical learning modules from the backend database.
  * The backend automatically filters results according to the authenticated user's role and access grants.
  */
-export async function getModules(): Promise<LearningModule[]> {
+export interface GetModulesFilters {
+  status?: string;
+  thematicAreaId?: number;
+  publishedOnly?: boolean;
+  authorizedOnly?: boolean;
+}
+
+/**
+ * GET /api/v1/learning/modules
+ * Supports live Swagger filters: status, thematicAreaId, publishedOnly, authorizedOnly.
+ */
+export async function getModules(filters?: GetModulesFilters): Promise<LearningModule[]> {
   try {
+    const params: Record<string, any> = {};
+    if (filters?.status) params.status = filters.status;
+    if (filters?.thematicAreaId) params.thematicAreaId = filters.thematicAreaId;
+    if (filters?.publishedOnly !== undefined) params.publishedOnly = filters.publishedOnly;
+    if (filters?.authorizedOnly !== undefined) params.authorizedOnly = filters.authorizedOnly;
+
     const [res, areaMap] = await Promise.all([
-      apiClient.get<any>(ENDPOINTS.LEARNING.BASE),
+      apiClient.get<any>(ENDPOINTS.LEARNING.BASE, { params }),
       getThematicAreaNameMap().catch(() => new Map<string, string>()),
     ]);
     const raw = res?.data?.modules || res?.data?.items || res?.data || res?.modules || res?.items || res;
@@ -334,6 +351,11 @@ export function parsePositiveInt(val: any): number | null {
  * Conforms strictly to OpenAPI schema: { "mentorId": <integer, minimum: 1> }
  * Automatically authorizes and publishes the module on the backend if required.
  */
+/**
+ * POST /api/v1/learning/modules/{moduleId}/mentor-permissions
+ * Live Swagger schema: { "mentorId": <integer, minimum: 1> }
+ * Available only to the Facility Admin responsible for the module's facility.
+ */
 export async function grantMentorAccess(
   moduleId: string | number,
   mentorId: string | number
@@ -345,26 +367,13 @@ export async function grantMentorAccess(
     throw new Error(`Invalid module ID (${moduleId}) or mentor ID (${mentorId}). Both must be valid positive numbers.`);
   }
 
-  // Exact OpenAPI Swagger schema: { "mentorId": <integer> }
+  // Calls live Swagger endpoint: POST /api/v1/learning/modules/{moduleId}/mentor-permissions
   const res = await apiClient.post<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
+    ENDPOINTS.LEARNING.MENTOR_PERMISSIONS(numericModuleId),
     {
       mentorId: numericMentorId,
     }
   );
-
-  // Explicitly grant the mentor permission to view resources under this module
-  try {
-    await apiClient.post<any>(
-      ENDPOINTS.LEARNING.MENTOR_PERMISSIONS(numericModuleId),
-      {
-        mentorId: numericMentorId,
-        permission: "learning.resources.view",
-      }
-    );
-  } catch (permErr: any) {
-    console.warn("Mentor permission grant notification:", permErr?.message || permErr);
-  }
 
   return {
     success: true,
@@ -375,6 +384,10 @@ export async function grantMentorAccess(
 /**
  * DELETE /api/v1/learning/modules/{moduleId}/mentor-access/{mentorId}
  * Revokes a preceptor/mentor's access to a specific learning module on the backend.
+ */
+/**
+ * DELETE /api/v1/learning/modules/{moduleId}/mentor-permissions/{mentorId}
+ * Live Swagger endpoint: Revokes a mentor's module access.
  */
 export async function revokeMentorAccess(
   moduleId: string | number,
@@ -388,7 +401,7 @@ export async function revokeMentorAccess(
   }
 
   const res = await apiClient.delete<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS_REVOKE(numericModuleId, numericMentorId)
+    ENDPOINTS.LEARNING.MENTOR_PERMISSIONS_REVOKE(numericModuleId, numericMentorId)
   );
 
   return {
@@ -463,3 +476,50 @@ export async function getModuleMentorAccessList(
 
 export { createModule, addContent } from "@/services/super-admin.service";
 export type { CreateModulePayload, AddContentPayload } from "@/services/super-admin.service";
+
+/**
+ * POST /api/v1/learning/modules/{moduleId}/resources/{resourceId}/assignments
+ * Live Swagger schema: { "mentee_id": <integer, minimum: 1> }
+ * Assigns one resource from this published module to an actively assigned mentee.
+ */
+export async function assignModuleResourceToMentee(
+  moduleId: string | number,
+  resourceId: string | number,
+  menteeId: string | number
+): Promise<{ success: boolean; data?: any }> {
+  const numericModuleId = parsePositiveInt(moduleId);
+  const numericResourceId = parsePositiveInt(resourceId);
+  const numericMenteeId = parsePositiveInt(menteeId);
+
+  if (!numericModuleId || !numericResourceId || !numericMenteeId) {
+    throw new Error("moduleId, resourceId, and menteeId must all be valid positive numbers.");
+  }
+
+  const res = await apiClient.post<any>(
+    ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(numericModuleId, numericResourceId),
+    {
+      mentee_id: numericMenteeId,
+    }
+  );
+
+  return { success: true, data: res?.data || res };
+}
+
+/**
+ * POST /api/v1/learning/resource-assignments/{assignmentId}/revoke
+ * Live Swagger endpoint to revoke an individual resource assignment.
+ */
+export async function revokeResourceAssignment(
+  assignmentId: string | number
+): Promise<{ success: boolean; message?: string }> {
+  const numericId = parsePositiveInt(assignmentId);
+  if (!numericId) {
+    throw new Error("Invalid assignment ID");
+  }
+
+  const res = await apiClient.post<any>(
+    ENDPOINTS.LEARNING.REVOKE_RESOURCE_ASSIGNMENT(numericId)
+  );
+
+  return { success: true, message: res?.message || "Resource assignment revoked." };
+}

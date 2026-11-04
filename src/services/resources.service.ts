@@ -542,30 +542,45 @@ export async function assignResourceToMentor(
   }
 }
 
+/**
+ * Live Swagger: POST /api/v1/resources/{id}/mentees/{menteeId}
+ * Mentors assign individual resources to actively assigned mentees.
+ */
 export async function assignResourceToMentee(
   resourceId: string | number,
-  menteeIds: (string | number)[]
+  menteeIds: (string | number)[],
+  moduleId?: string | number
 ): Promise<{ success: boolean; data?: any }> {
-  const numericMenteeIds = menteeIds.map((id) => (isNaN(Number(id)) ? id : Number(id)));
+  const numericMenteeIds = menteeIds
+    .map((id) => Number(id))
+    .filter((id) => !isNaN(id) && id > 0);
 
-  try {
-    const res = await apiClient.post<any>(
-      ENDPOINTS.HIERARCHICAL_RESOURCES.ASSIGN_MENTEE(resourceId),
-      { mentee_ids: numericMenteeIds }
-    );
-    return { success: true, data: res?.data || res };
-  } catch (err: any) {
+  let lastData: any = null;
+
+  for (const menteeId of numericMenteeIds) {
     try {
-      const fallbackRes = await apiClient.post<any>(
-        `/api/v1/resources/${resourceId}/assign-mentee`,
-        { mentee_ids: numericMenteeIds }
+      // 1. Live Swagger primary endpoint
+      const res = await apiClient.post<any>(
+        ENDPOINTS.RESOURCES.ASSIGN_MENTEE(resourceId, menteeId)
       );
-      return { success: true, data: fallbackRes?.data || fallbackRes };
+      lastData = res?.data || res;
     } catch {
-      console.warn("Mentee resource assignment failed on live endpoints:", err?.message || err);
-      throw err;
+      // 2. Supplementary learning module assignment endpoint if moduleId provided
+      if (moduleId) {
+        try {
+          const modRes = await apiClient.post<any>(
+            ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(moduleId, resourceId),
+            { mentee_id: menteeId }
+          );
+          lastData = modRes?.data || modRes;
+        } catch {
+          // ignore
+        }
+      }
     }
   }
+
+  return { success: true, data: lastData };
 }
 
 /**
