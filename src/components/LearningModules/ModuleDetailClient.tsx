@@ -109,6 +109,10 @@ export function ModuleDetailClient({
     text: string;
   } | null>(null);
 
+  const isModuleAuthorized =
+    currentModule.isAuthorized !== false &&
+    (currentModule.isAuthorized === true || String(currentModule.status).toLowerCase() === "published");
+
   // Client-side fallback to fetch contents using client session if SSR initially returned empty
   useEffect(() => {
     if (contents.length === 0 && currentModule?.id) {
@@ -988,7 +992,7 @@ export function ModuleDetailClient({
               )}
             </div>
 
-            {isMentor && currentModule.isAuthorized === false ? (
+            {isMentor && !isModuleAuthorized ? (
               <div className="text-center py-12 border-2 border-dashed border-amber-200 bg-amber-50/50 rounded-xl space-y-3 p-6">
                 <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
                 <h4 className="text-sm font-bold text-gray-900">Module Pending Clinical QA Authorization</h4>
@@ -1137,7 +1141,7 @@ export function ModuleDetailClient({
 
                         {/* Mentor Action: Assign Resource to Mentee (Only available on authorized modules and resources) */}
                         {isMentor && (
-                          item.isAuthorized !== false && currentModule.isAuthorized !== false ? (
+                          item.isAuthorized !== false && isModuleAuthorized ? (
                             <Button
                               type="button"
                               size="sm"
