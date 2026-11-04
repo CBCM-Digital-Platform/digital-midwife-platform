@@ -28,6 +28,28 @@ export interface AssessmentEvidence {
     created_at?: string;
 }
 
+export interface CertificateEligibility {
+    eligible: boolean;
+    reason?: string | null;
+    assessment?: any;
+    existingCertificate?: any;
+}
+
+export interface PreparedAssessmentTemplate {
+    id: string;
+    title: string;
+    thematicArea: string;
+    thematicAreaId: number;
+    description: string;
+    clinicalScope: string;
+    instructions: string;
+    referenceLink?: string;
+    checklistItems: string[];
+    criteria: string[];
+    passingTheoryThreshold: number; // e.g. 80
+    passingPracticalThreshold: number; // e.g. 3 or 4
+}
+
 export interface MentorAssessment {
     id: string;
     menteeId: string;
@@ -37,7 +59,12 @@ export interface MentorAssessment {
     type: string;
     status: AssessmentStatus;
     scorePct: number | null;
+    aggregateScore?: number | null;
     theoryScore?: number | null;
+    theoryPassed?: boolean;
+    practicalScore?: number | null; // 1-5 scale
+    practicalFeedback?: string;
+    assessmentDate?: string;
     dueDate?: string;
     instructions?: string;
     referenceLink?: string;
@@ -64,9 +91,11 @@ export interface NewAssessmentInput {
     instructions: string;
     referenceLink?: string;
     feedback?: string;
-    notifyMentee: boolean;
-    attachmentNames: string[]; // the files themselves are uploaded separately
+    notifyMentee?: boolean;
+    attachmentNames?: string[];
     facilityId?: number | string;
     cycleId?: number | string;
     thematicAreaId?: number | string;
-}
+    checklistItems?: string[];
+    criteria?: string[];
+}

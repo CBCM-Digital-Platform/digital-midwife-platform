@@ -1,19 +1,11 @@
 import { z } from "zod";
 
-export const MAX_FILES = 5;
-export const MAX_FILE_MB = 10;
-export const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "ppt", "pptx", "png", "jpg", "jpeg", "mp4"];
-
-export function fileExtension(name: string) {
-    return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
 export const assessmentSchema = z
     .object({
         menteeId: z.string().min(1, "Select a mentee"),
-        type: z.string().min(1, "Select an assessment type"),
+        type: z.string().min(1, "Select a prepared clinical assessment"),
         dueDate: z.string().min(1, "Due date is required"),
-        instructions: z.string().trim().min(10, "Describe the task (at least 10 characters)"),
+        instructions: z.string().trim().min(5, "Clinical task instructions required"),
         referenceLink: z
             .string()
             .trim()

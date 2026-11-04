@@ -28,6 +28,10 @@ export const ENDPOINTS = {
     THEORY_SCORE: (id: string | number) => `/api/v1/assessments/${id}/theory-score`,
     CHECKLIST_ITEMS: (id: string | number) => `/api/v1/assessments/${id}/checklist-items`,
     EVIDENCE: (id: string | number) => `/api/v1/assessments/${id}/evidence`,
+    PRACTICAL_RESULT: (id: string | number) => `/api/v1/assessments/${id}/practical-result`,
+    SYNC_THEORY: (id: string | number) => `/api/v1/assessments/${id}/sync-theory`,
+    SYNC_CRITERIA: (id: string | number) => `/api/v1/assessments/${id}/sync-criteria`,
+    CERTIFICATE_ELIGIBILITY: (id: string | number) => `/api/v1/assessments/${id}/certificate-eligibility`,
   },
   MESSAGES: {
     CONVERSATIONS: "/api/v1/messages/conversations",
