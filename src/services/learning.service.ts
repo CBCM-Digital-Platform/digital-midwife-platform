@@ -333,12 +333,12 @@ export async function getModuleContents(moduleId: string | number): Promise<Modu
   const collectedContents: ModuleContent[] = [];
   const seenKeys = new Set<string>();
 
-  // 1. Fetch from /api/v1/learning/modules/{moduleId}/contents
+  // 1. Fetch real active resources from /api/v1/resources?module_id={moduleId}
   try {
-    const res = await apiClient.get<any>(ENDPOINTS.LEARNING.CONTENTS(numericModuleId));
-    const raw = res?.data?.contents || res?.data?.items || res?.data || res?.contents || res?.items || res;
-    const list = Array.isArray(raw) ? raw : [];
-    for (const item of list) {
+    const resRes = await apiClient.get<any>(ENDPOINTS.LEARNING.RESOURCES_BY_MODULE(numericModuleId));
+    const rawRes = resRes?.data?.data || resRes?.data?.items || resRes?.data || resRes?.items || resRes;
+    const resList = Array.isArray(rawRes) ? rawRes : [];
+    for (const item of resList) {
       const normalized = normalizeModuleContent(item, moduleId);
       const key = String(normalized.id || normalized.title).toLowerCase().trim();
       if (!seenKeys.has(key)) {
@@ -346,11 +346,31 @@ export async function getModuleContents(moduleId: string | number): Promise<Modu
         collectedContents.push(normalized);
       }
     }
-  } catch (error: any) {
-    console.warn(`Failed to fetch /contents for module #${moduleId}:`, error?.message || error);
+  } catch (resErr: any) {
+    // Optional fallback
   }
 
-  // 2. Mentee individually assigned resources check: /api/v1/learning/my/resources
+  // 2. Supplementary check on all resources in /api/v1/resources belonging to this module
+  try {
+    const allRes = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`);
+    const rawAll = allRes?.data?.data || allRes?.data?.resources || allRes?.data?.items || allRes?.data || allRes;
+    const allList = Array.isArray(rawAll) ? rawAll : [];
+    for (const item of allList) {
+      const itemMod = item.module_id ?? item.moduleId ?? item.module?.id;
+      if (itemMod && String(itemMod) === String(numericModuleId)) {
+        const normalized = normalizeModuleContent(item, moduleId);
+        const key = String(normalized.id || normalized.title).toLowerCase().trim();
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          collectedContents.push(normalized);
+        }
+      }
+    }
+  } catch {
+    // Optional
+  }
+
+  // 3. Mentee individually assigned resources check: /api/v1/learning/my/resources
   // Mentees access only the specific resources in the module they are assigned without full module access
   try {
     const myRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_RESOURCES);
@@ -381,12 +401,12 @@ export async function getModuleContents(moduleId: string | number): Promise<Modu
     // Optional for non-mentees
   }
 
-  // 3. Supplementary check on /api/v1/resources?module_id={moduleId}
+  // 4. Learning module contents: /api/v1/learning/modules/{moduleId}/contents
   try {
-    const resRes = await apiClient.get<any>(ENDPOINTS.LEARNING.RESOURCES_BY_MODULE(numericModuleId));
-    const rawRes = resRes?.data?.data || resRes?.data?.items || resRes?.data || resRes?.items || resRes;
-    const resList = Array.isArray(rawRes) ? rawRes : [];
-    for (const item of resList) {
+    const res = await apiClient.get<any>(ENDPOINTS.LEARNING.CONTENTS(numericModuleId));
+    const raw = res?.data?.contents || res?.data?.items || res?.data || res?.contents || res?.items || res;
+    const list = Array.isArray(raw) ? raw : [];
+    for (const item of list) {
       const normalized = normalizeModuleContent(item, moduleId);
       const key = String(normalized.id || normalized.title).toLowerCase().trim();
       if (!seenKeys.has(key)) {
@@ -394,8 +414,8 @@ export async function getModuleContents(moduleId: string | number): Promise<Modu
         collectedContents.push(normalized);
       }
     }
-  } catch (resErr: any) {
-    // Optional fallback
+  } catch (error: any) {
+    // Expected when role is mentee without global module read access
   }
 
   // Strictly return only real database resources collected without any synthetic/mock fallbacks

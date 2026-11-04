@@ -656,7 +656,32 @@ export async function assignResourceToMentee(
   let successCount = 0;
 
   const numModId = parsePositiveInt(moduleId);
-  const numResId = parsePositiveInt(resourceId);
+  let numResId = parsePositiveInt(resourceId);
+
+  // Intelligent ID Resolution: verify if numResId exists on the backend
+  if (numResId) {
+    try {
+      const checkRes = await apiClient.get<any>(ENDPOINTS.RESOURCES.DETAIL(numResId)).catch(() => null);
+      if (!checkRes || (!checkRes.id && !checkRes.data?.id)) {
+        // Resource was not found by numResId (e.g. old resource was deleted and new one re-uploaded).
+        // Resolve the active resource from the live database:
+        const allRes = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`).catch(() => null);
+        const rawList = allRes?.data?.data || allRes?.data?.resources || allRes?.data?.items || allRes?.data || allRes;
+        if (Array.isArray(rawList) && rawList.length > 0) {
+          const match = rawList.find((r: any) =>
+            (resourceData?.title && r.title && r.title.trim().toLowerCase() === resourceData.title.trim().toLowerCase()) ||
+            (numModId && (r.module_id === numModId || r.moduleId === numModId))
+          ) || (rawList.length === 1 ? rawList[0] : null);
+
+          if (match && match.id) {
+            numResId = parsePositiveInt(match.id);
+          }
+        }
+      }
+    } catch {
+      // Proceed with numResId
+    }
+  }
 
   // Pre-emptively ensure resource is linked to this module in the database (sets resources.module_id = numModId)
   if (numModId && numResId) {
