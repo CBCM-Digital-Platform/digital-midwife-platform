@@ -542,6 +542,21 @@ export async function assignResourceToMentor(
   }
 }
 
+function extractErrorString(err: any): string {
+  if (!err) return "Failed to assign resource to mentee in the database.";
+  if (typeof err === "string") return err;
+  const data = err.data || err.response?.data;
+  if (data) {
+    if (typeof data.message === "string" && data.message) return data.message;
+    if (data.error && typeof data.error.message === "string") return data.error.message;
+    if (typeof data.error === "string" && data.error) return data.error;
+    if (typeof data.detail === "string" && data.detail) return data.detail;
+  }
+  if (typeof err.message === "string" && err.message) return err.message;
+  if (err.status) return `Server returned status ${err.status}`;
+  return "Failed to assign resource to mentee in the database.";
+}
+
 /**
  * Live Swagger: POST /api/v1/resources/{id}/mentees/{menteeId}
  * Mentors assign individual resources to actively assigned mentees.
@@ -624,7 +639,7 @@ export async function assignResourceToMentee(
         assigned = true;
         successCount++;
       } catch (err: any) {
-        lastErrorMsg = err?.response?.data?.message || err?.data?.message || err?.data?.error || err?.message || null;
+        lastErrorMsg = extractErrorString(err);
       }
     }
 
@@ -639,7 +654,7 @@ export async function assignResourceToMentee(
         assigned = true;
         successCount++;
       } catch (err: any) {
-        lastErrorMsg = err?.response?.data?.message || err?.data?.message || err?.data?.error || err?.message || lastErrorMsg;
+        lastErrorMsg = extractErrorString(err);
       }
     }
   }
