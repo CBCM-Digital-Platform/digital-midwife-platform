@@ -272,6 +272,24 @@ export async function getModuleDetails(id: string | number): Promise<LearningMod
     }
     return null;
   } catch (error: any) {
+    const status = error?.response?.status || error?.status;
+    const msg = String(error?.response?.data?.message || error?.message || "");
+
+    // Gracefully handle expected RBAC facility boundary (403 Forbidden)
+    if (status === 403 || msg.toLowerCase().includes("permission")) {
+      console.warn(`Learning module #${id} is restricted to its designated facility: ${msg}`);
+      return {
+        id: numericId,
+        title: `Module #${id} (Restricted)`,
+        description: "This learning module is restricted to preceptors and administrators of its designated facility.",
+        status: "published",
+        isPublished: true,
+        isAuthorized: true,
+        thematicAreaName: "Facility Restricted",
+        isAccessRestricted: true,
+      };
+    }
+
     console.error(`Failed to fetch learning module details #${id}:`, error?.message || error);
     return null;
   }
@@ -303,7 +321,28 @@ export async function getModuleContents(moduleId: string | number): Promise<Modu
     console.warn(`Failed to fetch /contents for module #${moduleId}:`, error?.message || error);
   }
 
-  // 2. Supplementary check on /api/v1/resources?module_id={moduleId}
+  // 2. Mentee individually assigned resources check: /api/v1/learning/my/resources
+  try {
+    const myRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_RESOURCES);
+    const rawMy = myRes?.data?.data || myRes?.data?.items || myRes?.data || myRes?.items || myRes;
+    const myList = Array.isArray(rawMy) ? rawMy : [];
+    for (const item of myList) {
+      const itemModuleId = item.module_id || item.moduleId || item.module?.id || item.resource?.module_id;
+      if (!itemModuleId || String(itemModuleId) === String(numericModuleId)) {
+        const rawContent = item.resource || item;
+        const normalized = normalizeModuleContent(rawContent, moduleId);
+        const key = String(normalized.id || normalized.title).toLowerCase().trim();
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          collectedContents.push(normalized);
+        }
+      }
+    }
+  } catch {
+    // Optional for non-mentees
+  }
+
+  // 3. Supplementary check on /api/v1/resources?module_id={moduleId}
   try {
     const resRes = await apiClient.get<any>(ENDPOINTS.LEARNING.RESOURCES_BY_MODULE(numericModuleId));
     const rawRes = resRes?.data?.data || resRes?.data?.items || resRes?.data || resRes?.items || resRes;

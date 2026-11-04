@@ -2,6 +2,7 @@ import React from "react";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getModules } from "@/services/learning.service";
+import { getThematicAreas } from "@/services/thematic-areas.service";
 import { LearningModulesListClient } from "@/components/LearningModules/LearningModulesListClient";
 
 export const metadata = {
@@ -11,9 +12,10 @@ export const metadata = {
 };
 
 export default async function LearningModulesPage() {
-  const [session, modules] = await Promise.all([
+  const [session, modules, thematicAreas] = await Promise.all([
     getServerSession(authOptions),
     getModules(),
+    getThematicAreas().catch(() => []),
   ]);
 
   const user = session?.user as any;
@@ -22,6 +24,7 @@ export default async function LearningModulesPage() {
   return (
     <LearningModulesListClient
       initialModules={modules}
+      initialThematicAreas={thematicAreas.map((a) => a.name).filter(Boolean)}
       userRole={rawRole}
       currentUserId={user?.id || user?.userId}
       currentUserEmail={user?.email}

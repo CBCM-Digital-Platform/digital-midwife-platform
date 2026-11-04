@@ -189,6 +189,20 @@ export function ModuleDetailClient({
   const [assigningResource, setAssigningResource] = useState<ModuleContent | null>(null);
   const [selectedMenteeIds, setSelectedMenteeIds] = useState<(string | number)[]>([]);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState<boolean>(false);
+  const [resourceAssignments, setResourceAssignments] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`cbcm_module_resource_assignments_${currentModule.id}`);
+        if (stored) {
+          setResourceAssignments(JSON.parse(stored));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [currentModule.id]);
 
   useEffect(() => {
     if (isMentor) {
@@ -229,14 +243,36 @@ export function ModuleDetailClient({
         currentModule.id
       );
       if (res.success) {
+        const assignedNames = myMentees
+          .filter((m) => selectedMenteeIds.includes(m.id))
+          .map((m) => m.name);
+
+        setResourceAssignments((prev) => {
+          const updated = {
+            ...prev,
+            [String(assigningResource.id)]: Array.from(
+              new Set([...(prev[String(assigningResource.id)] || []), ...assignedNames])
+            ),
+          };
+          try {
+            localStorage.setItem(
+              `cbcm_module_resource_assignments_${currentModule.id}`,
+              JSON.stringify(updated)
+            );
+          } catch {
+            // ignore
+          }
+          return updated;
+        });
+
         setFeedbackMessage({
           type: "success",
-          text: `Resource "${assigningResource.title}" assigned successfully to ${selectedMenteeIds.length} mentee(s).`,
+          text: res.message || `Resource "${assigningResource.title}" assigned successfully to ${selectedMenteeIds.length} mentee(s).`,
         });
         setAssigningResource(null);
         setSelectedMenteeIds([]);
       } else {
-        throw new Error("Failed to assign resource to mentees.");
+        throw new Error(res.message || "Failed to assign resource to mentees.");
       }
     } catch (err: any) {
       setFeedbackMessage({
@@ -1060,6 +1096,15 @@ export function ModuleDetailClient({
                             {item.durationLabel && <span>{item.durationLabel}</span>}
                             <span>Material #{item.order || index + 1}</span>
                           </div>
+
+                          {resourceAssignments[String(item.id)] && resourceAssignments[String(item.id)].length > 0 && (
+                            <div className="pt-1">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-[#194611] border border-emerald-200">
+                                <Users className="w-3 h-3 text-[#194611]" />
+                                Assigned to: {resourceAssignments[String(item.id)].join(", ")}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

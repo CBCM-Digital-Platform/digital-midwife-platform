@@ -29,6 +29,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getThematicAreas } from "@/services/thematic-areas.service";
 import {
   getModules,
   getThematicAreaNameMap,
@@ -37,6 +38,7 @@ import {
 
 interface LearningModulesListClientProps {
   initialModules: LearningModule[];
+  initialThematicAreas?: string[];
   userRole?: string;
   currentUserId?: string | number;
   currentUserEmail?: string;
@@ -45,8 +47,10 @@ interface LearningModulesListClientProps {
 
 export function LearningModulesListClient({
   initialModules = [],
+  initialThematicAreas = [],
   userRole,
 }: LearningModulesListClientProps) {
+  const [thematicAreasList, setThematicAreasList] = useState<string[]>(initialThematicAreas);
   const [modules, setModules] = useState<LearningModule[]>(initialModules);
   const [search, setSearch] = useState("");
   const [selectedThematicArea, setSelectedThematicArea] = useState<string>("ALL");
@@ -117,14 +121,14 @@ export function LearningModulesListClient({
     }
   }, [modules]);
 
-  // Extract unique thematic areas for filtering
+  // Extract unique thematic areas for filtering (all DB areas + any from modules)
   const thematicAreas = useMemo(() => {
-    const areas = new Set<string>();
+    const areas = new Set<string>(thematicAreasList);
     modules.forEach((m) => {
       if (m.thematicAreaName) areas.add(m.thematicAreaName);
     });
-    return Array.from(areas);
-  }, [modules]);
+    return Array.from(areas).filter(Boolean).sort();
+  }, [thematicAreasList, modules]);
 
   // Filter modules by search query and thematic area
   const filteredModules = useMemo(() => {

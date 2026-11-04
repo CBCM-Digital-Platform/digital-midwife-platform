@@ -550,37 +550,66 @@ export async function assignResourceToMentee(
   resourceId: string | number,
   menteeIds: (string | number)[],
   moduleId?: string | number
-): Promise<{ success: boolean; data?: any }> {
+): Promise<{ success: boolean; data?: any; message?: string }> {
   const numericMenteeIds = menteeIds
     .map((id) => Number(id))
     .filter((id) => !isNaN(id) && id > 0);
 
+  if (numericMenteeIds.length === 0) {
+    return { success: false, message: "No valid mentee IDs provided." };
+  }
+
   let lastData: any = null;
+  let lastErrorMsg: string | null = null;
+  let successCount = 0;
 
   for (const menteeId of numericMenteeIds) {
-    try {
-      // 1. Live Swagger primary endpoint
-      const res = await apiClient.post<any>(
-        ENDPOINTS.RESOURCES.ASSIGN_MENTEE(resourceId, menteeId)
-      );
-      lastData = res?.data || res;
-    } catch {
-      // 2. Supplementary learning module assignment endpoint if moduleId provided
-      if (moduleId) {
-        try {
-          const modRes = await apiClient.post<any>(
-            ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(moduleId, resourceId),
-            { mentee_id: menteeId }
-          );
-          lastData = modRes?.data || modRes;
-        } catch {
-          // ignore
-        }
+    let assigned = false;
+
+    // 1. Live Swagger primary learning module resource assignment endpoint
+    if (moduleId) {
+      try {
+        const modRes = await apiClient.post<any>(
+          ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(moduleId, resourceId),
+          { mentee_id: menteeId }
+        );
+        lastData = modRes?.data || modRes;
+        assigned = true;
+        successCount++;
+      } catch (err: any) {
+        lastErrorMsg = err?.response?.data?.message || err?.message || null;
+      }
+    }
+
+    // 2. Direct resource assignment endpoint: POST /api/v1/resources/{id}/mentees/{menteeId}
+    if (!assigned) {
+      try {
+        const res = await apiClient.post<any>(
+          ENDPOINTS.RESOURCES.ASSIGN_MENTEE(resourceId, menteeId)
+        );
+        lastData = res?.data || res;
+        assigned = true;
+        successCount++;
+      } catch (err: any) {
+        lastErrorMsg = err?.response?.data?.message || err?.message || lastErrorMsg;
       }
     }
   }
 
-  return { success: true, data: lastData };
+  if (successCount === 0) {
+    return {
+      success: false,
+      message:
+        lastErrorMsg ||
+        "Failed to assign resource to selected mentee(s). Ensure you have active module access granted by the Facility Admin.",
+    };
+  }
+
+  return {
+    success: true,
+    data: lastData,
+    message: `Resource successfully assigned to ${successCount} mentee(s).`,
+  };
 }
 
 /**

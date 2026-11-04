@@ -39,6 +39,7 @@ export interface LearningModule {
   order?: number;
   contentsCount?: number;
   contents?: ModuleContent[];
+  isAccessRestricted?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
