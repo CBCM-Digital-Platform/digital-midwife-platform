@@ -22,6 +22,8 @@ import {
   createResource,
   updateResource,
 } from "@/services/resources.service";
+import { getModules } from "@/services/learning.service";
+import type { LearningModule } from "@/types/learning";
 import type { AdminResource, AdminResourceType } from "@/types/resource";
 import {
   FileText,
@@ -55,6 +57,13 @@ export function ResourceFormDialog({
   const [existingFileName, setExistingFileName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [availableModules, setAvailableModules] = useState<LearningModule[]>([]);
+
+  useEffect(() => {
+    getModules().then((list) => {
+      if (Array.isArray(list)) setAvailableModules(list);
+    }).catch(() => {});
+  }, []);
 
   const {
     register,
@@ -70,6 +79,7 @@ export function ResourceFormDialog({
       description: "",
       type: "document",
       url: "",
+      moduleId: "",
     },
   });
 
@@ -84,6 +94,7 @@ export function ResourceFormDialog({
           description: resource.description || "",
           type: resource.type || "document",
           url: resource.url || "",
+          moduleId: resource.moduleId ? String(resource.moduleId) : "",
         });
         setExistingFileName(resource.fileName || (resource.fileId ? `File attached (ID: ${resource.fileId})` : null));
         setSelectedFile(null);
@@ -93,6 +104,7 @@ export function ResourceFormDialog({
           description: "",
           type: "document",
           url: "",
+          moduleId: "",
         });
         setExistingFileName(null);
         setSelectedFile(null);
@@ -129,6 +141,7 @@ export function ResourceFormDialog({
           type: data.type as AdminResourceType,
           url: data.url || undefined,
           file: selectedFile || undefined,
+          moduleId: data.moduleId ? Number(data.moduleId) : undefined,
         });
         onSuccess(updated);
         onOpenChange(false);
@@ -139,6 +152,7 @@ export function ResourceFormDialog({
           type: data.type as AdminResourceType,
           url: data.url || undefined,
           file: selectedFile || undefined,
+          moduleId: data.moduleId ? Number(data.moduleId) : undefined,
         });
         onSuccess(created);
         onOpenChange(false);
@@ -240,6 +254,28 @@ export function ResourceFormDialog({
                 {errors.type.message}
               </p>
             )}
+          </div>
+
+          {/* Associated Learning Module Dropdown */}
+          <div className="space-y-1.5">
+            <Label htmlFor="res-module" className="text-xs font-semibold text-gray-700">
+              Linked Learning Module (Required for Mentors to Assign)
+            </Label>
+            <select
+              id="res-module"
+              className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 font-medium transition focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent"
+              {...register("moduleId")}
+            >
+              <option value="">-- No Module Linked (General Resource) --</option>
+              {availableModules.map((mod) => (
+                <option key={mod.id} value={String(mod.id)}>
+                  {mod.title}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-500">
+              Linking this resource to an authorized module enables preceptors to assign it to mentees.
+            </p>
           </div>
 
           {/* Description Textarea */}

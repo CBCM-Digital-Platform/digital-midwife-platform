@@ -295,7 +295,8 @@ export async function createResource(
     }
   }
 
-  const payload = {
+  const parsedModuleId = input.moduleId ? parsePositiveInt(input.moduleId) : null;
+  const payload: Record<string, any> = {
     title: input.title.trim(),
     description: input.description?.trim() || null,
     type: input.type,
@@ -303,6 +304,10 @@ export async function createResource(
     url: input.url?.trim() || null,
     thematic_area_id: input.thematicAreaId || null,
   };
+  if (parsedModuleId) {
+    payload.module_id = parsedModuleId;
+    payload.moduleId = parsedModuleId;
+  }
 
   const isMock = await isMockUserSession();
 
@@ -377,6 +382,11 @@ export async function updateResource(
   if (fileId !== undefined) payload.file_id = fileId;
   if (input.url !== undefined) payload.url = input.url?.trim() || null;
   if (input.thematicAreaId !== undefined) payload.thematic_area_id = input.thematicAreaId;
+  if (input.moduleId !== undefined) {
+    const parsedMod = parsePositiveInt(input.moduleId);
+    payload.module_id = parsedMod;
+    payload.moduleId = parsedMod;
+  }
 
   const isMock = await isMockUserSession();
 
@@ -647,6 +657,18 @@ export async function assignResourceToMentee(
 
   const numModId = parsePositiveInt(moduleId);
   const numResId = parsePositiveInt(resourceId);
+
+  // Pre-emptively ensure resource is linked to this module in the database (sets resources.module_id = numModId)
+  if (numModId && numResId) {
+    try {
+      await apiClient.patch<any>(ENDPOINTS.RESOURCES.DETAIL(numResId), {
+        module_id: numModId,
+        moduleId: numModId,
+      });
+    } catch {
+      // Ignore if current role does not have resource edit permission
+    }
+  }
 
   for (const menteeId of numericMenteeIds) {
     let assigned = false;

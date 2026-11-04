@@ -47,6 +47,7 @@ export interface CreateResourceInput {
   file?: File;
   fileId?: number | string;
   thematicAreaId?: number | string;
+  moduleId?: number | string;
 }
 
 export interface UpdateResourceInput {
@@ -57,4 +58,5 @@ export interface UpdateResourceInput {
   file?: File;
   fileId?: number | string;
   thematicAreaId?: number | string;
+  moduleId?: number | string;
 }
