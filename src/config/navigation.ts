@@ -6,7 +6,7 @@ export const superAdminNavLinks: NavItem[] = [
   { name: "Facility Admins", href: "/facility-admins", icon: "users" },
   { name: "Thematic Areas", href: "/thematic-areas", icon: "thematic" },
   { name: "Reports", href: "/reports", icon: "reports" },
-  { name: "Resources", href: "/resources", icon: "resources" },
+  { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
@@ -17,28 +17,29 @@ export const adminNavLinks: NavItem[] = [
   { name: "Assignments", href: "/assignments", icon: "assignments" },
   { name: "Cycles", href: "/cycles", icon: "cycles" },
   { name: "Reports", href: "/reports", icon: "reports" },
-  { name: "Resources", href: "/resources", icon: "resources" },
+  { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
 export const mentorNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
   { name: "Mentees", href: "/my-mentees", icon: "mentee" },
-  { name: "Facilities", href: "/my-facilities", icon: "facilities" },
   { name: "Assessments", href: "/my-assessments", icon: "assessments" },
-  { name: "Resources", href: "/resources", icon: "resources" },
+  { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
   { name: "Sessions", href: "/sessions", icon: "sessions" },
+  { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
 export const menteeNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
-  { name: "Learning", href: "/learning", icon: "learning" },
+  { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Clinical Skills", href: "/clinical-skills", icon: "clinical-skills" },
   { name: "Mentors", href: "/mentors", icon: "mentor" },
   { name: "Messages", href: "/messaging", icon: "messages" },
   { name: "Progress", href: "/progress", icon: "progress" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
+  { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
 export function getNavLinksByRole(role?: UserRole | string): NavItem[] {

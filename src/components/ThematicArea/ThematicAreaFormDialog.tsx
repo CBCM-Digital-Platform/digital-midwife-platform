@@ -13,6 +13,8 @@ import {
 } from "@/services/thematic-areas.service";
 import type { ThematicArea, ThematicAreaStatus } from "@/types/thematic-area";
 import { Layers, Check, Loader2, AlertCircle, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { validateName, validateRequired } from "@/lib/validators";
 
 interface ThematicAreaFormDialogProps {
   open: boolean;
@@ -32,11 +34,15 @@ export function ThematicAreaFormDialog({
   const isEditing = Boolean(thematicArea);
 
   const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [category, setCategory] = useState("");
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [targetCadres, setTargetCadres] = useState<string[]>([]);
   const [status, setStatus] = useState<ThematicAreaStatus | "">("");
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +63,10 @@ export function ThematicAreaFormDialog({
       setTargetCadres(["Midwife Mentors", "Junior Midwives"]);
       setStatus("");
     }
+    setCodeError(null);
+    setNameError(null);
+    setCategoryError(null);
+    setStatusError(null);
     setError(null);
   }, [thematicArea, open]);
 
@@ -68,23 +78,34 @@ export function ThematicAreaFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
     const trimmedCode = code.trim().toUpperCase();
     const trimmedName = name.trim();
 
+    // 1. Validate Code
+    let codeErr: string | null = null;
     if (!trimmedCode) {
-      setError("Thematic area code is required.");
-      return;
+      codeErr = "Thematic area code is required.";
+    } else if (!/^[A-Z0-9\-_]{2,15}$/.test(trimmedCode)) {
+      codeErr = "Code must be 2-15 uppercase alphanumeric characters (hyphens allowed).";
     }
-    if (!trimmedName) {
-      setError("Thematic area title is required.");
-      return;
-    }
-    if (!category) {
-      setError("Please select a clinical category/domain.");
-      return;
-    }
-    if (!status) {
-      setError("Please select an operational status.");
+    setCodeError(codeErr);
+
+    // 2. Validate Name
+    const nameRes = validateName(trimmedName, "Thematic area title", 3, true);
+    setNameError(nameRes.error || null);
+
+    // 3. Validate Category
+    const catErr = !category ? "Please select a clinical category/domain." : null;
+    setCategoryError(catErr);
+
+    // 4. Validate Status
+    const statErr = !status ? "Please select an operational status." : null;
+    setStatusError(statErr);
+
+    if (codeErr || !nameRes.valid || catErr || statErr) {
+      setError(codeErr || nameRes.error || catErr || statErr || "Please fix highlighted validation errors.");
       return;
     }
 
@@ -95,6 +116,7 @@ export function ThematicAreaFormDialog({
         a.code.trim().toUpperCase() === trimmedCode
     );
     if (duplicateCode) {
+      setCodeError(`Code "${trimmedCode}" is already in use by "${duplicateCode.name}".`);
       setError(`Code "${trimmedCode}" is already in use by "${duplicateCode.name}".`);
       return;
     }
@@ -106,6 +128,7 @@ export function ThematicAreaFormDialog({
         a.name.trim().toLowerCase() === trimmedName.toLowerCase()
     );
     if (duplicateName) {
+      setNameError(`A thematic area with title "${trimmedName}" already exists.`);
       setError(`A thematic area with title "${trimmedName}" already exists.`);
       return;
     }
@@ -188,11 +211,24 @@ export function ThematicAreaFormDialog({
             <Input
               id="area-code"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase());
+                if (codeError) setCodeError(null);
+              }}
               required
               autoComplete="off"
-              className="h-9 text-sm font-mono uppercase font-semibold"
+              placeholder="e.g. EMONC"
+              className={cn(
+                "h-9 text-sm font-mono uppercase font-semibold",
+                codeError && "border-red-500 focus-visible:ring-red-500"
+              )}
             />
+            {codeError && (
+              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{codeError}</span>
+              </p>
+            )}
           </div>
 
           <div className="sm:col-span-2">
@@ -202,9 +238,15 @@ export function ThematicAreaFormDialog({
             <select
               id="area-category"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                if (categoryError) setCategoryError(null);
+              }}
               required
-              className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer"
+              className={cn(
+                "w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer",
+                categoryError && "border-red-500 focus:ring-red-500"
+              )}
             >
               <option value="">Select clinical domain...</option>
               {THEMATIC_CATEGORIES.map((cat) => (
@@ -213,6 +255,12 @@ export function ThematicAreaFormDialog({
                 </option>
               ))}
             </select>
+            {categoryError && (
+              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{categoryError}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -224,11 +272,21 @@ export function ThematicAreaFormDialog({
           <Input
             id="area-name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (nameError) setNameError(null);
+            }}
             required
             autoComplete="off"
-            className="h-9 text-sm"
+            placeholder="e.g. Emergency Obstetric & Newborn Care"
+            className={cn("h-9 text-sm", nameError && "border-red-500 focus-visible:ring-red-500")}
           />
+          {nameError && (
+            <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+              <span>{nameError}</span>
+            </p>
+          )}
         </div>
 
         {/* Operational Status */}
@@ -239,15 +297,27 @@ export function ThematicAreaFormDialog({
           <select
             id="area-status"
             value={status}
-            onChange={(e) => setStatus(e.target.value as ThematicAreaStatus)}
+            onChange={(e) => {
+              setStatus(e.target.value as ThematicAreaStatus);
+              if (statusError) setStatusError(null);
+            }}
             required
-            className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer"
+            className={cn(
+              "w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer",
+              statusError && "border-red-500 focus:ring-red-500"
+            )}
           >
             <option value="">Select operational status...</option>
             <option value="active">Active (Available for All Cohorts)</option>
             <option value="under_review">Under Review (Curriculum Revision)</option>
             <option value="inactive">Inactive (Archived)</option>
           </select>
+          {statusError && (
+            <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+              <span>{statusError}</span>
+            </p>
+          )}
         </div>
 
         {/* Target Midwifery Cadres */}

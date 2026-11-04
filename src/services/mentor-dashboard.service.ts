@@ -11,73 +11,6 @@ import type {
     ScheduleStatus,
 } from "@/types/mentor-dashboard";
 
-const FALLBACK_DASHBOARD: MentorDashboardData = {
-    stats: {
-        totalMentees: 6,
-        menteesTrend: "+3 this month",
-        upcomingSessions: 3,
-        pendingAssessments: 8,
-        avgCompetencyPct: 86,
-        competencyTrend: "+2%",
-    },
-    activity: [
-        {
-            id: "a1",
-            kind: "LOGBOOK",
-            actor: "Jane Doe",
-            text: "submitted a new logbook entry for Normal Delivery.",
-            timeAgo: "2h ago",
-            actionLabel: "Review Entry",
-            href: "/my-mentees",
-        },
-        {
-            id: "a2",
-            kind: "MESSAGE",
-            actor: "Mark Smith",
-            text: "sent a message regarding the Neonatal Resuscitation module.",
-            timeAgo: "4h ago",
-            quote: "Dr. Wilson, could we briefly go over the second step during our session today?",
-            actionLabel: "Reply",
-            href: "/messaging",
-        },
-        {
-            id: "a3",
-            kind: "MISSED_ASSESSMENT",
-            actor: "Sarah Jenkins",
-            text: "missed her scheduled assessment.",
-            timeAgo: "Yesterday",
-            actionLabel: "Follow Up",
-            href: "/my-assessments",
-        },
-    ],
-    scheduleDate: new Date().toISOString().slice(0, 10),
-    schedule: [
-        {
-            id: "s1",
-            time: "09:00 AM",
-            title: "Clinical Review & Triage",
-            person: "Bilen Alemu",
-            status: "DONE",
-        },
-        {
-            id: "s2",
-            time: "11:30 AM",
-            title: "Delivery Room Preceptor Check",
-            person: "Sara Abebe",
-            joinUrl: "/sessions",
-            status: "NOW",
-        },
-        {
-            id: "s3",
-            time: "02:00 PM",
-            title: "Partograph Review",
-            person: "Maritu Taye",
-            location: "Room 4B",
-            status: "UPCOMING",
-        },
-    ],
-};
-
 function formatSessionTime(dateString?: string): string {
     if (!dateString) return "10:00 AM";
     const d = new Date(dateString);
@@ -97,36 +30,65 @@ function mapScheduleStatus(status?: string): ScheduleStatus {
 }
 
 /**
- * Fetches dynamic metrics, upcoming sessions, and recent clinical activities
+ * Fetches real metrics, upcoming sessions, and recent clinical activities
  * for the mentor preceptor dashboard from live backend APIs.
+ * No mock data fallback is used.
  */
-export async function getMentorDashboard(): Promise<MentorDashboardData> {
+export async function getMentorDashboard(mentorIdOverride?: string | number): Promise<MentorDashboardData> {
     try {
-        const [analyticsRes, assessments, sessionsRes, mentees, activityLogsRes] =
+        let myId = mentorIdOverride ? String(mentorIdOverride) : null;
+
+        // Resolve mentor from session if running in Server Component
+        if (!myId && typeof window === "undefined") {
+            try {
+                const { getServerSession } = await import("next-auth/next");
+                const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+                const session = await getServerSession(authOptions);
+                if ((session?.user as any)?.id) {
+                    myId = String((session?.user as any).id);
+                }
+            } catch {
+                // Ignore session lookup error
+            }
+        }
+
+        const [assessments, sessionsRes, mentees, activityLogsRes] =
             await Promise.all([
-                apiClient.get<any>(ENDPOINTS.ANALYTICS.DASHBOARD).catch(() => null),
                 getAssessments().catch(() => []),
-                apiClient.get<any>(`${ENDPOINTS.SESSIONS.BASE}?limit=10`).catch(() => null),
-                getMyMentees().catch(() => []),
-                apiClient.get<any>(`${ENDPOINTS.ACTIVITY_LOGS.BASE}?limit=10`).catch(() => null),
+                apiClient.get<any>(`${ENDPOINTS.SESSIONS.BASE}?limit=20`).catch(() => null),
+                getMyMentees(myId || undefined).catch(() => []),
+                apiClient.get<any>(`${ENDPOINTS.ACTIVITY_LOGS.BASE}?limit=20`).catch(() => null),
             ]);
 
-        const analytics = analyticsRes?.data ?? analyticsRes;
+        const menteeIdSet = new Set<string>(mentees.map((m) => String(m.id)));
 
         // 1. Total Mentees
-        const totalMentees = mentees.length > 0 ? mentees.length : analytics?.mentees?.total ?? 6;
+        const totalMentees = mentees.length;
+        const menteesTrend =
+            totalMentees > 0
+                ? `${totalMentees} active ${totalMentees === 1 ? "mentee" : "mentees"}`
+                : "No mentees assigned";
 
-        // 2. Pending Assessments
-        const pendingCount = assessments.filter(
+        // 2. Pending Assessments (filtered to this mentor's cohort or assessments)
+        const relevantAssessments = assessments.filter((a) => {
+            if (menteeIdSet.size > 0 && menteeIdSet.has(String(a.menteeId))) return true;
+            if (myId && String(a.mentorId) === myId) return true;
+            return menteeIdSet.size === 0;
+        });
+
+        const pendingCount = relevantAssessments.filter(
             (a) => a.status === "PENDING" || a.status === "DRAFT" || a.status === "NEEDS_REVIEW"
         ).length;
 
         // 3. Average Competency Score
-        const graded = assessments.filter((a) => a.scorePct !== null && a.scorePct !== undefined);
+        const graded = relevantAssessments.filter((a) => a.scorePct !== null && a.scorePct !== undefined);
         const avgCompetencyPct =
             graded.length > 0
                 ? Math.round(graded.reduce((acc, curr) => acc + (curr.scorePct || 0), 0) / graded.length)
-                : 86;
+                : 0;
+
+        const competencyTrend =
+            graded.length > 0 ? `${avgCompetencyPct}% average` : "No scores yet";
 
         // 4. Clinical Sessions Schedule
         const rawSessions = Array.isArray(sessionsRes?.data)
@@ -135,31 +97,34 @@ export async function getMentorDashboard(): Promise<MentorDashboardData> {
             ? sessionsRes
             : [];
 
-        let schedule: ScheduleItem[] = [];
-        if (rawSessions.length > 0) {
-            schedule = rawSessions.slice(0, 5).map((s: any, idx: number) => {
-                const menteeName =
-                    s.mentee?.full_name ||
-                    s.mentee_name ||
-                    (mentees[idx % (mentees.length || 1)]?.name ?? "Resident Mentee");
-                return {
-                    id: String(s.id ?? `sess-${idx}`),
-                    time: formatSessionTime(s.scheduled_at || s.scheduledAt),
-                    title: s.clinical_setting || s.session_goals || "Clinical Mentoring Session",
-                    person: menteeName,
-                    location: s.clinical_setting || (s.mode === "virtual" ? "Virtual Encounter" : "Clinical Suite 2"),
-                    joinUrl: s.mode === "virtual" ? `/sessions` : undefined,
-                    status: mapScheduleStatus(s.status),
-                };
-            });
-        } else {
-            schedule = FALLBACK_DASHBOARD.schedule;
-        }
+        const relevantSessions = rawSessions.filter((s: any) => {
+            const sessMenteeId = String(s.mentee_id || s.menteeId || s.mentee?.id || "");
+            const sessMentorId = String(s.mentor_id || s.mentorId || s.mentor?.id || "");
+            if (myId && sessMentorId === myId) return true;
+            if (menteeIdSet.size > 0 && menteeIdSet.has(sessMenteeId)) return true;
+            return menteeIdSet.size === 0 && !myId;
+        });
+
+        const schedule: ScheduleItem[] = relevantSessions.slice(0, 5).map((s: any, idx: number) => {
+            const menteeName =
+                s.mentee?.full_name ||
+                s.mentee_name ||
+                s.mentee?.name ||
+                "Assigned Mentee";
+            return {
+                id: String(s.id ?? `sess-${idx}`),
+                time: formatSessionTime(s.scheduled_at || s.scheduledAt),
+                title: s.clinical_setting || s.session_goals || "Clinical Mentoring Session",
+                person: menteeName,
+                location: s.clinical_setting || (s.mode === "virtual" ? "Virtual Encounter" : "Clinical Suite"),
+                joinUrl: s.mode === "virtual" ? `/sessions` : undefined,
+                status: mapScheduleStatus(s.status),
+            };
+        });
 
         const upcomingSessions =
-            rawSessions.filter((s: any) => s.status === "scheduled" || s.status === "draft").length ||
-            schedule.filter((s) => s.status === "UPCOMING" || s.status === "NOW").length ||
-            3;
+            relevantSessions.filter((s: any) => s.status === "scheduled" || s.status === "draft" || s.status === "in_progress").length ||
+            schedule.filter((s) => s.status === "UPCOMING" || s.status === "NOW").length;
 
         // 5. Recent Activity Feed
         const rawLogs = Array.isArray(activityLogsRes?.data)
@@ -168,33 +133,36 @@ export async function getMentorDashboard(): Promise<MentorDashboardData> {
             ? activityLogsRes
             : [];
 
-        let activity: ActivityItem[] = [];
-        if (rawLogs.length > 0) {
-            activity = rawLogs.slice(0, 4).map((log: any, idx: number) => {
-                const kind: ActivityKind =
-                    log.action?.includes("message") ? "MESSAGE" :
-                    log.action?.includes("assessment") ? "MISSED_ASSESSMENT" : "LOGBOOK";
-                return {
-                    id: String(log.id ?? `act-${idx}`),
-                    kind,
-                    actor: log.user?.full_name || log.userName || (mentees[idx % mentees.length]?.name ?? "Resident Midwife"),
-                    text: log.details || log.description || log.action || "completed clinical rotation activity.",
-                    timeAgo: "Recent",
-                    actionLabel: kind === "MESSAGE" ? "Reply" : kind === "MISSED_ASSESSMENT" ? "Follow Up" : "Review",
-                    href: kind === "MESSAGE" ? "/messaging" : kind === "MISSED_ASSESSMENT" ? "/my-assessments" : "/my-mentees",
-                };
-            });
-        } else {
-            activity = FALLBACK_DASHBOARD.activity;
-        }
+        const relevantLogs = rawLogs.filter((log: any) => {
+            const logUserId = String(log.user_id || log.userId || log.user?.id || "");
+            if (myId && logUserId === myId) return true;
+            if (menteeIdSet.size > 0 && menteeIdSet.has(logUserId)) return true;
+            return menteeIdSet.size === 0;
+        });
+
+        const activity: ActivityItem[] = relevantLogs.slice(0, 5).map((log: any, idx: number) => {
+            const actionLower = String(log.action || "").toLowerCase();
+            const kind: ActivityKind =
+                actionLower.includes("message") ? "MESSAGE" :
+                actionLower.includes("assessment") ? "MISSED_ASSESSMENT" : "LOGBOOK";
+            return {
+                id: String(log.id ?? `act-${idx}`),
+                kind,
+                actor: log.user?.full_name || log.userName || log.user?.name || "Mentee Clinician",
+                text: log.details || log.description || log.action || "completed clinical rotation activity.",
+                timeAgo: "Recent",
+                actionLabel: kind === "MESSAGE" ? "Reply" : kind === "MISSED_ASSESSMENT" ? "Follow Up" : "Review",
+                href: kind === "MESSAGE" ? "/messaging" : kind === "MISSED_ASSESSMENT" ? "/my-assessments" : "/my-mentees",
+            };
+        });
 
         const stats: MentorStats = {
             totalMentees,
-            menteesTrend: "+3 active",
+            menteesTrend,
             upcomingSessions,
-            pendingAssessments: pendingCount > 0 ? pendingCount : 8,
+            pendingAssessments: pendingCount,
             avgCompetencyPct,
-            competencyTrend: "+2%",
+            competencyTrend,
         };
 
         return {
@@ -202,9 +170,23 @@ export async function getMentorDashboard(): Promise<MentorDashboardData> {
             activity,
             scheduleDate: new Date().toISOString().slice(0, 10),
             schedule,
+            mentees,
         };
     } catch (err) {
-        console.warn("Error synthesizing mentor dashboard data from backend API:", err);
-        return FALLBACK_DASHBOARD;
+        console.warn("Error synthesizing live mentor dashboard data from database:", err);
+        return {
+            stats: {
+                totalMentees: 0,
+                menteesTrend: "No mentees assigned",
+                upcomingSessions: 0,
+                pendingAssessments: 0,
+                avgCompetencyPct: 0,
+                competencyTrend: "No data",
+            },
+            activity: [],
+            scheduleDate: new Date().toISOString().slice(0, 10),
+            schedule: [],
+            mentees: [],
+        };
     }
 }

@@ -64,6 +64,7 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
     const [clinicalSetting, setClinicalSetting] = useState("Labor & Delivery Ward");
     const [sessionGoals, setSessionGoals] = useState("");
     const [isScheduling, setIsScheduling] = useState(false);
+    const [scheduleError, setScheduleError] = useState<string | null>(null);
 
     // Notes Modal
     const [activeSessionForNotes, setActiveSessionForNotes] = useState<ClinicalSession | null>(null);
@@ -99,6 +100,39 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
 
     const handleCreateSession = async (e: React.FormEvent) => {
         e.preventDefault();
+        setScheduleError(null);
+
+        if (!selectedMenteeId) {
+            setScheduleError("Please select a mentee.");
+            return;
+        }
+
+        if (!scheduledAt) {
+            setScheduleError("Please select a date and start time.");
+            return;
+        }
+
+        const scheduledTime = new Date(scheduledAt).getTime();
+        if (isNaN(scheduledTime)) {
+            setScheduleError("Invalid date/time format.");
+            return;
+        }
+
+        if (scheduledTime < Date.now() - 5 * 60 * 1000) {
+            setScheduleError("Session date & time cannot be in the past.");
+            return;
+        }
+
+        if (!durationMinutes || durationMinutes < 15 || durationMinutes > 240) {
+            setScheduleError("Duration must be between 15 and 240 minutes.");
+            return;
+        }
+
+        if (!clinicalSetting.trim()) {
+            setScheduleError("Please enter a clinical setting / ward.");
+            return;
+        }
+
         setIsScheduling(true);
         try {
             const mentee = mentees.find((m) => String(m.id) === String(selectedMenteeId));
@@ -107,8 +141,8 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                 mode,
                 scheduledAt: new Date(scheduledAt).toISOString(),
                 durationMinutes,
-                clinicalSetting,
-                sessionGoals: sessionGoals || "Direct clinical mentorship and supervised procedure observation.",
+                clinicalSetting: clinicalSetting.trim(),
+                sessionGoals: sessionGoals.trim() || "Direct clinical mentorship and supervised procedure observation.",
                 status: "scheduled",
             });
 
@@ -122,8 +156,9 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
             setSessions((prev) => [resolved, ...prev]);
             setIsScheduleOpen(false);
             setSessionGoals("");
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to schedule session:", err);
+            setScheduleError(err?.message || "Failed to schedule session. Please try again.");
         } finally {
             setIsScheduling(false);
         }
@@ -397,6 +432,12 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                         </div>
 
                         <form onSubmit={handleCreateSession} className="space-y-4">
+                            {scheduleError && (
+                                <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                                    <div className="flex-1 font-medium">{scheduleError}</div>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-xs font-semibold text-gray-700">Resident Mentee</label>
                                 <select

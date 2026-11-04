@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, AlertCircle, Menu } from "lucide-react";
+import { Bell, AlertCircle, Menu, MessageSquare } from "lucide-react";
 import { useNotifications } from "@/hooks/useNotifications";
 
 interface HeaderProps {
@@ -27,12 +27,14 @@ export function Header({ role, onToggleMobileMenu }: HeaderProps) {
         </button>
 
         {isMentor && (
-          <div className="hidden md:flex items-center gap-6 text-sm font-semibold text-[#194611]">
-            <Link href="/messaging" className="hover:underline">
-              Direct Messages
-            </Link>
-            <Link href="/resources" className="hover:underline">
-              Resource Library
+          <div className="hidden sm:flex items-center">
+            <Link
+              href="/messaging"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-[#194611]/20 bg-[#194611]/5 hover:bg-[#194611]/10 text-[#194611] text-xs sm:text-sm font-semibold transition-colors duration-150 shadow-2xs hover:shadow-xs focus:outline-none focus:ring-2 focus:ring-[#194611]/30"
+              title="Open Direct Messages"
+            >
+              <MessageSquare className="w-4 h-4 text-[#194611]" />
+              <span>Direct Messages</span>
             </Link>
           </div>
         )}

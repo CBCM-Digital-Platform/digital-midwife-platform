@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zodEmail, zodPhone, zodName } from "@/lib/validators";
 
 export const REGIONS = [
     "Addis Ababa",
@@ -18,14 +19,10 @@ export const REGIONS = [
 ] as const;
 
 export const profileSchema = z.object({
-    fullName: z.string().trim().min(3, "Full name is required"),
+    fullName: zodName("Full name", 3),
     position: z.string().trim().min(2, "Position is required"),
-    email: z.string().trim().min(1, "Email is required").email("Enter a valid email address"),
-    phone: z
-        .string()
-        .trim()
-        .min(1, "Phone number is required")
-        .regex(/^\+?[\d\s-]{7,18}$/, "Enter a valid phone number"),
+    email: zodEmail,
+    phone: zodPhone,
     facilityName: z.string().trim().min(2, "Facility name is required"),
     region: z.string().min(1, "Select a region"),
     zone: z.string().trim().min(1, "Zone / sub-county is required"),

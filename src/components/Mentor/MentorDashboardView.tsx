@@ -4,10 +4,11 @@ import { MentorDashboardClient } from "./MentorDashboardClient";
 
 export interface MentorDashboardViewProps {
   displayName: string;
+  mentorId?: string | number;
 }
 
-export async function MentorDashboardView({ displayName }: MentorDashboardViewProps) {
-  const data = await getMentorDashboard();
+export async function MentorDashboardView({ displayName, mentorId }: MentorDashboardViewProps) {
+  const data = await getMentorDashboard(mentorId);
 
   return <MentorDashboardClient displayName={displayName} data={data} />;
 }

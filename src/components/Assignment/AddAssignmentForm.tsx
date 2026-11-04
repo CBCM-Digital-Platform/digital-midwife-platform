@@ -3,7 +3,10 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Info } from "lucide-react";
+import { Info, AlertTriangle, Link2, ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+import { ENDPOINTS } from "@/services/endpoints";
+import { cn } from "@/lib/utils";
 import { createAssignment } from "@/services/assignment-form.service";
 import { saveCreatedAssignment } from "@/services/assignments.service";
 import type { Assignment } from "@/types/assignment";
@@ -54,7 +57,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     );
 }
 
-export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
+export default function AddAssignmentForm({ options: initialOptions }: AddAssignmentFormProps) {
+    const [options, setOptions] = useState<AssignmentFormOptions>(initialOptions);
+    const [isLinkingCycleArea, setIsLinkingCycleArea] = useState(false);
+    const [linkFeedback, setLinkFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
     const router = useRouter();
 
     const [type, setType] = useState<AssignmentType>("individual");
@@ -69,6 +75,20 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
     const [errors, setErrors] = useState<FormErrors>({});
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState("");
+
+    const selectedCycle = useMemo(
+        () => options.cycles.find((c) => c.id === cycleId),
+        [options.cycles, cycleId]
+    );
+
+    // Compute thematic areas selected that are not yet officially linked to the cycle
+    const unassignedThematicAreas = useMemo(() => {
+        if (!selectedCycle || !selectedCycle.thematicAreaNames || selectedCycle.thematicAreaNames.length === 0) {
+            return [];
+        }
+        const cycleNames = new Set(selectedCycle.thematicAreaNames.map((n) => n.toLowerCase()));
+        return thematicAreas.filter((name) => !cycleNames.has(name.toLowerCase()));
+    }, [selectedCycle, thematicAreas]);
 
     // A selected mentor is "over capacity" when their current load plus the
     // mentees in this assignment (at least 1) would go past their maximum.
@@ -110,10 +130,67 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
         }
     }
 
+        const handleLinkAreaToCycle = async (areaName: string) => {
+        if (!selectedCycle) return;
+        setIsLinkingCycleArea(true);
+        setLinkFeedback(null);
+        try {
+            const matchedItem = options.thematicAreaItems?.find(
+                (t) => t.name.toLowerCase() === areaName.toLowerCase()
+            );
+            const areaId = matchedItem ? Number(matchedItem.id) : null;
+            if (!areaId) {
+                throw new Error(`Could not resolve ID for thematic area "${areaName}".`);
+            }
+
+            await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(selectedCycle.id), {
+                method: "POST",
+                body: { thematic_area_id: areaId },
+            });
+
+            // Update local options state so this cycle now includes the linked area
+            setOptions((prev) => ({
+                ...prev,
+                cycles: prev.cycles.map((c) =>
+                    c.id === selectedCycle.id
+                        ? {
+                              ...c,
+                              thematicAreaNames: [...(c.thematicAreaNames || []), areaName],
+                              thematicAreaIds: [...(c.thematicAreaIds || []), String(areaId)],
+                          }
+                        : c
+                ),
+            }));
+
+            // Clear thematic areas validation error
+            setErrors((prev) => {
+                const nextErr = { ...prev };
+                delete nextErr.thematicAreas;
+                return nextErr;
+            });
+
+            setLinkFeedback({
+                type: "success",
+                message: `"${areaName}" successfully linked to ${selectedCycle.name}!`,
+            });
+        } catch (err: any) {
+            setLinkFeedback({
+                type: "error",
+                message: err?.message || `Failed to link "${areaName}" to ${selectedCycle.name}.`,
+            });
+        } finally {
+            setIsLinkingCycleArea(false);
+        }
+    };
+
     function validate(): FormErrors {
         const next: FormErrors = {};
         if (!cycleId) next.cycleId = "Select a mentorship cycle.";
-        if (thematicAreas.length === 0) next.thematicAreas = "Add at least one thematic area.";
+        if (thematicAreas.length === 0) {
+            next.thematicAreas = "Add at least one thematic area.";
+        } else if (selectedCycle && unassignedThematicAreas.length > 0) {
+            next.thematicAreas = `"${unassignedThematicAreas.join(", ")}" is not linked to ${selectedCycle.name}. Link it to this cycle or select an accredited area.`;
+        }
         if (mentorIds.length === 0) next.mentorIds = "Select at least one mentor.";
         if (menteeIds.length === 0) next.menteeIds = "Select at least one mentee.";
         if (!startDate) next.startDate = "Choose a start date.";
@@ -147,7 +224,6 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
             };
 
             const selectedMentees = options.mentees.filter((me) => menteeIds.includes(me.id));
-            const selectedCycle = options.cycles.find((c) => c.id === cycleId);
 
             const newAssignment: Assignment = {
                 id: `assign-new-${Date.now()}`,
@@ -197,10 +273,12 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 sessionStorage.setItem("cbcm_just_created_assignment", JSON.stringify(newAssignment));
             }
 
-            // Attempt backend persistence
+            // Attempt backend persistence with cycle auto-linking
             await createAssignment({
                 type,
                 cycleId,
+                cycleName: selectedCycle?.name,
+                facilityId: selectedMentees[0]?.facilityId || (selectedMentor as any)?.facilityId,
                 thematicAreas,
                 mentorIds,
                 menteeIds,
@@ -208,11 +286,12 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 endDate,
                 notes: notes.trim(),
                 capacityOverrideReason: overloadedMentors.length > 0 ? overrideReason.trim() : undefined,
-            }).catch(() => null);
+            });
 
             router.push("/assignments?tab=new&created=1");
-        } catch {
-            setSubmitError("The assignment couldn't be created. Check your connection and try again.");
+        } catch (err: any) {
+            console.error("Assignment creation error:", err);
+            setSubmitError(err?.message || "The assignment couldn't be created on the backend database.");
             setSubmitting(false);
         }
     }
@@ -242,8 +321,9 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         ).map((option) => (
                             <label
                                 key={option.id}
-                                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm ${type === option.id ? "border-[#194611] bg-gray-50" : "border-gray-200"
-                                    }`}
+                                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
+                                    type === option.id ? "border-[#194611] bg-gray-50" : "border-gray-200"
+                                }`}
                             >
                                 <input
                                     type="radio"
@@ -272,6 +352,38 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         size="lg"
                         error={errors.cycleId}
                     />
+
+                    {selectedCycle && (
+                        <div className="mt-2.5 space-y-1.5 rounded-lg border border-gray-100 bg-gray-50/80 p-3 text-xs">
+                            <div className="flex items-center justify-between text-gray-600">
+                                <span className="font-medium text-gray-700">{selectedCycle.name}</span>
+                                {selectedCycle.startDate && selectedCycle.endDate && (
+                                    <span className="text-[11px] text-gray-500">
+                                        {selectedCycle.startDate} to {selectedCycle.endDate}
+                                    </span>
+                                )}
+                            </div>
+
+                            {selectedCycle.thematicAreaNames && selectedCycle.thematicAreaNames.length > 0 ? (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    <span className="text-gray-500 text-[11px]">Accredited areas in this cycle:</span>
+                                    {selectedCycle.thematicAreaNames.map((name) => (
+                                        <span
+                                            key={name}
+                                            className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-[#194611] border border-emerald-200/60"
+                                        >
+                                            <CheckCircle2 className="size-3 text-[#194611]" />
+                                            {name}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-[11px] text-gray-500">
+                                    All accredited thematic areas are supported and will be linked to this cycle.
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </Field>
 
                 <Field label="Thematic Area" error={errors.thematicAreas}>
@@ -279,8 +391,60 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                         value={thematicAreas}
                         onChange={setThematicAreas}
                         suggestions={options.thematicAreas}
+                        thematicAreaItems={options.thematicAreaItems}
+                        cycleThematicAreaNames={selectedCycle?.thematicAreaNames}
                         invalid={!!errors.thematicAreas}
                     />
+
+                    {selectedCycle && unassignedThematicAreas.length > 0 && (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900 animate-in fade-in-50 space-y-2">
+                            <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                                <div className="space-y-1">
+                                    <p className="font-semibold text-amber-950">
+                                        Thematic Area Not Linked to {selectedCycle.name}
+                                    </p>
+                                    <p className="text-amber-800 leading-relaxed">
+                                        <strong>{unassignedThematicAreas.join(", ")}</strong> is not yet accredited for{" "}
+                                        <strong>{selectedCycle.name}</strong>. Assignments require an accredited thematic area for the chosen cycle.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60">
+                                <button
+                                    type="button"
+                                    disabled={isLinkingCycleArea}
+                                    onClick={() => handleLinkAreaToCycle(unassignedThematicAreas[0])}
+                                    className="inline-flex items-center gap-1.5 rounded-md bg-[#194611] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#13360d] transition disabled:opacity-50 cursor-pointer shadow-2xs"
+                                >
+                                    {isLinkingCycleArea ? (
+                                        <Loader2 className="size-3 animate-spin" />
+                                    ) : (
+                                        <Link2 className="size-3" />
+                                    )}
+                                    Link &quot;{unassignedThematicAreas[0]}&quot; to {selectedCycle.name}
+                                </button>
+                                <Link
+                                    href={`/cycles/${selectedCycle.id}`}
+                                    target="_blank"
+                                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-900 hover:text-amber-950 hover:underline"
+                                >
+                                    <span>Cycle Management</span>
+                                    <ExternalLink className="size-3" />
+                                </Link>
+                            </div>
+
+                            {linkFeedback && (
+                                <p className={cn(
+                                    "text-[11px] font-medium pt-1",
+                                    linkFeedback.type === "success" ? "text-emerald-700" : "text-red-600"
+                                )}>
+                                    {linkFeedback.message}
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </Field>
             </Section>
 
@@ -370,9 +534,10 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
             </Section>
 
             {submitError && (
-                <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {submitError}
-                </p>
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                    <p className="font-semibold">Unable to complete assignment</p>
+                    <p className="mt-1 text-xs text-red-700">{submitError}</p>
+                </div>
             )}
 
             <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
@@ -385,7 +550,7 @@ export default function AddAssignmentForm({ options }: AddAssignmentFormProps) {
                 <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex h-10 items-center rounded-lg bg-[#194611] px-5 text-sm font-medium text-white hover:bg-[#194611]/90 disabled:opacity-60"
+                    className="inline-flex h-10 items-center rounded-lg bg-[#194611] px-5 text-sm font-medium text-white hover:bg-[#194611]/90 disabled:opacity-60 cursor-pointer"
                 >
                     {submitting ? "Creating..." : "Create Assignment"}
                 </button>

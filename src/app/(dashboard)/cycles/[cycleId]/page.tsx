@@ -12,9 +12,11 @@ import {
     Phone,
 } from "lucide-react";
 import { getCycleById } from "@/services/cycle-data.service";
+import { getThematicAreas } from "@/services/thematic-areas.service";
 import CycleStatusBadge from "@/components/Cycle/CycleStatusBadge";
 import CycleDetailActions from "@/components/Cycle/CycleDetailActions";
 import CycleConfigDisplay from "@/components/Cycle/CycleConfigDisplay";
+import CycleThematicAreasManager from "@/components/Cycle/CycleThematicAreasManager";
 
 interface Props {
     params: Promise<{ cycleId: string }>;
@@ -22,7 +24,10 @@ interface Props {
 
 export default async function CycleDetailPage({ params }: Props) {
     const { cycleId } = await params;
-    const cycle = await getCycleById(cycleId);
+    const [cycle, allAvailableAreas] = await Promise.all([
+        getCycleById(cycleId),
+        getThematicAreas().catch(() => []),
+    ]);
 
     if (!cycle) {
         notFound();
@@ -85,6 +90,14 @@ export default async function CycleDetailPage({ params }: Props) {
 
             {/* CYCLE FORM SPECIFICATIONS & GOVERNANCE RULES */}
             <CycleConfigDisplay cycle={cycle} />
+
+            {/* THEMATIC AREAS MANAGER (Direct Add / Remove with Backend) */}
+            <CycleThematicAreasManager
+                cycleId={cycle.id}
+                cycleName={cycle.name}
+                assignedAreas={cycle.thematicAreaList || []}
+                allAvailableAreas={allAvailableAreas}
+            />
 
             {/* ASSIGNED MENTORS LIST */}
             <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
@@ -205,27 +218,6 @@ export default async function CycleDetailPage({ params }: Props) {
                     <p className="text-sm text-gray-500 italic">No facilities assigned yet.</p>
                 )}
             </section>
-
-            {/* THEMATIC AREAS */}
-            {cycle.thematicAreaList && cycle.thematicAreaList.length > 0 && (
-                <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                        <Layers className="h-5 w-5 text-[#0B5D3B]" />
-                        Thematic Areas ({cycle.thematicAreaList.length})
-                    </h2>
-                    <div className="flex flex-wrap gap-2">
-                        {cycle.thematicAreaList.map((area) => (
-                            <span
-                                key={area.id}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 border border-emerald-200"
-                            >
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                {area.name} ({area.code})
-                            </span>
-                        ))}
-                    </div>
-                </section>
-            )}
         </div>
     );
 }

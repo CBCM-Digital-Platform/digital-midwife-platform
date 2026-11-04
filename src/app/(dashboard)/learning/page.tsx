@@ -1,8 +1,12 @@
-export default function Page() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">Learning</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
-  );
+import React from "react";
+import { LessonViewerClient } from "@/components/MenteeLearning/LessonViewerClient";
+
+export const metadata = {
+  title: "Clinical Lesson Viewer | Active Management of Third Stage of Labor | CBCM Platform",
+  description:
+    "Interactive clinical LMS lesson viewer for midwives on Active Management of the Third Stage of Labor (AMTSL), procedural protocols, and competency assessments.",
+};
+
+export default function LearningPage() {
+  return <LessonViewerClient />;
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zodEmail, zodPhone, zodName } from "@/lib/validators";
 
 export const genderOptions = [
   { value: "male", label: "Male" },
@@ -29,34 +30,38 @@ export const thematicAreasList = [
 
 export const userFormSchema = z.object({
   // Personal Information
-  first_name: z.string().min(1, "First name is required"),
-  last_name: z.string().min(1, "Last name is required"),
+  first_name: zodName("First name", 2),
+  last_name: zodName("Last name", 2),
   gender: z
     .string()
     .min(1, "Please select gender")
     .refine((val) => ["male", "female", "other"].includes(val), {
       message: "Please select gender",
     }),
-  phone: z.string().min(9, "Phone number must be at least 9 characters"),
-  email: z.string().email("Please enter a valid email address"),
+  phone: zodPhone,
+  email: zodEmail,
 
   // Professional Information
-  profession: z.string().min(2, "Profession is required"),
+  profession: z.string().trim().min(2, "Profession is required (at least 2 characters)"),
   highest_qualification: z.string().min(1, "Please select highest qualification"),
   years_of_experience: z
     .union([z.string(), z.number()])
     .refine((val) => val !== "" && val !== undefined && val !== null, {
       message: "Years of experience is required",
     })
-    .refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: "Years of experience must be a non-negative number",
+    .refine((val) => !isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 60, {
+      message: "Years of experience must be between 0 and 60",
     }),
   thematic_area: z.string().min(1, "Please select primary thematic area"),
   primary_facility: z.string().optional(),
 
   // Account Creation
   username: z.string().optional(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Za-z]/, "Password must contain at least one letter")
+    .regex(/\d/, "Password must contain at least one number"),
   force_password_change: z.boolean(),
 });
 

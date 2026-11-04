@@ -11,6 +11,7 @@ export interface MentorOption {
     currentLoad: number;
     maxLoad: number;
     avatarUrl?: string;
+    facilityId?: string | number;
 }
 
 export interface MenteeOption {
@@ -19,6 +20,7 @@ export interface MenteeOption {
     initials: string;
     specialty: string;
     facility: string;
+    facilityId?: string | number;
 }
 
 export interface CycleOption {
@@ -27,11 +29,21 @@ export interface CycleOption {
     /** ISO date, e.g. "2024-11-01" */
     startDate: string;
     endDate: string;
+    thematicAreaIds?: string[];
+    thematicAreaNames?: string[];
+}
+
+export interface ThematicAreaOptionItem {
+    id: string;
+    name: string;
+    code?: string;
+    category?: string;
 }
 
 export interface AssignmentFormOptions {
     cycles: CycleOption[];
     thematicAreas: string[];
+    thematicAreaItems?: ThematicAreaOptionItem[];
     mentors: MentorOption[];
     mentees: MenteeOption[];
 }
@@ -39,7 +51,10 @@ export interface AssignmentFormOptions {
 export interface NewAssignmentInput {
     type: AssignmentType;
     cycleId: string;
+    cycleName?: string;
     thematicAreas: string[];
+    thematicAreaId?: string | number;
+    facilityId?: string | number;
     mentorIds: string[];
     menteeIds: string[];
     startDate: string;

@@ -25,6 +25,7 @@ export const ENDPOINTS = {
     FINALIZE: (id: string | number) => `/api/v1/assessments/${id}/finalize`,
     REVIEW: (id: string | number) => `/api/v1/assessments/${id}/review`,
     CRITERIA_SCORES: (id: string | number) => `/api/v1/assessments/${id}/criteria-scores`,
+    THEORY_SCORE: (id: string | number) => `/api/v1/assessments/${id}/theory-score`,
     CHECKLIST_ITEMS: (id: string | number) => `/api/v1/assessments/${id}/checklist-items`,
     EVIDENCE: (id: string | number) => `/api/v1/assessments/${id}/evidence`,
   },
@@ -38,11 +39,18 @@ export const ENDPOINTS = {
     CONTACTS: "/api/v1/messages/contacts",
   },
   RESOURCES: {
-    BASE: "/api/v1/hierarchical-resources",
-    DETAIL: (id: string | number) => `/api/v1/hierarchical-resources/${id}`,
-    CONTENT: (id: string | number) => `/api/v1/hierarchical-resources/${id}/content`,
+    BASE: "/api/v1/resources",
+    DETAIL: (id: string | number) => `/api/v1/resources/${id}`,
     GRANT_MENTOR: (id: string | number) => `/api/v1/hierarchical-resources/${id}/grant-mentor`,
     ASSIGN_MENTEE: (id: string | number) => `/api/v1/hierarchical-resources/${id}/assign-mentee`,
+  },
+  HIERARCHICAL_RESOURCES: {
+    BASE: "/api/v1/hierarchical-resources",
+    DETAIL: (id: string | number) => `/api/v1/hierarchical-resources/${id}`,
+    GRANT_FACILITIES: (id: string | number) => `/api/v1/hierarchical-resources/${id}`,
+    GRANT_MENTOR: (id: string | number) => `/api/v1/hierarchical-resources/${id}/grant-mentor`,
+    ASSIGN_MENTEE: (id: string | number) => `/api/v1/hierarchical-resources/${id}/assign-mentee`,
+    CONTENT: (id: string | number) => `/api/v1/hierarchical-resources/${id}/content`,
   },
   UPLOADS: {
     BASE: "/api/v1/uploads",
@@ -82,5 +90,18 @@ export const ENDPOINTS = {
     MENTOR_ASSIGNMENTS: (mentorId: string | number) => `/api/v1/assignments/mentors/${mentorId}/assignments`,
     MENTEE_ASSIGNMENTS: (menteeId: string | number) => `/api/v1/assignments/mentees/${menteeId}/assignments`,
   },
+  LEARNING: {
+    BASE: "/api/v1/learning/modules",
+    DETAIL: (id: string | number) => `/api/v1/learning/modules/${id}`,
+    CONTENTS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/contents`,
+    CONTENT_DETAIL: (moduleId: string | number, contentId: string | number) =>
+      `/api/v1/learning/modules/${moduleId}/contents/${contentId}`,
+    MENTOR_ACCESS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/mentor-access`,
+    MENTOR_ACCESS_REVOKE: (moduleId: string | number, mentorId: string | number) =>
+      `/api/v1/learning/modules/${moduleId}/mentor-access/${mentorId}`,
+    MENTEE_ACCESS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/access`,
+    MENTEE_ACCESS_REVOKE: (moduleId: string | number, menteeId: string | number) =>
+      `/api/v1/learning/modules/${moduleId}/access/${menteeId}`,
+    MY_MODULES: "/api/v1/learning/my/modules",
+  },
 } as const;
-

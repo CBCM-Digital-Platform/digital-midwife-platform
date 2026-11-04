@@ -37,6 +37,7 @@ export interface MentorAssessment {
     type: string;
     status: AssessmentStatus;
     scorePct: number | null;
+    theoryScore?: number | null;
     dueDate?: string;
     instructions?: string;
     referenceLink?: string;
@@ -44,6 +45,7 @@ export interface MentorAssessment {
     attachmentNames?: string[];
     createdAt?: string;
     assignedBy?: string;
+    mentorId?: string | number;
     facilityId?: number | string;
     facilityName?: string;
     cycleId?: number | string;

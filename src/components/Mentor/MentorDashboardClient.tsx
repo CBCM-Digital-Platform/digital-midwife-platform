@@ -1,12 +1,18 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { getMyMentees } from "@/services/my-mentees.service";
+import type { MentorStats } from "@/types/mentor-dashboard";
 import Link from "next/link";
-import { ClipboardList, Calendar, GraduationCap, Users } from "lucide-react";
+import {
+  ClipboardList,
+  Calendar,
+  GraduationCap,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MentorDashboardData } from "@/types/mentor-dashboard";
 import { MentorThemeProvider, useMentorTheme } from "./MentorThemeContext";
-import { MentorThemeSelector } from "./MentorThemeSelector";
 import { MentorStatCard } from "./MentorStatCard";
 import { RecentActivityCard } from "./RecentActivityCard";
 import { TodaysScheduleCard } from "./TodaysScheduleCard";
@@ -24,7 +30,27 @@ function MentorDashboardInner({
   data: MentorDashboardData;
 }) {
   const { config } = useMentorTheme();
-  const { stats, activity, scheduleDate, schedule } = data;
+  const { activity, scheduleDate, schedule } = data;
+  const [statsState, setStatsState] = useState<MentorStats>(data.stats);
+
+  // Synchronize assigned mentees count on client mount from localStorage / live client fetch
+  useEffect(() => {
+    let isMounted = true;
+    getMyMentees().then((clientMentees) => {
+      if (!isMounted) return;
+      if (clientMentees.length > 0) {
+        setStatsState((prev) => ({
+          ...prev,
+          totalMentees: clientMentees.length,
+          menteesTrend: `${clientMentees.length} active ${clientMentees.length === 1 ? "mentee" : "mentees"}`,
+        }));
+      }
+    }).catch(() => null);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div
@@ -35,19 +61,15 @@ function MentorDashboardInner({
       )}
     >
       <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
-        {/* HEADER BAR: GREETING & THEME SELECTOR */}
+        {/* HEADER BAR: GREETING (THEMES SELECTOR REMOVED) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className={cn("text-2xl font-bold sm:text-3xl tracking-tight", config.pageText)}>
+            <h1 className={cn("text-2xl font-bold sm:text-3xl tracking-tight text-[#194611]")}>
               Welcome back, Midwife {displayName}
             </h1>
-            <p className={cn("text-xs sm:text-sm mt-1", config.pageSubtitle)}>
+            <p className={cn("text-xs sm:text-sm mt-1 text-gray-600")}>
               Clinical Preceptor Workspace • Supervised rotations & live clinical assessments
             </p>
-          </div>
-
-          <div className="shrink-0">
-            <MentorThemeSelector />
           </div>
         </div>
 
@@ -59,8 +81,8 @@ function MentorDashboardInner({
           >
             <MentorStatCard
               label="Total Mentees"
-              value={stats.totalMentees}
-              trend={stats.menteesTrend}
+              value={statsState.totalMentees}
+              trend={statsState.menteesTrend}
               icon={Users}
               iconColor="text-emerald-700"
               iconBg="bg-emerald-50"
@@ -72,7 +94,7 @@ function MentorDashboardInner({
           >
             <MentorStatCard
               label="Upcoming Sessions"
-              value={stats.upcomingSessions}
+              value={statsState.upcomingSessions}
               icon={Calendar}
               iconColor="text-amber-700"
               iconBg="bg-yellow-100"
@@ -84,8 +106,8 @@ function MentorDashboardInner({
           >
             <MentorStatCard
               label="Pending Assessments"
-              value={stats.pendingAssessments}
-              alert={stats.pendingAssessments > 0 ? "Needs Action" : null}
+              value={statsState.pendingAssessments}
+              alert={statsState.pendingAssessments > 0 ? "Needs Action" : null}
               icon={ClipboardList}
               iconColor="text-red-600"
               iconBg="bg-red-50"
@@ -93,8 +115,8 @@ function MentorDashboardInner({
           </Link>
           <MentorStatCard
             label="Avg. Competency"
-            value={`${stats.avgCompetencyPct}%`}
-            trend={stats.competencyTrend}
+            value={statsState.avgCompetencyPct > 0 ? `${statsState.avgCompetencyPct}%` : "N/A"}
+            trend={statsState.competencyTrend}
             icon={GraduationCap}
             iconColor="text-purple-700"
             iconBg="bg-purple-50"

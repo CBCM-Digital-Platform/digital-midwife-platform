@@ -31,7 +31,7 @@ function AuthErrorListener({ children }: { children: React.ReactNode }) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
+    <SessionProvider refetchOnWindowFocus={false} refetchInterval={0} refetchWhenOffline={false}>
       <AuthErrorListener>{children}</AuthErrorListener>
     </SessionProvider>
   );

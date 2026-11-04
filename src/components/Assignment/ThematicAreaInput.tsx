@@ -1,92 +1,238 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import { X, ChevronDown, Check, Layers } from "lucide-react";
+import type { ThematicAreaOptionItem } from "@/types/assignment-form";
 
 interface ThematicAreaInputProps {
     value: string[];
     onChange: (next: string[]) => void;
     suggestions: string[];
+    thematicAreaItems?: ThematicAreaOptionItem[];
     invalid?: boolean;
+    placeholder?: string;
+    cycleThematicAreaNames?: string[];
 }
 
 export default function ThematicAreaInput({
     value,
     onChange,
     suggestions,
+    thematicAreaItems = [],
     invalid = false,
+    placeholder = "Select or search accredited thematic areas...",
+    cycleThematicAreaNames,
 }: ThematicAreaInputProps) {
     const [query, setQuery] = useState("");
-    const [open, setOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    const matches = useMemo(() => {
+    // Merge suggestions with thematicAreaItems to build a unified options array
+    const allOptions = useMemo(() => {
+        const list: { id: string; name: string; code?: string; category?: string }[] = [];
+        const seenNames = new Set<string>();
+
+        if (thematicAreaItems && thematicAreaItems.length > 0) {
+            for (const item of thematicAreaItems) {
+                if (!seenNames.has(item.name.toLowerCase())) {
+                    seenNames.add(item.name.toLowerCase());
+                    list.push(item);
+                }
+            }
+        }
+
+        for (const s of suggestions) {
+            if (!seenNames.has(s.toLowerCase())) {
+                seenNames.add(s.toLowerCase());
+                list.push({ id: s, name: s });
+            }
+        }
+
+        return list;
+    }, [suggestions, thematicAreaItems]);
+
+    // Filter available options based on query, prioritizing cycle-assigned areas
+    const filteredOptions = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return suggestions.filter((s) => !value.includes(s) && s.toLowerCase().includes(q));
-    }, [suggestions, value, query]);
+        let list = allOptions;
+        if (q) {
+            list = allOptions.filter(
+                (opt) =>
+                    opt.name.toLowerCase().includes(q) ||
+                    (opt.code && opt.code.toLowerCase().includes(q)) ||
+                    (opt.category && opt.category.toLowerCase().includes(q))
+            );
+        }
 
-    function add(area: string) {
-        onChange([...value, area]);
-        setQuery("");
+        if (cycleThematicAreaNames && cycleThematicAreaNames.length > 0) {
+            const cycleSet = new Set(cycleThematicAreaNames.map((n) => n.toLowerCase()));
+            return [...list].sort((a, b) => {
+                const aInCycle = cycleSet.has(a.name.toLowerCase()) ? 1 : 0;
+                const bInCycle = cycleSet.has(b.name.toLowerCase()) ? 1 : 0;
+                return bInCycle - aInCycle;
+            });
+        }
+
+        return list;
+    }, [allOptions, query, cycleThematicAreaNames]);
+
+    // Handle outside clicks to close the dropdown
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    function toggleOption(name: string) {
+        if (value.includes(name)) {
+            onChange(value.filter((a) => a !== name));
+        } else {
+            onChange([...value, name]);
+            setQuery("");
+        }
     }
 
-    function remove(area: string) {
-        onChange(value.filter((a) => a !== area));
+    function remove(name: string) {
+        onChange(value.filter((a) => a !== name));
     }
 
     return (
-        <div className="relative">
+        <div ref={containerRef} className="relative w-full">
             <div
-                className={`flex min-h-10 flex-wrap items-center gap-2 rounded-lg border bg-white px-2 py-1.5 focus-within:ring-2 focus-within:ring-[#FDD028] ${invalid ? "border-red-400" : "border-gray-200"
-                    }`}
+                onClick={() => {
+                    setIsOpen(true);
+                    inputRef.current?.focus();
+                }}
+                className={`flex min-h-11 cursor-text flex-wrap items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 transition shadow-2xs focus-within:ring-2 focus-within:ring-[#194611] ${
+                    invalid ? "border-red-400" : "border-gray-200 hover:border-gray-300"
+                }`}
             >
+                {/* Selected Pills */}
                 {value.map((area) => (
                     <span
                         key={area}
-                        className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs"
+                        className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-[#194611] border border-emerald-200/80 animate-in fade-in-50"
                     >
+                        <Layers className="size-3 text-[#194611]" />
                         {area}
-                        <button type="button" aria-label={`Remove ${area}`} onClick={() => remove(area)}>
+                        <button
+                            type="button"
+                            aria-label={`Remove ${area}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                remove(area);
+                            }}
+                            className="ml-1 text-emerald-600 hover:text-emerald-900 cursor-pointer"
+                        >
                             <X className="size-3" />
                         </button>
                     </span>
                 ))}
+
+                {/* Search / Text input */}
                 <input
+                    ref={inputRef}
                     value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onFocus={() => setOpen(true)}
-                    onBlur={() => setOpen(false)}
+                    onChange={(e) => {
+                        setQuery(e.target.value);
+                        if (!isOpen) setIsOpen(true);
+                    }}
+                    onFocus={() => setIsOpen(true)}
                     onKeyDown={(e) => {
                         if (e.key === "Enter") {
                             e.preventDefault();
-                            if (matches[0]) add(matches[0]);
+                            if (filteredOptions.length > 0) {
+                                toggleOption(filteredOptions[0].name);
+                            }
                         }
                         if (e.key === "Backspace" && !query && value.length > 0) {
                             remove(value[value.length - 1]);
                         }
+                        if (e.key === "Escape") {
+                            setIsOpen(false);
+                        }
                     }}
-                    placeholder="Add thematic area..."
-                    className="min-w-32 flex-1 bg-transparent px-1 text-sm outline-none"
+                    placeholder={value.length === 0 ? placeholder : "Add more areas..."}
+                    className="min-w-44 flex-1 bg-transparent py-1 text-xs text-gray-900 outline-none placeholder:text-gray-400"
                 />
+
+                {/* Dropdown Toggle Chevron */}
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsOpen((prev) => !prev);
+                    }}
+                    className="ml-auto text-gray-400 hover:text-gray-700 cursor-pointer p-1"
+                    aria-label="Toggle options menu"
+                >
+                    <ChevronDown className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                </button>
             </div>
 
-            {open && matches.length > 0 && (
-                <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-md">
-                    {matches.map((area) => (
-                        <li key={area}>
-                            <button
-                                type="button"
-                                // onMouseDown keeps the input focused so the click isn't lost to blur
-                                onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    add(area);
-                                }}
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
-                            >
-                                {area}
-                            </button>
-                        </li>
-                    ))}
-                </ul>
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1.5 shadow-lg">
+                    {filteredOptions.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-gray-500">
+                            No matching thematic areas found in the database.
+                        </div>
+                    ) : (
+                        <ul className="divide-y divide-gray-50">
+                            {filteredOptions.map((opt) => {
+                                const isSelected = value.includes(opt.name);
+                                const isCycleArea =
+                                    cycleThematicAreaNames &&
+                                    cycleThematicAreaNames.some(
+                                        (cName) => cName.toLowerCase() === opt.name.toLowerCase()
+                                    );
+
+                                return (
+                                    <li key={opt.id || opt.name}>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleOption(opt.name)}
+                                            className={`flex w-full items-center justify-between px-3.5 py-2 text-left text-xs transition cursor-pointer ${
+                                                isSelected
+                                                    ? "bg-emerald-50/70 font-semibold text-[#194611]"
+                                                    : "text-gray-800 hover:bg-gray-50"
+                                            }`}
+                                        >
+                                            <div className="flex-1 pr-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{opt.name}</span>
+                                                    {opt.code && (
+                                                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono font-medium text-gray-600">
+                                                            {opt.code}
+                                                        </span>
+                                                    )}
+                                                    {isCycleArea && (
+                                                        <span className="rounded bg-emerald-100 px-1.5 py-0.2 text-[10px] font-medium text-[#194611]">
+                                                            In this cycle
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {opt.category && (
+                                                    <div className="text-[10px] text-gray-400 font-normal mt-0.5">
+                                                        Category: {opt.category}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {isSelected && (
+                                                <Check className="size-4 text-[#194611] shrink-0" />
+                                            )}
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </div>
             )}
         </div>
     );

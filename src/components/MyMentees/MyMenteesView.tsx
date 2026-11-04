@@ -22,6 +22,7 @@ import { MenteeCards } from "./MenteeCards";
 import { MenteesPagination } from "./MenteesPagination";
 import { AssessmentDetailDialog } from "@/components/MentorAssessments/AssessmentDetailDialog";
 import { getStoredAssessments } from "@/services/mentor-assessments.service";
+import { getMyMentees } from "@/services/my-mentees.service";
 
 const PAGE_SIZE = 4; // comfortably displays entries per page
 const LEVELS: CompetencyLevel[] = ["NOVICE", "QUALIFIED", "ADVANCED"];
@@ -82,8 +83,15 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
     const [selectedMentee, setSelectedMentee] = useState<MyMentee | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    // Synchronize stored assessments from localStorage / client events
+    // Synchronize stored assessments and newly assigned mentees from client-side
     useEffect(() => {
+        let isMounted = true;
+        getMyMentees().then((fresh) => {
+            if (isMounted && fresh && fresh.length > 0) {
+                setMentees(fresh);
+            }
+        }).catch(() => null);
+
         const syncStored = () => {
             const stored = getStoredAssessments();
             if (!stored || stored.length === 0) return;
@@ -251,7 +259,9 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">My Mentees</h1>
                     <p className="mt-1 text-sm text-gray-600">
-                        Managing {mentees.length} active clinical mentees and tracking their procedural competencies.
+                        {mentees.length === 0
+                            ? "No mentees currently assigned to your mentorship cohort."
+                            : `Managing ${mentees.length} active clinical mentees and tracking their procedural competencies.`}
                     </p>
                 </div>
 
@@ -274,6 +284,18 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                 </div>
             </div>
 
+            {mentees.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center space-y-3 shadow-2xs">
+                    <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[#194611]">
+                        <UserPlus className="w-6 h-6 text-[#194611]" />
+                    </div>
+                    <h3 className="text-base font-semibold text-gray-900">No Mentees Assigned Yet</h3>
+                    <p className="text-sm text-gray-500 max-w-md mx-auto">
+                        Your facility administrator has not assigned any mentees to your clinical cohort yet. Once assignments are created in the system, they will appear here with active procedural competencies.
+                    </p>
+                </div>
+            ) : (
+                <>
             {/* Filter Controls Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
                 <div className="flex flex-wrap items-center gap-3">
@@ -397,6 +419,8 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                 onClose={() => setIsDetailOpen(false)}
                 onAssessmentUpdated={handleAssessmentUpdated}
             />
+                </>
+            )}
         </div>
     );
 }

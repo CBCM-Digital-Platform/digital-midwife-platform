@@ -3,7 +3,6 @@ import Image from "next/image";
 import { LogOut } from "lucide-react";
 import { SidebarNav } from "./SidebarNav";
 import { getNavLinksByRole } from "@/config/navigation";
-import { UserRole, isAdminRole } from "@/types/navigation";
 
 interface SidebarProps {
   role: string;
@@ -12,8 +11,6 @@ interface SidebarProps {
 
 export function Sidebar({ role, onNavigate }: SidebarProps) {
   const navLinks = getNavLinksByRole(role);
-  const isAdmin = isAdminRole(role);
-  const isMentor = (role || "").toLowerCase().includes("mentor");
 
   return (
     <aside className="w-64 max-w-full bg-white border-r border-gray-200 flex flex-col justify-between h-full shrink-0">
@@ -30,32 +27,14 @@ export function Sidebar({ role, onNavigate }: SidebarProps) {
           />
         </div>
 
-        {/* Dynamic Navigation Links */}
+        {/* Dynamic Navigation Links (including Settings for all roles) */}
         <SidebarNav items={navLinks} onNavigate={onNavigate} />
       </div>
 
       {/* Bottom Sidebar Actions */}
       <div className="p-4 border-t border-gray-100 flex flex-col gap-1 text-sm text-gray-600">
-        {isMentor && (
-          <Link
-            href="/support"
-            onClick={onNavigate}
-            className="px-4 py-2.5 hover:bg-gray-50 rounded-lg transition-colors"
-          >
-            Support
-          </Link>
-        )}
-        {!isAdmin && (
-          <Link
-            href="/settings"
-            onClick={onNavigate}
-            className="px-4 py-2.5 hover:bg-gray-50 rounded-lg transition-colors"
-          >
-            Settings
-          </Link>
-        )}
         <Link
-          href="/api/auth/signout"
+          href="/signout"
           onClick={onNavigate}
           className="flex items-center gap-2 px-4 py-2.5 hover:bg-red-50 rounded-lg text-red-600 transition-colors"
         >

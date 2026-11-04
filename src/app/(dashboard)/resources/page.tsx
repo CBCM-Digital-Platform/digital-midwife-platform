@@ -1,5 +1,5 @@
-import { ResourceLibraryView } from "@/components/ResourceLibrary/ResourceLibraryView";
+import { redirect } from "next/navigation";
 
 export default function ResourcesPage() {
-  return <ResourceLibraryView />;
+  redirect("/learning/modules");
 }

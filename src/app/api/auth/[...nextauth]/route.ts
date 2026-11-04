@@ -259,7 +259,10 @@ export const authOptions: NextAuthOptions = {
               // If facility_id is not directly present on the login payload, query user profile
               if (facility_id === undefined && userData.id && accessToken) {
                 try {
-                  const profileRes = await fetch(`${baseUrl}/api/v1/users/${userData.id}`, {
+                  const userProfileUrl = baseUrl.endsWith("/api/v1")
+                    ? `${baseUrl}/users/${userData.id}`
+                    : `${baseUrl}/api/v1/users/${userData.id}`;
+                  const profileRes = await fetch(userProfileUrl, {
                     headers: {
                       Authorization: `Bearer ${accessToken}`,
                     },
@@ -449,6 +452,7 @@ export const authOptions: NextAuthOptions = {
   // 3. Custom sign-in route
   pages: {
     signIn: "/login",
+    signOut: "/signout",
   },
 
   session: {

@@ -178,7 +178,8 @@ export default async function DashboardPage() {
   // 3. MENTOR DASHBOARD
   // =========================================================================
   if (isMentor) {
-    return <MentorDashboardView displayName={displayName} />;
+    const mentorId = (session?.user as any)?.id;
+    return <MentorDashboardView displayName={displayName} mentorId={mentorId} />;
   }
 
   // =========================================================================

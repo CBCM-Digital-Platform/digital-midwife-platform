@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -20,6 +20,8 @@ import {
     Eye,
 } from "lucide-react";
 import type { Facility } from "@/types/newCycle";
+import type { ThematicArea } from "@/types/thematic-area";
+import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 import { createCycle } from "@/services/cycle-data.service";
 import {
     ASSESSMENT_FREQUENCIES,
@@ -92,12 +94,34 @@ interface CreatedCycleData {
     notes?: string;
 }
 
-export default function CreateCycleForm({ facilities }: { facilities: Facility[] }) {
+export default function CreateCycleForm({
+    facilities,
+    thematicAreasList,
+}: {
+    facilities: Facility[];
+    thematicAreasList?: (ThematicArea | string)[];
+}) {
     const router = useRouter();
     const [serverError, setServerError] = useState<string | null>(null);
     const [createdCycle, setCreatedCycle] = useState<CreatedCycleData | null>(null);
     const [search, setSearch] = useState("");
     const [open, setOpen] = useState(false);
+    const [dynamicAreas, setDynamicAreas] = useState<string[]>(() => {
+        if (thematicAreasList && thematicAreasList.length > 0) {
+            return thematicAreasList.map((t) => (typeof t === "string" ? t : t.name));
+        }
+        return INITIAL_THEMATIC_AREAS.map((t) => t.name);
+    });
+
+    useEffect(() => {
+        if (!thematicAreasList || thematicAreasList.length === 0) {
+            getThematicAreas().then((list) => {
+                if (list && list.length > 0) {
+                    setDynamicAreas(list.map((t) => t.name));
+                }
+            }).catch(() => {});
+        }
+    }, [thematicAreasList]);
 
     const {
         register,
@@ -340,7 +364,7 @@ export default function CreateCycleForm({ facilities }: { facilities: Facility[]
 
                     <Field label="Thematic Areas Covered" required error={errors.thematicAreas?.message}>
                         <div className="flex flex-wrap gap-2">
-                            {THEMATIC_AREAS.map((area) => {
+                            {dynamicAreas.map((area) => {
                                 const active = thematicAreas.includes(area);
                                 return (
                                     <button

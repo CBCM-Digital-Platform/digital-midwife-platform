@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getAssessmentById } from "@/services/mentor-assessments.service";
-import { AssessmentDetailPageClient } from "@/components/MentorAssessments/AssessmentDetailPageClient";
+import { MentorAssessmentView } from "@/components/MentorAssessments/MentorAssessmentView";
 
 export default async function Page({
   params,
@@ -17,6 +17,5 @@ export default async function Page({
     notFound();
   }
 
-  return <AssessmentDetailPageClient assessment={assessment} />;
+  return <MentorAssessmentView assessment={assessment} />;
 }
-
