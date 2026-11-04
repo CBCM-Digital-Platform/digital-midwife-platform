@@ -332,28 +332,46 @@ export function useMessaging(role: MessagingRole) {
   }, [loadContacts, loadConversations, sessionStatus]);
 
   /**
-   * Handle navigation query parameters (e.g. /messaging?userId=42&name=Alex)
+   * Handle navigation query parameters (e.g. /messaging?conversationId=23 or /messaging?userId=42&name=Alex)
    */
   useEffect(() => {
     if (loading || sessionStatus !== "authenticated") return;
 
+    const targetConvIdParam = searchParams?.get("conversationId");
     const targetUserIdParam =
       searchParams?.get("userId") || searchParams?.get("contactId");
     const targetNameParam = searchParams?.get("name");
 
-    if (!targetUserIdParam) return;
-    const targetIdNum = Number(targetUserIdParam);
-    if (!targetIdNum || isNaN(targetIdNum)) return;
+    // Case 1: Direct conversation ID (e.g. from notification)
+    if (targetConvIdParam) {
+      const convIdNum = Number(targetConvIdParam);
+      if (convIdNum && !isNaN(convIdNum)) {
+        const key = `conv_${convIdNum}`;
+        if (handledTargetRef.current === key) return;
+        handledTargetRef.current = key;
 
-    const key = `${targetIdNum}_${targetNameParam || ""}`;
-    if (handledTargetRef.current === key) return;
-    handledTargetRef.current = key;
+        setSelectedId(convIdNum);
+        setShowChat(true);
+        void loadConversation(convIdNum);
+        return;
+      }
+    }
 
-    void startConversationWithContact(
-      targetIdNum,
-      targetNameParam ? decodeURIComponent(targetNameParam) : undefined
-    );
-  }, [loading, searchParams, sessionStatus, startConversationWithContact]);
+    // Case 2: Direct user/contact ID
+    if (targetUserIdParam) {
+      const targetIdNum = Number(targetUserIdParam);
+      if (!targetIdNum || isNaN(targetIdNum)) return;
+
+      const key = `${targetIdNum}_${targetNameParam || ""}`;
+      if (handledTargetRef.current === key) return;
+      handledTargetRef.current = key;
+
+      void startConversationWithContact(
+        targetIdNum,
+        targetNameParam ? decodeURIComponent(targetNameParam) : undefined
+      );
+    }
+  }, [loadConversation, loading, searchParams, sessionStatus, startConversationWithContact]);
 
   /**
    * When selected conversation changes, load its message history
