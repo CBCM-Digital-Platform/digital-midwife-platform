@@ -542,6 +542,26 @@ export async function assignResourceToMentor(
   }
 }
 
+function parsePositiveInt(val: any): number | null {
+  if (typeof val === "number" && !isNaN(val) && val > 0) {
+    return Math.floor(val);
+  }
+  if (!val) return null;
+  const str = String(val).trim();
+  const direct = parseInt(str, 10);
+  if (!isNaN(direct) && direct > 0 && String(direct) === str) {
+    return direct;
+  }
+  const match = str.match(/\d+/);
+  if (match) {
+    const extracted = parseInt(match[0], 10);
+    if (!isNaN(extracted) && extracted > 0) {
+      return extracted;
+    }
+  }
+  return null;
+}
+
 function extractErrorString(err: any): string {
   if (!err) return "Failed to assign resource to mentee in the database.";
   if (typeof err === "string") return err;
@@ -625,36 +645,43 @@ export async function assignResourceToMentee(
   let lastErrorMsg: string | null = null;
   let successCount = 0;
 
+  const numModId = parsePositiveInt(moduleId);
+  const numResId = parsePositiveInt(resourceId);
+
   for (const menteeId of numericMenteeIds) {
     let assigned = false;
+    const numMenteeId = parsePositiveInt(menteeId);
+    if (!numMenteeId) continue;
 
-    // A. Live Swagger primary learning module resource assignment endpoint
-    if (moduleId) {
+    // A. Live Swagger primary learning module resource assignment endpoint:
+    // POST /api/v1/learning/modules/{moduleId}/resources/{resourceId}/assignments
+    if (numModId && numResId) {
       try {
         const modRes = await apiClient.post<any>(
-          ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(moduleId, resourceId),
-          { mentee_id: menteeId, menteeId: menteeId }
+          ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(numModId, numResId),
+          { mentee_id: numMenteeId }
         );
         lastData = modRes?.data || modRes;
         assigned = true;
         successCount++;
-      } catch (err: any) {
-        lastErrorMsg = extractErrorString(err);
+      } catch (errA: any) {
+        lastErrorMsg = extractErrorString(errA);
       }
     }
 
-    // B. Direct resource assignment endpoint: POST /api/v1/resources/{id}/mentees/{menteeId}
-    if (!assigned) {
+    // B. Direct resource assignment endpoint:
+    // POST /api/v1/resources/{id}/mentees/{menteeId}
+    if (!assigned && numResId) {
       try {
         const res = await apiClient.post<any>(
-          ENDPOINTS.RESOURCES.ASSIGN_MENTEE(resourceId, menteeId),
-          { mentee_id: menteeId, menteeId: menteeId }
+          ENDPOINTS.RESOURCES.ASSIGN_MENTEE(numResId, numMenteeId),
+          {}
         );
         lastData = res?.data || res;
         assigned = true;
         successCount++;
-      } catch (err: any) {
-        lastErrorMsg = extractErrorString(err);
+      } catch (errB: any) {
+        lastErrorMsg = extractErrorString(errB);
       }
     }
   }
