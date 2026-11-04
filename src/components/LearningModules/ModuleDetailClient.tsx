@@ -35,6 +35,9 @@ import {
   getModuleContents,
 } from "@/services/learning.service";
 import { MentorAccessTab } from "@/components/LearningModules/MentorAccessTab";
+import { getMyMentees } from "@/services/my-mentees.service";
+import type { MyMentee } from "@/types/my-mentee";
+import { assignResourceToMentee } from "@/services/resources.service";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ArrowLeft,
@@ -59,6 +62,8 @@ import {
   GraduationCap,
   ClipboardCheck,
   UploadCloud,
+  UserPlus,
+  Users,
   X,
   Stethoscope,
   Pencil,
@@ -175,6 +180,73 @@ export function ModuleDetailClient({
   ).length;
   const menteeProgressPercent =
     contents.length > 0 ? Math.round((menteeCompletedCount / contents.length) * 100) : 0;
+
+  // ----------------------------------------------------
+  // Mentor Resource Assignment State & Handlers
+  // ----------------------------------------------------
+  const [myMentees, setMyMentees] = useState<MyMentee[]>([]);
+  const [isLoadingMentees, setIsLoadingMentees] = useState<boolean>(false);
+  const [assigningResource, setAssigningResource] = useState<ModuleContent | null>(null);
+  const [selectedMenteeIds, setSelectedMenteeIds] = useState<(string | number)[]>([]);
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isMentor) {
+      setIsLoadingMentees(true);
+      getMyMentees()
+        .then((data) => setMyMentees(data || []))
+        .catch(() => setMyMentees([]))
+        .finally(() => setIsLoadingMentees(false));
+    }
+  }, [isMentor]);
+
+  const handleOpenAssignResource = (item: ModuleContent) => {
+    setAssigningResource(item);
+    setSelectedMenteeIds([]);
+  };
+
+  const handleToggleMentee = (menteeId: string | number) => {
+    setSelectedMenteeIds((prev) =>
+      prev.includes(menteeId) ? prev.filter((id) => id !== menteeId) : [...prev, menteeId]
+    );
+  };
+
+  const handleToggleSelectAllMentees = () => {
+    if (selectedMenteeIds.length === myMentees.length) {
+      setSelectedMenteeIds([]);
+    } else {
+      setSelectedMenteeIds(myMentees.map((m) => m.id));
+    }
+  };
+
+  const handleConfirmAssignResource = async () => {
+    if (!assigningResource || selectedMenteeIds.length === 0) return;
+    setIsSubmittingAssignment(true);
+    try {
+      const res = await assignResourceToMentee(
+        assigningResource.id,
+        selectedMenteeIds,
+        currentModule.id
+      );
+      if (res.success) {
+        setFeedbackMessage({
+          type: "success",
+          text: `Resource "${assigningResource.title}" assigned successfully to ${selectedMenteeIds.length} mentee(s).`,
+        });
+        setAssigningResource(null);
+        setSelectedMenteeIds([]);
+      } else {
+        throw new Error("Failed to assign resource to mentees.");
+      }
+    } catch (err: any) {
+      setFeedbackMessage({
+        type: "error",
+        text: err?.message || "Failed to assign resource to selected mentees.",
+      });
+    } finally {
+      setIsSubmittingAssignment(false);
+    }
+  };
 
   // ----------------------------------------------------
   // Super Admin CRUD Modals State
@@ -487,67 +559,6 @@ export function ModuleDetailClient({
       <div className="bg-white rounded-2xl border border-gray-200/90 p-6 sm:p-8 shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-[#194611] border border-emerald-200/80">
-                <Layers className="w-3.5 h-3.5 text-[#194611]" />
-                {currentModule.thematicAreaName || "Clinical Midwifery"}
-              </span>
-
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-xs capitalize font-semibold px-2.5 py-0.5 rounded-full",
-                  isPublished
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                    : "bg-amber-100 text-amber-800 border-amber-200"
-                )}
-              >
-                {currentModule.status
-                  ? currentModule.status.charAt(0).toUpperCase() + currentModule.status.slice(1).toLowerCase()
-                  : "Draft"}
-              </Badge>
-
-              {/* Module Clinical QA Authorization Badge */}
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1",
-                  currentModule.isAuthorized
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : "bg-amber-50 text-amber-800 border-amber-200"
-                )}
-              >
-                {currentModule.isAuthorized ? (
-                  <>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    Authorized QA
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="w-3 h-3 text-amber-600" />
-                    Pending Approval
-                  </>
-                )}
-              </Badge>
-
-              {/* Role Perspective Badge */}
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[11px] font-semibold px-2.5 py-0.5 rounded-full",
-                  isSuperAdmin && "bg-purple-50 text-purple-800 border-purple-200",
-                  isFacilityAdmin && "bg-blue-50 text-blue-800 border-blue-200",
-                  isMentor && "bg-amber-50 text-amber-900 border-amber-200",
-                  isMentee && "bg-emerald-50 text-[#194611] border-emerald-200"
-                )}
-              >
-                {isSuperAdmin && "Super Admin"}
-                {isFacilityAdmin && "Facility Admin"}
-                {isMentor && "Clinical Preceptor"}
-                {isMentee && "Junior Midwife"}
-              </Badge>
-            </div>
-
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 leading-tight">
               {currentModule.title}
             </h1>
@@ -723,12 +734,7 @@ export function ModuleDetailClient({
             </TabsTrigger>
           )}
 
-          {isMentor && (
-            <TabsTrigger value="mentor-evaluation" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
-              <ClipboardCheck className="w-3.5 h-3.5" />
-              <span>Preceptor Evaluation Guide</span>
-            </TabsTrigger>
-          )}
+          
 
           {isMentee && (
             <TabsTrigger value="competencies" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
@@ -854,9 +860,41 @@ export function ModuleDetailClient({
                     <span className="text-gray-500">Publication Status</span>
                     <Badge
                       variant="outline"
-                      className="text-[10px] uppercase font-bold text-emerald-800 bg-emerald-50 border-emerald-200"
+                      className={cn(
+                        "text-[10px] capitalize font-bold",
+                        isPublished
+                          ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+                          : "text-amber-800 bg-amber-50 border-amber-200"
+                      )}
                     >
-                      {currentModule.status}
+                      {currentModule.status
+                        ? currentModule.status.charAt(0).toUpperCase() + currentModule.status.slice(1).toLowerCase()
+                        : "Draft"}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-500">Clinical QA Status</span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] font-semibold flex items-center gap-1",
+                        currentModule.isAuthorized
+                          ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+                          : "text-amber-800 bg-amber-50 border-amber-200"
+                      )}
+                    >
+                      {currentModule.isAuthorized ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Authorized QA
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          Pending Approval
+                        </>
+                      )}
                     </Badge>
                   </div>
 
@@ -1044,6 +1082,19 @@ export function ModuleDetailClient({
                           </button>
                         )}
 
+                        {/* Mentor Action: Assign Resource to Mentee */}
+                        {isMentor && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleOpenAssignResource(item)}
+                            className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3 font-semibold shadow-2xs cursor-pointer flex items-center gap-1.5"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>Assign to Mentee</span>
+                          </Button>
+                        )}
+
                         {/* View/Download link (available to all roles) */}
                         {item.url && item.url !== "#" ? (
                           <a
@@ -1133,59 +1184,7 @@ export function ModuleDetailClient({
           </TabsContent>
         )}
 
-        {/* Mentor Preceptor Guidance Tab */}
-        {isMentor && (
-          <TabsContent value="mentor-evaluation" className="space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-6">
-              <div>
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <ClipboardCheck className="w-4 h-4 text-[#194611]" />
-                  Preceptor Observational Checklist & Grading Guide
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Standardized observation rubrics and evaluation benchmarks for junior midwives working through this curriculum.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/50 space-y-2">
-                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    Procedural Verification Milestones
-                  </h4>
-                  <ul className="text-xs text-gray-700 space-y-1.5 list-disc list-inside">
-                    <li>Strict adherence to universal sterile technique & PPE protocol</li>
-                    <li>Accurate timely recording on national digital clinical partographs</li>
-                    <li>Safe administration of uterotonics and prompt hemorrhage staging</li>
-                    <li>Patient dignity, adolescent-sensitive communication, and informed consent</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/50 space-y-2">
-                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <Award className="w-4 h-4 text-amber-800" />
-                    Passing Criteria & Sign-off
-                  </h4>
-                  <p className="text-xs text-gray-700 leading-relaxed">
-                    Mentees must score at least <strong>80%</strong> on procedural observation rubrics and complete all prerequisites before you sign off on clinical competency certification.
-                  </p>
-                  <div className="pt-2">
-                    <Link
-                      href={`/my-assessments/new?moduleTitle=${encodeURIComponent(currentModule.title)}`}
-                      className={cn(
-                        buttonVariants({ size: "sm" }),
-                        "bg-[#194611] hover:bg-[#13360d] text-white text-xs cursor-pointer shadow-2xs"
-                      )}
-                    >
-                      <Stethoscope className="w-3.5 h-3.5 mr-1" />
-                      Begin Clinical Assessment
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-        )}
+        
 
         {/* Mentee Clinical Competencies Tab */}
         {isMentee && (
@@ -1259,6 +1258,140 @@ export function ModuleDetailClient({
           </TabsContent>
         )}
       </Tabs>
+
+      {/* ---------------------------------------------------- */}
+      {/* MENTOR MODAL: ASSIGN RESOURCE TO MENTEE */}
+      {/* ---------------------------------------------------- */}
+      {isMentor && (
+        <Dialog open={!!assigningResource} onOpenChange={(open) => !open && setAssigningResource(null)}>
+          <DialogContent className="max-w-md bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <DialogTitle className="text-lg font-bold text-[#194611] flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-[#194611]" />
+                Assign Resource to Mentee
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-500">
+                Grant your assigned junior midwives direct access to study this material.
+              </DialogDescription>
+            </DialogHeader>
+
+            {assigningResource && (
+              <div className="space-y-4 py-2">
+                {/* Resource summary banner */}
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#194611] flex items-center justify-center shrink-0">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate">{assigningResource.title}</p>
+                    <p className="text-[11px] text-gray-500 capitalize">
+                      {assigningResource.type || "Document"} • Module #{currentModule.id}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mentees checklist */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-700">
+                      Select Mentees ({selectedMenteeIds.length} of {myMentees.length} selected)
+                    </label>
+                    {myMentees.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleSelectAllMentees}
+                        className="text-xs font-semibold text-[#194611] hover:underline cursor-pointer"
+                      >
+                        {selectedMenteeIds.length === myMentees.length ? "Deselect All" : "Select All"}
+                      </button>
+                    )}
+                  </div>
+
+                  {isLoadingMentees ? (
+                    <div className="py-8 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#194611]" />
+                      Loading your assigned mentees...
+                    </div>
+                  ) : myMentees.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-gray-500 bg-gray-50 rounded-xl border border-gray-200 p-4">
+                      <Users className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
+                      <p className="font-semibold text-gray-700">No Active Mentees Found</p>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        You do not currently have any junior midwives assigned to you in this mentorship cycle.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-xl">
+                      {myMentees.map((mentee) => {
+                        const isSelected = selectedMenteeIds.includes(mentee.id);
+                        return (
+                          <div
+                            key={mentee.id}
+                            onClick={() => handleToggleMentee(mentee.id)}
+                            className={cn(
+                              "p-3 flex items-center justify-between cursor-pointer transition select-none",
+                              isSelected ? "bg-emerald-50/70" : "hover:bg-gray-50"
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 text-[#194611] flex items-center justify-center text-xs font-bold shrink-0">
+                                {mentee.name ? mentee.name.charAt(0).toUpperCase() : "M"}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-gray-900 truncate">{mentee.name}</p>
+                                <p className="text-[11px] text-gray-500 truncate">
+                                  {mentee.title || mentee.code || "Resident Midwife"}{" "}
+                                  {mentee.facility ? `• ${mentee.facility}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="size-4 rounded text-[#194611] focus:ring-[#194611] border-gray-300"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssigningResource(null)}
+                disabled={isSubmittingAssignment}
+                className="text-xs text-gray-600 hover:text-gray-900"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmAssignResource}
+                disabled={isSubmittingAssignment || selectedMenteeIds.length === 0}
+                className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold gap-1.5 shadow-2xs"
+              >
+                {isSubmittingAssignment ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Assign to {selectedMenteeIds.length} Mentee{selectedMenteeIds.length === 1 ? "" : "s"}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ---------------------------------------------------- */}
       {/* SUPER ADMIN MODALS: EDIT MODULE, DELETE, ADD/EDIT CONTENT */}
