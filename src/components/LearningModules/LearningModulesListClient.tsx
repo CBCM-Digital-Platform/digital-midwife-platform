@@ -312,13 +312,13 @@ export function LearningModulesListClient({
                       <Badge
                         variant="outline"
                         className={cn(
-                          "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full",
+                          "text-[10px] capitalize font-semibold px-2 py-0.5 rounded-full",
                           isPublished
                             ? "bg-emerald-100 text-emerald-800 border-emerald-200"
                             : "bg-amber-100 text-amber-800 border-amber-200"
                         )}
                       >
-                        {module.status}
+                        {module.status ? module.status.charAt(0).toUpperCase() + module.status.slice(1).toLowerCase() : "Draft"}
                       </Badge>
                     </div>
 

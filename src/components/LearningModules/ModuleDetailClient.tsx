@@ -496,13 +496,15 @@ export function ModuleDetailClient({
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-xs uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full",
+                  "text-xs capitalize font-semibold px-2.5 py-0.5 rounded-full",
                   isPublished
                     ? "bg-emerald-100 text-emerald-800 border-emerald-200"
                     : "bg-amber-100 text-amber-800 border-amber-200"
                 )}
               >
-                {currentModule.status}
+                {currentModule.status
+                  ? currentModule.status.charAt(0).toUpperCase() + currentModule.status.slice(1).toLowerCase()
+                  : "Draft"}
               </Badge>
 
               {/* Module Clinical QA Authorization Badge */}
@@ -539,10 +541,10 @@ export function ModuleDetailClient({
                   isMentee && "bg-emerald-50 text-[#194611] border-emerald-200"
                 )}
               >
-                {isSuperAdmin && "Super Admin (Full CRUD Control)"}
-                {isFacilityAdmin && "Facility Admin (Content Distribution)"}
-                {isMentor && "Clinical Preceptor View"}
-                {isMentee && "Junior Midwife Learning View"}
+                {isSuperAdmin && "Super Admin"}
+                {isFacilityAdmin && "Facility Admin"}
+                {isMentor && "Clinical Preceptor"}
+                {isMentee && "Junior Midwife"}
               </Badge>
             </div>
 
