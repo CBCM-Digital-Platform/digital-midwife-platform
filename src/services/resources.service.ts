@@ -601,7 +601,7 @@ export async function assignResourceToMentee(
       success: false,
       message:
         lastErrorMsg ||
-        "Failed to assign resource to selected mentee(s). Ensure you have active module access granted by the Facility Admin.",
+        "Failed to assign resource to selected mentee(s). Only resources linked to an authorized learning module are available to mentors.",
     };
   }
 

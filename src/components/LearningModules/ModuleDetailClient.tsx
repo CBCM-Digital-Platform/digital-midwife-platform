@@ -988,7 +988,15 @@ export function ModuleDetailClient({
               )}
             </div>
 
-            {contents.length === 0 ? (
+            {isMentor && currentModule.isAuthorized === false ? (
+              <div className="text-center py-12 border-2 border-dashed border-amber-200 bg-amber-50/50 rounded-xl space-y-3 p-6">
+                <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
+                <h4 className="text-sm font-bold text-gray-900">Module Pending Clinical QA Authorization</h4>
+                <p className="text-xs text-gray-600 max-w-md mx-auto leading-relaxed">
+                  Only resources linked to an authorized learning module are available to mentors. Once this module is authorized by the national quality assurance team, its attached clinical guides, videos, and protocols will be accessible for preceptors to review and assign to junior midwives.
+                </p>
+              </div>
+            ) : contents.length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl space-y-3">
                 <BookOpen className="w-8 h-8 text-gray-300 mx-auto" />
                 <h4 className="text-sm font-semibold text-gray-700">No Learning Materials Attached</h4>
@@ -1127,17 +1135,27 @@ export function ModuleDetailClient({
                           </button>
                         )}
 
-                        {/* Mentor Action: Assign Resource to Mentee */}
+                        {/* Mentor Action: Assign Resource to Mentee (Only available on authorized modules and resources) */}
                         {isMentor && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleOpenAssignResource(item)}
-                            className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3 font-semibold shadow-2xs cursor-pointer flex items-center gap-1.5"
-                          >
-                            <UserPlus className="w-3.5 h-3.5" />
-                            <span>Assign to Mentee</span>
-                          </Button>
+                          item.isAuthorized !== false && currentModule.isAuthorized !== false ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleOpenAssignResource(item)}
+                              className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3 font-semibold shadow-2xs cursor-pointer flex items-center gap-1.5"
+                            >
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>Assign to Mentee</span>
+                            </Button>
+                          ) : (
+                            <span
+                              title="Only resources linked to an authorized learning module are available to mentors."
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-amber-800 bg-amber-50 rounded-lg border border-amber-200"
+                            >
+                              <Lock className="w-3 h-3 text-amber-700" />
+                              <span>Requires QA Approval</span>
+                            </span>
+                          )
                         )}
 
                         {/* View/Download link (available to all roles) */}
