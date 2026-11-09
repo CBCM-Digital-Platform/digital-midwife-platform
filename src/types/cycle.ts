@@ -45,6 +45,7 @@ export interface CycleMentee {
 export interface Cycle {
     id: string;
     name: string;
+    ownerFacilityId?: string | number;
     code?: string;
     description?: string;
     status: CycleStatus;

@@ -1,134 +1,127 @@
 import { apiClient } from "@/lib/api-client";
 import { ENDPOINTS } from "@/services/endpoints";
-import { getMyMentees } from "@/services/my-mentees.service";
 import type {
     ClinicalSession,
     ClinicalSessionNote,
     CreateSessionInput,
+    SessionJoinToken,
+    SessionMode,
     SessionStatus,
 } from "@/types/clinical-session";
 
-const MOCK_SESSIONS: ClinicalSession[] = [
-    {
-        id: "1",
-        assignmentId: 101,
-        mentorId: 1,
-        mentorName: "Sr. Preceptor Almaz",
-        menteeId: 1,
-        menteeName: "Bilen Alemu",
-        menteeTitle: "Year 2 Resident",
-        mode: "in_person",
-        scheduledAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        durationMinutes: 45,
-        clinicalSetting: "Labor & Delivery Suite 3",
-        sessionGoals: "Direct observation of active phase labor monitoring and partograph plotting.",
-        preparationNotes: "Review fetal heart rate trace interpretation chart beforehand.",
-        status: "scheduled",
-        createdAt: new Date().toISOString(),
-    },
-    {
-        id: "2",
-        assignmentId: 102,
-        mentorId: 1,
-        mentorName: "Sr. Preceptor Almaz",
-        menteeId: 2,
-        menteeName: "Sara Abebe",
-        menteeTitle: "Year 1 Resident",
-        mode: "virtual",
-        scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        durationMinutes: 30,
-        clinicalSetting: "Virtual Preceptor Case Review",
-        sessionGoals: "Neonatal resuscitation algorithm walk-through and Q&A.",
-        preparationNotes: "Review WHO newborn care protocol.",
-        status: "scheduled",
-        createdAt: new Date().toISOString(),
-    },
-    {
-        id: "3",
-        assignmentId: 103,
-        mentorId: 1,
-        mentorName: "Sr. Preceptor Almaz",
-        menteeId: 3,
-        menteeName: "Maritu Taye",
-        menteeTitle: "Year 3 Resident",
-        mode: "in_person",
-        scheduledAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        durationMinutes: 60,
-        clinicalSetting: "Postpartum Triage Unit",
-        sessionGoals: "Management of primary postpartum hemorrhage simulation.",
-        preparationNotes: "Emergency tray readiness check completed.",
-        status: "completed",
-        createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-    },
-];
+type ApiRecord = Record<string, unknown>;
 
-function normalizeSession(raw: any): ClinicalSession {
+function asRecord(value: unknown): ApiRecord {
+    return value !== null && typeof value === "object" ? value as ApiRecord : {};
+}
+
+function unwrap(value: unknown): unknown {
+    const response = asRecord(value);
+    return response.data ?? value;
+}
+
+function unwrapEntity(value: unknown, key: string): ApiRecord {
+    const data = asRecord(unwrap(value));
+    return asRecord(data[key] ?? data);
+}
+
+function getList(value: unknown, keys: string[]): ApiRecord[] {
+    const data = unwrap(value);
+    if (Array.isArray(data)) return data.map(asRecord);
+    const record = asRecord(data);
+    for (const key of ["items", "sessions", "results", ...keys]) {
+        if (Array.isArray(record[key])) return (record[key] as unknown[]).map(asRecord);
+    }
+    throw new Error("The sessions API returned an unexpected list response.");
+}
+
+function optionalNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === "") return undefined;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+}
+
+function normalizeSession(rawValue: unknown): ClinicalSession {
+    const raw = asRecord(rawValue);
+    const mentee = asRecord(raw.mentee);
+    const mentor = asRecord(raw.mentor);
     const id = String(raw.id ?? raw._id ?? "");
-    const mentee = raw.mentee || {};
-    const mentor = raw.mentor || {};
+    if (!id) throw new Error("The sessions API returned a session without an ID.");
 
-    const menteeName =
-        raw.mentee_name ||
-        raw.menteeName ||
-        mentee.full_name ||
-        mentee.name ||
-        `Mentee #${raw.mentee_id ?? id}`;
-
-    const mentorName =
-        raw.mentor_name ||
-        raw.mentorName ||
-        mentor.full_name ||
-        mentor.name ||
-        "Clinical Mentor";
+    const rawMode = String(raw.mode ?? "in_person").toLowerCase().replaceAll("-", "_");
+    const mode: SessionMode =
+        rawMode === "virtual" || rawMode === "hybrid" ? rawMode : "in_person";
+    const rawStatus = String(raw.status ?? "scheduled").toLowerCase().replaceAll("-", "_");
+    const allowedStatuses: SessionStatus[] = [
+        "draft",
+        "scheduled",
+        "in_progress",
+        "completed",
+        "cancelled",
+        "terminated",
+        "no_show",
+    ];
+    const status = allowedStatuses.includes(rawStatus as SessionStatus)
+        ? rawStatus as SessionStatus
+        : "scheduled";
 
     return {
         id,
-        assignmentId: raw.assignment_id ?? raw.assignmentId,
-        mentorId: raw.mentor_id ?? raw.mentorId,
-        mentorName,
-        menteeId: raw.mentee_id ?? raw.menteeId,
-        menteeName,
-        menteeTitle: mentee.highest_qualification || mentee.training_status || "Resident Midwife",
-        mode: raw.mode || "in_person",
-        scheduledAt: raw.scheduled_at || raw.scheduledAt || new Date().toISOString(),
-        durationMinutes: Number(raw.duration_minutes ?? raw.durationMinutes ?? 45),
-        clinicalSetting: raw.clinical_setting || raw.clinicalSetting || "Clinical Ward",
-        sessionGoals: raw.session_goals || raw.sessionGoals || "Supervised clinical rotation and competency assessment.",
-        preparationNotes: raw.preparation_notes || raw.preparationNotes || "",
-        status: (raw.status || "scheduled").toLowerCase() as SessionStatus,
-        createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
+        assignmentId: optionalNumber(raw.assignment_id ?? raw.assignmentId),
+        mentorId: optionalNumber(raw.mentor_id ?? raw.mentorId ?? mentor.id),
+        mentorName: String(
+            raw.mentor_name ?? raw.mentorName ?? mentor.full_name ?? mentor.name ?? ""
+        ) || undefined,
+        menteeId: optionalNumber(raw.mentee_id ?? raw.menteeId ?? mentee.id),
+        menteeName: String(
+            raw.mentee_name ?? raw.menteeName ?? mentee.full_name ?? mentee.name ?? "Mentee"
+        ),
+        menteeTitle: String(
+            mentee.highest_qualification ?? mentee.training_status ?? ""
+        ) || undefined,
+        mode,
+        scheduledAt: String(raw.scheduled_at ?? raw.scheduledAt ?? ""),
+        durationMinutes: optionalNumber(raw.duration_minutes ?? raw.durationMinutes) ?? 45,
+        clinicalSetting: String(raw.clinical_setting ?? raw.clinicalSetting ?? "") || undefined,
+        sessionGoals: String(raw.session_goals ?? raw.sessionGoals ?? "") || undefined,
+        preparationNotes: String(raw.preparation_notes ?? raw.preparationNotes ?? "") || undefined,
+        status,
+        createdAt: String(raw.created_at ?? raw.createdAt ?? "") || undefined,
     };
 }
 
-/**
- * Fetches clinical sessions from backend GET /api/v1/sessions.
- */
-export async function getSessions(status?: string): Promise<ClinicalSession[]> {
-    try {
-        const query = status ? `?status=${status}&limit=50` : "?limit=50";
-        const res = await apiClient.get<any>(`${ENDPOINTS.SESSIONS.BASE}${query}`);
-        const list = Array.isArray(res?.data)
-            ? res.data
-            : Array.isArray(res)
-            ? res
-            : [];
-
-        if (list.length > 0) {
-            return list.map(normalizeSession);
-        }
-    } catch (err) {
-        console.warn("Could not fetch sessions from backend API (using local data):", err);
+function normalizeNote(rawValue: unknown, sessionId: string | number): ClinicalSessionNote {
+    const raw = asRecord(rawValue);
+    const id = raw.id;
+    if (typeof id !== "string" && typeof id !== "number") {
+        throw new Error("The sessions API returned a note without an ID.");
     }
-
-    if (status) {
-        return MOCK_SESSIONS.filter((s) => s.status === status);
-    }
-    return MOCK_SESSIONS;
+    const rawEncounterId = raw.encounter_id ?? raw.encounterId ?? sessionId;
+    return {
+        id,
+        encounterId:
+            typeof rawEncounterId === "string" || typeof rawEncounterId === "number"
+                ? rawEncounterId
+                : sessionId,
+        mentorId: optionalNumber(raw.mentor_id ?? raw.mentorId),
+        mentorName: String(asRecord(raw.mentor).full_name ?? raw.mentor_name ?? "") || undefined,
+        note: String(raw.note ?? raw.content ?? ""),
+        createdAt: String(raw.created_at ?? raw.createdAt ?? ""),
+    };
 }
 
-/**
- * Creates a new clinical session via POST /api/v1/sessions.
- */
+export async function getSessions(status?: string, limit = 50): Promise<ClinicalSession[]> {
+    const res = await apiClient.get<unknown>(ENDPOINTS.SESSIONS.BASE, {
+        params: { status, limit },
+    });
+    return getList(res, []).map(normalizeSession);
+}
+
+export async function getSessionById(sessionId: string | number): Promise<ClinicalSession> {
+    const res = await apiClient.get<unknown>(ENDPOINTS.SESSIONS.DETAIL(sessionId));
+    return normalizeSession(unwrapEntity(res, "session"));
+}
+
 export async function createSession(input: CreateSessionInput): Promise<ClinicalSession> {
     const payload = {
         assignment_id: input.assignmentId,
@@ -140,92 +133,85 @@ export async function createSession(input: CreateSessionInput): Promise<Clinical
         preparation_notes: input.preparationNotes || null,
         status: input.status || "scheduled",
     };
-
-    const res = await apiClient.post<any>(ENDPOINTS.SESSIONS.BASE, payload);
-    const raw = res?.data ?? res;
-    return normalizeSession(raw);
+    const res = await apiClient.post<unknown>(ENDPOINTS.SESSIONS.BASE, payload);
+    return normalizeSession(unwrapEntity(res, "session"));
 }
 
-/**
- * Updates session status (e.g. in_progress, completed, cancelled) via PATCH /api/v1/sessions/{id}/status.
- */
+export interface UpdateSessionInput {
+    mode?: SessionMode;
+    scheduledAt?: string;
+    durationMinutes?: number;
+    clinicalSetting?: string;
+    sessionGoals?: string;
+    preparationNotes?: string;
+}
+
+export async function updateSession(
+    sessionId: string | number,
+    input: UpdateSessionInput
+): Promise<ClinicalSession> {
+    const payload = {
+        ...(input.mode !== undefined && { mode: input.mode }),
+        ...(input.scheduledAt !== undefined && { scheduled_at: input.scheduledAt }),
+        ...(input.durationMinutes !== undefined && { duration_minutes: input.durationMinutes }),
+        ...(input.clinicalSetting !== undefined && { clinical_setting: input.clinicalSetting }),
+        ...(input.sessionGoals !== undefined && { session_goals: input.sessionGoals }),
+        ...(input.preparationNotes !== undefined && { preparation_notes: input.preparationNotes }),
+    };
+    const res = await apiClient.patch<unknown>(ENDPOINTS.SESSIONS.DETAIL(sessionId), payload);
+    const raw = unwrapEntity(res, "session");
+    return raw.id || raw._id ? normalizeSession(raw) : getSessionById(sessionId);
+}
+
+export async function getAvailableSessionTimes(
+    params?: Record<string, string | number | boolean | undefined | null>
+): Promise<unknown> {
+    return apiClient.get<unknown>(ENDPOINTS.SESSIONS.AVAILABLE_TIMES, { params });
+}
+
 export async function updateSessionStatus(
     sessionId: string | number,
     status: SessionStatus,
     reason?: string
-): Promise<boolean> {
-    try {
-        await apiClient.patch(ENDPOINTS.SESSIONS.STATUS(sessionId), {
-            status,
-            reason: reason || undefined,
-        });
-        return true;
-    } catch (err) {
-        console.warn(`Failed to update session ${sessionId} status on backend:`, err);
-        return false;
-    }
+): Promise<void> {
+    await apiClient.patch(ENDPOINTS.SESSIONS.STATUS(sessionId), {
+        status,
+        ...(reason ? { reason } : {}),
+    });
 }
 
-/**
- * Adds a clinical note via POST /api/v1/sessions/{id}/notes.
- */
 export async function addSessionNote(
     sessionId: string | number,
     note: string
-): Promise<ClinicalSessionNote | null> {
-    try {
-        const res = await apiClient.post<any>(ENDPOINTS.SESSIONS.NOTES(sessionId), {
-            note,
-        });
-        const raw = res?.data ?? res;
-        return {
-            id: raw.id,
-            encounterId: raw.encounter_id ?? Number(sessionId),
-            mentorId: raw.mentor_id ?? 1,
-            mentorName: raw.mentor?.full_name || "Mentor Preceptor",
-            note: raw.note,
-            createdAt: raw.created_at || new Date().toISOString(),
-        };
-    } catch (err) {
-        console.warn("Failed to add clinical session note on backend:", err);
-        return null;
-    }
+): Promise<ClinicalSessionNote> {
+    const res = await apiClient.post<unknown>(ENDPOINTS.SESSIONS.NOTES(sessionId), { note });
+    const raw = unwrapEntity(res, "note");
+    return normalizeNote({ ...raw, note: raw.note ?? note }, sessionId);
 }
 
-/**
- * Retrieves all clinical notes for a session via GET /api/v1/sessions/{id}/notes.
- */
 export async function getSessionNotes(
     sessionId: string | number
 ): Promise<ClinicalSessionNote[]> {
-    try {
-        const res = await apiClient.get<any>(ENDPOINTS.SESSIONS.NOTES(sessionId));
-        const list = Array.isArray(res?.data) ? res.data : [];
-        return list.map((n: any) => ({
-            id: n.id,
-            encounterId: n.encounter_id ?? Number(sessionId),
-            mentorId: n.mentor_id ?? 1,
-            mentorName: n.mentor?.full_name || "Mentor Preceptor",
-            note: n.note,
-            createdAt: n.created_at || new Date().toISOString(),
-        }));
-    } catch (err) {
-        console.warn(`Failed to fetch notes for session ${sessionId}:`, err);
-        return [];
-    }
+    const res = await apiClient.get<unknown>(ENDPOINTS.SESSIONS.NOTES(sessionId));
+    return getList(res, ["notes"]).map((note) => normalizeNote(note, sessionId));
 }
 
-/**
- * Generates signed Jitsi join token for a virtual session via POST /api/v1/sessions/{id}/join-token.
- */
 export async function getSessionJoinToken(
     sessionId: string | number
-): Promise<{ domain?: string; room?: string; token?: string } | null> {
-    try {
-        const res = await apiClient.post<any>(ENDPOINTS.SESSIONS.JOIN_TOKEN(sessionId));
-        return res?.data ?? res;
-    } catch (err) {
-        console.warn(`Failed to get virtual session join token for ${sessionId}:`, err);
-        return null;
-    }
+): Promise<SessionJoinToken> {
+    const res = await apiClient.post<unknown>(ENDPOINTS.SESSIONS.JOIN_TOKEN(sessionId), {});
+    const raw = asRecord(unwrap(res));
+    const data = asRecord(raw.join ?? raw);
+    return {
+        domain: String(data.domain ?? "") || undefined,
+        room: String(data.room ?? "") || undefined,
+        token: String(data.token ?? "") || undefined,
+        joinUrl: String(data.join_url ?? data.joinUrl ?? "") || undefined,
+    };
+}
+
+export async function recordSessionParticipantJoin(
+    sessionId: string | number
+): Promise<void> {
+    await apiClient.post(ENDPOINTS.SESSIONS.PARTICIPANT_JOIN(sessionId), {});
 }

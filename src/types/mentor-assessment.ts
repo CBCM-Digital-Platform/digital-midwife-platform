@@ -22,10 +22,25 @@ export interface AssessmentChecklistItem {
 export interface AssessmentEvidence {
     id?: number;
     title: string;
-    file_id: number;
+    file_id?: number;
     fileId?: number;
     url?: string;
     created_at?: string;
+}
+
+export interface AssessmentPassingRule {
+    id: number;
+    cycle_id: number | null;
+    thematic_area_id: number | null;
+    criteria_min_score: number;
+    theory_min_score: number;
+    practical_min_score: number;
+    is_active: boolean;
+}
+
+export interface AssessmentTypeOption {
+    id: string;
+    name: string;
 }
 
 export interface MentorAssessment {
@@ -38,6 +53,7 @@ export interface MentorAssessment {
     status: AssessmentStatus;
     scorePct: number | null;
     theoryScore?: number | null;
+    practicalScore?: number | null;
     dueDate?: string;
     instructions?: string;
     referenceLink?: string;
@@ -59,14 +75,10 @@ export interface MentorAssessment {
 
 export interface NewAssessmentInput {
     menteeId: string;
-    type: string;
-    dueDate: string; // ISO date
-    instructions: string;
-    referenceLink?: string;
+    thematicAreaId: string;
+    thematicAreaName: string;
     feedback?: string;
-    notifyMentee: boolean;
-    attachmentNames: string[]; // the files themselves are uploaded separately
     facilityId?: number | string;
     cycleId?: number | string;
-    thematicAreaId?: number | string;
-}
+    prerequisitesMet?: boolean;
+}

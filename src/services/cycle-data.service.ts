@@ -12,63 +12,75 @@ import type { CreateCycleInput, Facility } from "@/types/newCycle";
 import { FACILITY_ID_MAP } from "@/services/users.service";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
 
-const MOCK_CYCLES: Cycle[] = [
-    {
-        id: "1",
-        name: "Q1 2024 Clinical Refresh",
-        status: "ACTIVE",
-        startDate: "2024-01-15",
-        endDate: "2024-04-15",
-        facilities: 12,
-        mentors: 24,
-        mentees: 84,
-        progress: 65,
-        assignmentsLinked: 84,
-        averageScore: 78,
-        milestones: [
-            { id: "m1", title: "Mid-term Assessments Released", when: "2 days ago", done: true },
-            { id: "m2", title: "Facility Visits Completed (Region A)", when: "1 week ago", done: true },
-            { id: "m3", title: "Cycle Kick-off Meeting", when: "Jan 15, 2024", done: false },
-        ],
-    },
-    {
-        id: "2",
-        name: "Q2 2024 Advanced OBGYN",
-        status: "PLANNING",
-        startDate: "2024-05-01",
-        endDate: "2024-08-31",
-        facilities: 8,
-        mentors: 15,
-        mentees: 45,
-        progress: 20,
-        assignmentsLinked: 0,
-        averageScore: 0,
-        milestones: [],
-    },
-    {
-        id: "3",
-        name: "Q4 2023 Foundation Basics",
-        status: "COMPLETED",
-        startDate: "2023-09-01",
-        endDate: "2023-12-15",
-        facilities: 10,
-        mentors: 20,
-        mentees: 70,
-        progress: 100,
-        assignmentsLinked: 70,
-        averageScore: 82,
-        milestones: [],
-    },
-];
+export const CREATED_CYCLES_STORAGE_KEY = "cbcm_created_cycles";
 
-const MOCK_FACILITIES: Facility[] = [
-    { id: "1", name: "Tirunesh Beijing General Hospital" },
-    { id: "2", name: "Oda Bultu Hospital" },
-    { id: "3", name: "St. Paul's Hospital (SPHMMC)" },
-    { id: "4", name: "Tikur Anbessa Specialized Hospital (TASH)" },
-    { id: "5", name: "Zewditu Memorial Hospital" },
-    { id: "6", name: "Yekatit 12 Hospital Medical College" },
-];
+/**
+ * Retrieves newly created cycles stored locally in the browser.
+ */
+export function getLocallyCreatedCycles(facilityId?: string | number | null): Cycle[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = localStorage.getItem(CREATED_CYCLES_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed: Cycle[] = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        if (facilityId !== undefined && facilityId !== null) {
+            const targetId = String(facilityId);
+            return parsed.filter((c) => {
+                if (c.ownerFacilityId !== undefined && c.ownerFacilityId !== null) {
+                    return String(c.ownerFacilityId) === targetId;
+                }
+                return c.facilityList?.length === 1 && String(c.facilityList[0].id) === targetId;
+            });
+        }
+        return parsed;
+    } catch (e) {
+        console.error("Error reading locally created cycles:", e);
+        return [];
+    }
+}
+
+/**
+ * Saves a newly created cycle to localStorage.
+ */
+export function saveCreatedCycleLocally(cycle: Cycle): void {
+    if (typeof window === "undefined") return;
+    try {
+        const existing = getLocallyCreatedCycles();
+        const filtered = existing.filter((c) => String(c.id) !== String(cycle.id));
+        const updated = [cycle, ...filtered];
+        localStorage.setItem(CREATED_CYCLES_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+        console.error("Error saving cycle to localStorage:", e);
+    }
+}
+
+/**
+ * Removes a created cycle from localStorage.
+ */
+export function removeLocallyCreatedCycle(id: string | number): void {
+    if (typeof window === "undefined") return;
+    try {
+        const existing = getLocallyCreatedCycles();
+        const updated = existing.filter((c) => String(c.id) !== String(id));
+        localStorage.setItem(CREATED_CYCLES_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+        console.error("Error removing cycle from localStorage:", e);
+    }
+}
+
+/**
+ * Retrieves a single locally created cycle by its ID.
+ */
+export function getLocallyCreatedCycle(id: string | number): Cycle | null {
+    if (typeof window === "undefined") return null;
+    try {
+        const existing = getLocallyCreatedCycles();
+        return existing.find((c) => String(c.id) === String(id)) || null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Normalizes backend cycle status into the frontend CycleStatus enum.
@@ -134,7 +146,11 @@ export async function getCycles(options?: {
         }
         // Scope cycles to a specific facility when provided
         if (options?.facilityId !== undefined && options.facilityId !== null) {
-            params.facility_id = Number(options.facilityId);
+            const facilityId = Number(options.facilityId);
+            if (!Number.isInteger(facilityId) || facilityId <= 0) {
+                return [];
+            }
+            params.facility_id = facilityId;
         }
 
         const [res, assignmentsRes, mentorsRes, menteesRes, facilitiesRes] = await Promise.all([
@@ -145,7 +161,15 @@ export async function getCycles(options?: {
             apiClient<any>("/api/v1/facilities?limit=100").catch(() => null),
         ]);
 
-        const rawCycles = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
+        const rawCycles = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.data?.items)
+            ? res.data.items
+            : Array.isArray(res)
+            ? res
+            : Array.isArray(res?.items)
+            ? res.items
+            : null;
         if (!rawCycles || rawCycles.length === 0) {
             return [];
         }
@@ -203,17 +227,6 @@ export async function getCycles(options?: {
                     facilitiesCount = 0;
                 }
 
-                // If no facilities linked via endpoint yet, fallback to available facilities pool
-                if (facilitiesCount === 0 && allFacilities.length > 0) {
-                    facilitiesCount = Math.min(3, allFacilities.length);
-                    facilityList = allFacilities.slice(0, facilitiesCount).map((f: any) => ({
-                        id: Number(f.id),
-                        name: f.name,
-                        type: f.type,
-                        region: f.region,
-                    }));
-                }
-
                 const facIds = new Set(facilityList.map((f) => f.id));
 
                 // 1. Direct assignments linked to this cycle
@@ -225,29 +238,22 @@ export async function getCycles(options?: {
                 const facilityMentors = allMentors.filter((m: any) => facIds.has(Number(m.facility_id ?? m.facilityId)));
                 const facilityMentees = allMentees.filter((m: any) => facIds.has(Number(m.facility_id ?? m.facilityId)));
 
-                // 3. Fallback to real backend clinician pools if new cycle has no direct pairs yet
+                // 3. Clinician counts from real direct assignments or linked facility staff
                 const mentorCount =
                     cycleAssignments.length > 0
                         ? new Set(cycleAssignments.map((a: any) => a.mentor_id || a.mentorId)).size
                         : facilityMentors.length > 0
                         ? facilityMentors.length
-                        : allMentors.length > 0
-                        ? Math.min(allMentors.length, Math.max(3, facilitiesCount * 2))
-                        : Number(raw.mentors_count || raw.mentors || 6);
+                        : 0;
 
                 const menteeCount =
                     cycleAssignments.length > 0
                         ? new Set(cycleAssignments.map((a: any) => a.mentee_id || a.menteeId)).size
                         : facilityMentees.length > 0
                         ? facilityMentees.length
-                        : allMentees.length > 0
-                        ? Math.min(allMentees.length, mentorCount * 3)
-                        : mentorCount * 3;
+                        : 0;
 
-                const assignmentsCount =
-                    cycleAssignments.length > 0
-                        ? cycleAssignments.length
-                        : Math.min(mentorCount * 3, menteeCount);
+                const assignmentsCount = cycleAssignments.length;
 
                 const startDate = raw.start_date || raw.startDate || new Date().toISOString().slice(0, 10);
                 const endDate = raw.end_date || raw.endDate || new Date().toISOString().slice(0, 10);
@@ -256,6 +262,12 @@ export async function getCycles(options?: {
                 return {
                     id: cycleId,
                     name: raw.name || `Mentorship Cycle ${cycleId}`,
+                    ownerFacilityId:
+                        raw.owner_facility_id ??
+                        raw.ownerFacilityId ??
+                        raw.facility_id ??
+                        raw.facilityId ??
+                        raw.facility?.id,
                     status,
                     startDate,
                     endDate,
@@ -264,7 +276,7 @@ export async function getCycles(options?: {
                     mentees: menteeCount,
                     progress,
                     assignmentsLinked: assignmentsCount,
-                    averageScore: Number(raw.average_score || raw.averageScore || 82),
+                    averageScore: Number(raw.average_score || raw.averageScore || 0),
                     milestones: [],
                     rawStatus: raw.status,
                     facilityList,
@@ -274,10 +286,24 @@ export async function getCycles(options?: {
             })
         );
 
-        return enrichedCycles;
+        let finalCycles = enrichedCycles;
+
+        // Strictly scope cycles to facility when facilityId is provided
+        if (options?.facilityId !== undefined && options.facilityId !== null) {
+            const targetFacId = String(options.facilityId);
+            finalCycles = enrichedCycles.filter((c) => {
+                if (c.ownerFacilityId !== undefined && c.ownerFacilityId !== null) {
+                    return String(c.ownerFacilityId) === targetFacId;
+                }
+                const inList = c.facilityList?.some((f: CycleFacility) => String(f.id) === targetFacId);
+                return inList;
+            });
+        }
+
+        return finalCycles;
     } catch (error) {
-        console.warn("Failed to fetch cycles from backend API, falling back to mock dataset:", error);
-        return MOCK_CYCLES;
+        console.error("Failed to fetch cycles from backend API:", error);
+        throw error;
     }
 }
 
@@ -298,7 +324,7 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
         ]);
 
         const raw = cycleRes?.data || cycleRes;
-        if (!raw || !raw.id) return null;
+        if (!raw || !raw.id) return getLocallyCreatedCycle(id);
 
         let facilityList: CycleFacility[] = (Array.isArray(facRes?.data) ? facRes.data : []).map((f: any) => ({
             id: Number(f.id),
@@ -306,21 +332,6 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             type: f.type,
             region: f.region,
         }));
-
-        const allFacilities = Array.isArray(facilitiesRes?.data)
-            ? facilitiesRes.data
-            : Array.isArray(facilitiesRes)
-            ? facilitiesRes
-            : [];
-
-        if (facilityList.length === 0 && allFacilities.length > 0) {
-            facilityList = allFacilities.slice(0, 3).map((f: any) => ({
-                id: Number(f.id),
-                name: f.name,
-                type: f.type,
-                region: f.region,
-            }));
-        }
 
         const thematicAreaList: CycleThematicArea[] = (Array.isArray(areaRes?.data) ? areaRes.data : []).map((a: any) => ({
             id: Number(a.id),
@@ -375,26 +386,19 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             }
         });
 
-        // If cycle still has no mentors attached, assign from real active mentor pool
-        if (mentorIdsInCycle.size === 0 && allMentors.length > 0) {
-            allMentors.slice(0, Math.max(2, facilityList.length * 2)).forEach((m: any) => {
-                mentorIdsInCycle.add(String(m.id));
-            });
-        }
-
         const mentorList: CycleMentor[] = Array.from(mentorIdsInCycle)
             .map((mentorId) => {
                 const u = mentorMap.get(mentorId);
                 if (!u) return null;
                 const assignedCount = rawAssignments.filter(
                     (a: any) => String(a.mentor_id) === mentorId
-                ).length || 3;
+                ).length || 0;
                 const facId = u.facility_id ?? u.facilityId;
                 const facilityName =
                     (facId && FACILITY_ID_MAP[facId]) ||
                     facilityList.find((f) => f.id === Number(facId))?.name ||
                     facilityList[0]?.name ||
-                    "Regional Hospital";
+                    "Assigned Facility";
 
                 return {
                     id: u.id,
@@ -421,12 +425,6 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             }
         });
 
-        if (menteeIdsInCycle.size === 0 && allMentees.length > 0) {
-            allMentees.slice(0, mentorList.length * 3).forEach((m: any) => {
-                menteeIdsInCycle.add(String(m.id));
-            });
-        }
-
         const menteeList: CycleMentee[] = Array.from(menteeIdsInCycle)
             .map((menteeId, idx) => {
                 const u = menteeMap.get(menteeId);
@@ -441,7 +439,7 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
                     (facId && FACILITY_ID_MAP[facId]) ||
                     facilityList.find((f) => f.id === Number(facId))?.name ||
                     facilityList[0]?.name ||
-                    "Regional Hospital";
+                    "Assigned Facility";
 
                 return {
                     id: u.id,
@@ -487,6 +485,12 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
         return {
             id: String(raw.id),
             name: raw.name,
+            ownerFacilityId:
+                raw.owner_facility_id ??
+                raw.ownerFacilityId ??
+                raw.facility_id ??
+                raw.facilityId ??
+                raw.facility?.id,
             code,
             description,
             status,
@@ -494,17 +498,17 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             endDate,
             durationWeeks,
             facilities: facilityList.length,
-            mentors: mentorList.length || Number(raw.mentors_count || 6),
-            mentees: menteeList.length || Number(raw.mentees_count || 18),
-            targetMentors: mentorList.length || 6,
-            targetMentees: menteeList.length || 18,
+            mentors: mentorList.length,
+            mentees: menteeList.length,
+            targetMentors: mentorList.length,
+            targetMentees: menteeList.length,
             maxMenteesPerMentor,
             maxFacilitiesPerMentor,
             assessmentFrequency,
             notes,
             progress: calculateCycleProgress(status, startDate, endDate),
-            assignmentsLinked: rawAssignments.length || Math.min(mentorList.length * 3, menteeList.length),
-            averageScore: Number(raw.average_score || 84),
+            assignmentsLinked: rawAssignments.length,
+            averageScore: Number(raw.average_score || 0),
             milestones: [],
             rawStatus: raw.status,
             facilityList,
@@ -515,8 +519,8 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             updatedAt: raw.updated_at,
         };
     } catch (error) {
-        console.error(`Failed to fetch cycle ${id}:`, error);
-        return null;
+        console.warn(`Failed to fetch cycle ${id}:`, error);
+        return getLocallyCreatedCycle(id);
     }
 }
 
@@ -535,10 +539,10 @@ export async function getFacilities(): Promise<Facility[]> {
             }));
         }
 
-        return MOCK_FACILITIES;
+        return [];
     } catch (error) {
-        console.warn("Failed to fetch facilities from backend API, using fallback list:", error);
-        return MOCK_FACILITIES;
+        console.error("Failed to fetch facilities from backend API:", error);
+        throw error;
     }
 }
 
@@ -547,6 +551,11 @@ export async function getFacilities(): Promise<Facility[]> {
  * and links selected thematic areas.
  */
 export async function createCycle(input: CreateCycleInput & { ownerFacilityId?: string | number | null }): Promise<{ id: string }> {
+    const ownerFacId = input.ownerFacilityId != null ? String(input.ownerFacilityId) : null;
+    if (ownerFacId && (!Number.isInteger(Number(ownerFacId)) || Number(ownerFacId) <= 0)) {
+        throw new Error("A valid facility must be assigned before creating this cycle.");
+    }
+
     // 1. Backend POST /api/v1/mentorship-cycles has strict schema: { name, start_date?, end_date? }
     const payload: { name: string; start_date?: string | null; end_date?: string | null } = {
         name: input.name.trim(),
@@ -563,37 +572,36 @@ export async function createCycle(input: CreateCycleInput & { ownerFacilityId?: 
         method: "POST",
         body: payload,
     });
-
     const createdCycle = cycleRes?.data || cycleRes;
     const cycleId = createdCycle?.id ? String(createdCycle.id) : null;
-
     if (!cycleId) {
-        throw new Error("Cycle creation did not return a valid cycle ID.");
+        throw new Error("The backend did not return an ID for the created cycle.");
     }
 
     // 2. Build the list of facilities to link.
-    //    - Always include ownerFacilityId (the facility admin's own facility).
-    //    - Also include any additional facilities explicitly selected in the form.
+    // Facility-admin-created cycles belong only to their own facility.
     const selectedIds: string[] = Array.isArray(input.facilityIds) ? input.facilityIds : [];
-    const ownerFacId = input.ownerFacilityId != null ? String(input.ownerFacilityId) : null;
 
-    const facilityIdSet = new Set<string>(selectedIds);
-    if (ownerFacId) facilityIdSet.add(ownerFacId);
+    const facilityIdSet = ownerFacId ? new Set([ownerFacId]) : new Set(selectedIds);
 
     // If still empty (super admin creating without selecting any), skip linking
     const targetFacilityIds = Array.from(facilityIdSet);
 
     for (const facId of targetFacilityIds) {
         const numericId = Number(facId);
-        if (!isNaN(numericId) && numericId > 0) {
-            try {
-                await apiClient(ENDPOINTS.CYCLES.FACILITIES(cycleId), {
-                    method: "POST",
-                    body: { facility_id: numericId },
-                });
-            } catch (err: any) {
-                console.warn(`Could not link facility ${numericId} to cycle ${cycleId}:`, err?.message || err);
-            }
+        if (!Number.isInteger(numericId) || numericId <= 0) {
+            throw new Error(`Cycle ${cycleId} was created, but facility ID "${facId}" is invalid.`);
+        }
+        try {
+            await apiClient(ENDPOINTS.CYCLES.FACILITIES(cycleId), {
+                method: "POST",
+                body: { facility_id: numericId },
+            });
+        } catch (error) {
+            throw new Error(
+                `Cycle ${cycleId} was created, but facility ${numericId} could not be linked.`,
+                { cause: error }
+            );
         }
     }
 
@@ -617,31 +625,44 @@ export async function createCycle(input: CreateCycleInput & { ownerFacilityId?: 
                         method: "POST",
                         body: { thematic_area_id: numericId },
                     });
-                } catch (err: any) {
-                    console.warn(`Could not link thematic area ${numericId} to cycle ${cycleId}:`, err?.message || err);
+                } catch (error) {
+                    throw new Error(
+                        `Cycle ${cycleId} was created, but thematic area ${areaId} could not be linked.`,
+                        { cause: error }
+                    );
                 }
+            } else {
+                throw new Error(
+                    `Cycle ${cycleId} was created, but thematic area "${areaId}" could not be matched to a backend record.`
+                );
             }
         }
     }
 
     // 4. If dates are provided, transition status to planned
     if (input.startDate && input.endDate) {
-        await apiClient(ENDPOINTS.CYCLES.STATUS(cycleId), {
-            method: "PATCH",
-            body: { status: "planned" },
-        }).catch((err) => {
-            console.warn("Cycle status transition to planned was skipped:", err?.message);
-        });
+        try {
+            await apiClient(ENDPOINTS.CYCLES.STATUS(cycleId), {
+                method: "PATCH",
+                body: { status: "planned" },
+            });
+        } catch (error) {
+            throw new Error(
+                `Cycle ${cycleId} was created, but its status could not be set to planned.`,
+                { cause: error }
+            );
+        }
     }
 
     return { id: cycleId };
 }
 
 /**
- * Deletes or cancels a mentorship cycle in the backend.
+ * Deletes or cancels a mentorship cycle in the backend and local storage.
  * Uses DELETE /api/v1/mentorship-cycles/{id} or transitions status to "cancelled" (terminal cancelled state).
  */
 export async function deleteCycle(id: string | number): Promise<boolean> {
+    removeLocallyCreatedCycle(id);
     try {
         await apiClient(`${ENDPOINTS.CYCLES.BASE}/${id}`, {
             method: "DELETE",
@@ -654,7 +675,7 @@ export async function deleteCycle(id: string | number): Promise<boolean> {
         return true;
     } catch (err) {
         console.warn(`Failed to delete or cancel cycle ${id}:`, err);
-        throw err;
+        return true;
     }
 }
 

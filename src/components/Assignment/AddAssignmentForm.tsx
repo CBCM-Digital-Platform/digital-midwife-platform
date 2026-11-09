@@ -8,8 +8,6 @@ import { apiClient } from "@/lib/api-client";
 import { ENDPOINTS } from "@/services/endpoints";
 import { cn } from "@/lib/utils";
 import { createAssignment } from "@/services/assignment-form.service";
-import { saveCreatedAssignment } from "@/services/assignments.service";
-import type { Assignment } from "@/types/assignment";
 import {
     MAX_MENTEES_PER_ASSIGNMENT,
     type AssignmentFormOptions,
@@ -213,72 +211,17 @@ export default function AddAssignmentForm({ options: initialOptions }: AddAssign
         setSubmitting(true);
         setSubmitError("");
         try {
-            const selectedMentor = options.mentors.find((m) => mentorIds.includes(m.id)) || {
-                id: mentorIds[0] || "m-1",
-                name: "Assigned Mentor",
-                initials: "AM",
-                specialty: "Clinical Specialist",
-                currentLoad: 1,
-                maxLoad: 3,
-                avatarUrl: undefined,
-            };
-
+            const selectedMentor = options.mentors.find((m) => mentorIds.includes(m.id));
             const selectedMentees = options.mentees.filter((me) => menteeIds.includes(me.id));
-
-            const newAssignment: Assignment = {
-                id: `assign-new-${Date.now()}`,
-                mentor: {
-                    id: String(selectedMentor.id),
-                    code: `MTR-${String(selectedMentor.id).padStart(3, "0")}`,
-                    name: selectedMentor.name,
-                    subtitle: selectedMentor.specialty,
-                    initials: selectedMentor.initials,
-                    avatarUrl: selectedMentor.avatarUrl,
-                },
-                mentee: selectedMentees[0]
-                    ? {
-                          id: String(selectedMentees[0].id),
-                          name: selectedMentees[0].name,
-                          subtitle: selectedMentees[0].specialty,
-                          initials: selectedMentees[0].initials,
-                      }
-                    : {
-                          id: "me-1",
-                          name: "Clinical Mentee",
-                          subtitle: "Resident Midwife",
-                          initials: "CM",
-                      },
-                mentees: selectedMentees.map((m) => ({
-                    id: String(m.id),
-                    name: m.name,
-                    subtitle: m.specialty,
-                    initials: m.initials,
-                    facility: m.facility,
-                })),
-                facility: selectedMentees[0]?.facility || "Central Regional Hospital",
-                thematicDomain: thematicAreas.join(", ") || "Maternal & Newborn Care",
-                assignedDate: startDate || new Date().toISOString().slice(0, 10),
-                dateNote: "Active mentorship pairing",
-                status: "active",
-                isNew: true,
-                cycleName: selectedCycle?.name || "2026 Mentorship Cycle",
-                notes: notes.trim(),
-                createdAt: new Date().toISOString(),
-            };
-
-            // Save locally so the assignment immediately persists and appears at the top
-            saveCreatedAssignment(newAssignment);
-
-            if (typeof window !== "undefined") {
-                sessionStorage.setItem("cbcm_just_created_assignment", JSON.stringify(newAssignment));
+            if (!selectedMentor || selectedMentees.length !== menteeIds.length) {
+                throw new Error("The selected mentor or mentee could not be resolved from the backend options.");
             }
 
-            // Attempt backend persistence with cycle auto-linking
-            await createAssignment({
+            const created = await createAssignment({
                 type,
                 cycleId,
                 cycleName: selectedCycle?.name,
-                facilityId: selectedMentees[0]?.facilityId || (selectedMentor as any)?.facilityId,
+                facilityId: selectedMentees[0]?.facilityId || selectedMentor.facilityId,
                 thematicAreas,
                 mentorIds,
                 menteeIds,
@@ -288,7 +231,11 @@ export default function AddAssignmentForm({ options: initialOptions }: AddAssign
                 capacityOverrideReason: overloadedMentors.length > 0 ? overrideReason.trim() : undefined,
             });
 
-            router.push("/assignments?tab=new&created=1");
+            if (created.ids.length === 0) {
+                throw new Error("The backend did not confirm creation of any assignments.");
+            }
+            router.push(`/assignments/${created.ids[0]}`);
+            router.refresh();
         } catch (err: any) {
             console.error("Assignment creation error:", err);
             setSubmitError(err?.message || "The assignment couldn't be created on the backend database.");

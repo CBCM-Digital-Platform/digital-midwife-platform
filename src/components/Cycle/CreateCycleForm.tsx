@@ -15,17 +15,14 @@ import {
     Target,
     X,
     Loader2,
-    CheckCircle2,
-    ArrowRight,
-    Eye,
 } from "lucide-react";
 import type { Facility } from "@/types/newCycle";
+import type { Cycle } from "@/types/cycle";
 import type { ThematicArea } from "@/types/thematic-area";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
-import { createCycle } from "@/services/cycle-data.service";
+import { createCycle, saveCreatedCycleLocally } from "@/services/cycle-data.service";
 import {
     ASSESSMENT_FREQUENCIES,
-    THEMATIC_AREAS,
     cycleSchema,
     type CycleFormValues,
 } from "./cycleSchema";
@@ -76,34 +73,19 @@ function Field({
     );
 }
 
-interface CreatedCycleData {
-    id: string;
-    name: string;
-    code: string;
-    startDate: string;
-    endDate: string;
-    durationWeeks?: number | null;
-    facilitiesCount: number;
-    facilityNames: string[];
-    thematicAreasCount: number;
-    thematicAreas: string[];
-    assessmentFrequency: string;
-    maxMenteesPerMentor: number;
-    maxFacilitiesPerMentor: number;
-    description?: string;
-    notes?: string;
-}
-
 export default function CreateCycleForm({
     facilities,
     thematicAreasList,
+    defaultFacilityId,
+    ownerFacilityId,
 }: {
     facilities: Facility[];
     thematicAreasList?: (ThematicArea | string)[];
+    defaultFacilityId?: string;
+    ownerFacilityId?: string | number;
 }) {
     const router = useRouter();
     const [serverError, setServerError] = useState<string | null>(null);
-    const [createdCycle, setCreatedCycle] = useState<CreatedCycleData | null>(null);
     const [search, setSearch] = useState("");
     const [open, setOpen] = useState(false);
     const [dynamicAreas, setDynamicAreas] = useState<string[]>(() => {
@@ -128,7 +110,6 @@ export default function CreateCycleForm({
         handleSubmit,
         watch,
         setValue,
-        reset,
         formState: { errors, isSubmitting },
     } = useForm<CycleFormValues>({
         resolver: zodResolver(cycleSchema),
@@ -138,7 +119,7 @@ export default function CreateCycleForm({
             description: "",
             startDate: "",
             endDate: "",
-            facilityIds: [],
+            facilityIds: defaultFacilityId ? [defaultFacilityId] : [],
             thematicAreas: [],
             maxMenteesPerMentor: 3,
             maxFacilitiesPerMentor: 2,
@@ -186,41 +167,48 @@ export default function CreateCycleForm({
     const onSubmit = async (values: CycleFormValues) => {
         setServerError(null);
         try {
-            const res = await createCycle(values);
-            if (res?.id) {
-                // Save complete form metadata to localStorage so detail page can display all inputs
-                try {
-                    const meta = {
-                        ...values,
-                        id: res.id,
-                        durationWeeks: weeks,
-                        facilityNames: selectedFacilities.map((f) => f.name),
-                    };
-                    localStorage.setItem(`cycle_meta_${res.id}`, JSON.stringify(meta));
-                } catch (e) {
-                    console.warn("Could not write cycle_meta to localStorage", e);
-                }
+            const res = await createCycle({
+                ...values,
+                ownerFacilityId,
+            });
+            const cycleId = res.id;
 
-                setCreatedCycle({
-                    id: res.id,
-                    name: values.name,
-                    code: values.code,
-                    startDate: values.startDate,
-                    endDate: values.endDate,
+            // Save new cycle to locally created cycles
+            const newCycleItem: Cycle = {
+                id: cycleId,
+                name: values.name,
+                ownerFacilityId,
+                code: values.code || `CYC-${new Date().getFullYear()}-${cycleId.slice(-3)}`,
+                description: values.description,
+                status: values.startDate && values.endDate ? "PLANNING" : "DRAFT",
+                startDate: values.startDate || new Date().toISOString().slice(0, 10),
+                endDate: values.endDate || new Date().toISOString().slice(0, 10),
+                facilities: selectedFacilities.length || (defaultFacilityId ? 1 : 0),
+                mentors: 0,
+                mentees: 0,
+                progress: 0,
+                assignmentsLinked: 0,
+                averageScore: 0,
+                milestones: [],
+                facilityList: selectedFacilities.map((f) => ({ id: Number(f.id), name: f.name })),
+                createdAt: new Date().toISOString(),
+            };
+            saveCreatedCycleLocally(newCycleItem);
+
+            // Save complete form metadata to localStorage so detail page can display all inputs
+            try {
+                const meta = {
+                    ...values,
+                    id: cycleId,
                     durationWeeks: weeks,
-                    facilitiesCount: values.facilityIds.length,
                     facilityNames: selectedFacilities.map((f) => f.name),
-                    thematicAreasCount: values.thematicAreas.length,
-                    thematicAreas: values.thematicAreas,
-                    assessmentFrequency: values.assessmentFrequency,
-                    maxMenteesPerMentor: values.maxMenteesPerMentor,
-                    maxFacilitiesPerMentor: values.maxFacilitiesPerMentor,
-                    description: values.description,
-                    notes: values.notes,
-                });
-            } else {
-                router.push("/cycles");
+                };
+                localStorage.setItem(`cycle_meta_${cycleId}`, JSON.stringify(meta));
+            } catch (e) {
+                console.warn("Could not write cycle_meta to localStorage", e);
             }
+
+            router.push(`/cycles/${cycleId}`);
         } catch (err) {
             setServerError(
                 err instanceof Error ? err.message : "Couldn't create the cycle. Please try again."
@@ -486,78 +474,6 @@ export default function CreateCycleForm({
                 </div>
             </div>
 
-            {/* SUCCESS MODAL WITH VIEW DETAIL BUTTON */}
-            {createdCycle && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-gray-100 space-y-5 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="flex items-start gap-4">
-                            <div className="rounded-full bg-emerald-100 p-3 text-[#0B5D3B] shrink-0">
-                                <CheckCircle2 className="h-8 w-8" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-900">
-                                    Cycle Created Successfully!
-                                </h3>
-                                <p className="mt-1 text-sm text-gray-500">
-                                    Mentorship cycle <span className="font-semibold text-gray-800">"{createdCycle.name}"</span> has been created and initialized in the backend.
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* SUMMARY CARD OF CREATED CYCLE */}
-                        <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-2.5 text-xs text-gray-700">
-                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
-                                <span className="font-medium text-gray-500 uppercase tracking-wide">Cycle Code</span>
-                                <span className="font-bold text-gray-900">{createdCycle.code}</span>
-                            </div>
-                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
-                                <span className="font-medium text-gray-500 uppercase tracking-wide">Timeline</span>
-                                <span className="font-semibold text-gray-900">
-                                    {createdCycle.startDate} to {createdCycle.endDate}
-                                    {createdCycle.durationWeeks ? ` (${createdCycle.durationWeeks} Weeks)` : ""}
-                                </span>
-                            </div>
-                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
-                                <span className="font-medium text-gray-500 uppercase tracking-wide">Facilities Linked</span>
-                                <span className="font-semibold text-gray-900">{createdCycle.facilitiesCount} Selected</span>
-                            </div>
-                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
-                                <span className="font-medium text-gray-500 uppercase tracking-wide">Thematic Areas</span>
-                                <span className="font-semibold text-gray-900">{createdCycle.thematicAreasCount} Areas</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="font-medium text-gray-500 uppercase tracking-wide">Mentorship Rules</span>
-                                <span className="font-semibold text-gray-900">
-                                    {createdCycle.maxMenteesPerMentor} Mentees/Mentor &bull; {createdCycle.assessmentFrequency}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* ACTION BUTTONS */}
-                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                            <Link
-                                href={`/cycles/${createdCycle.id}`}
-                                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#0B5D3B] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#094d31] transition shadow-sm"
-                            >
-                                <Eye className="h-4 w-4" />
-                                <span>View Cycle Details</span>
-                                <ArrowRight className="h-4 w-4 ml-1" />
-                            </Link>
-
-                            <button
-                                type="button"
-                                onClick={() => router.push("/cycles")}
-                                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
-                            >
-                                Go to Cycles List
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </form>
     );
 }

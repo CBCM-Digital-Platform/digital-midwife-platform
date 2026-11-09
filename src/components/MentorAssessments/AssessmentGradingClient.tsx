@@ -23,6 +23,8 @@ import {
   ListChecks,
   Sliders,
   MessageSquare,
+  Plus,
+  RefreshCw,
 } from "lucide-react";
 import type { MentorAssessment } from "@/types/mentor-assessment";
 import {
@@ -32,6 +34,11 @@ import {
   submitCriteriaScores,
   reviewAndFinalize,
 } from "@/services/assessment.service";
+import {
+  setAssessmentPracticalResult,
+  syncAssessmentCriteria,
+  syncAssessmentTheory,
+} from "@/services/mentor-assessments.service";
 import {
   Card,
   CardHeader,
@@ -51,18 +58,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
 interface AssessmentGradingClientProps {
   assessmentId: string;
   initialAssessment?: MentorAssessment | null;
+  initialLoadError?: string | null;
 }
 
 export function AssessmentGradingClient({
   assessmentId,
   initialAssessment,
+  initialLoadError = null,
 }: AssessmentGradingClientProps) {
   const router = useRouter();
 
@@ -70,8 +77,11 @@ export function AssessmentGradingClient({
   const [assessment, setAssessment] = useState<MentorAssessment | null>(
     initialAssessment || null
   );
-  const [isLoading, setIsLoading] = useState(!initialAssessment);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(
+    (!initialAssessment || String(initialAssessment.id) !== String(assessmentId)) &&
+      !initialLoadError
+  );
+  const [error, setError] = useState<string | null>(initialLoadError);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
     type: "success" | "error";
@@ -79,32 +89,34 @@ export function AssessmentGradingClient({
   } | null>(null);
 
   // Grading Form State
-  const [theoryScoreInput, setTheoryScoreInput] = useState<number>(85);
+  const [theoryScoreInput, setTheoryScoreInput] = useState<number>(
+    initialAssessment?.theoryScore == null ? 0 : Number(initialAssessment.theoryScore)
+  );
+  const [practicalScore, setPracticalScore] = useState<number>(
+    initialAssessment?.practicalScore == null ? 0 : Number(initialAssessment.practicalScore)
+  );
   const [checklist, setChecklist] = useState<
     Array<{ item: string; checked: boolean }>
-  >([
-    { item: "Patient Consent Obtained & Procedure Explained", checked: true },
-    { item: "Baseline Vitals & Fetal Heart Sound Verified", checked: true },
-    { item: "Emergency Oxytocin Tray & Equipment Checked", checked: true },
-    { item: "Active Management of Third Stage Documented", checked: false },
-  ]);
+  >(initialAssessment?.checklistItems?.map(({ item, checked }) => ({ item, checked })) ?? []);
+  const [newChecklistItem, setNewChecklistItem] = useState("");
 
   const [criteria, setCriteria] = useState<
     Array<{ criterion: string; rating: number }>
-  >([
-    { criterion: "Aseptic Technique & Hand Hygiene", rating: 4 },
-    { criterion: "Clinical Patient Communication", rating: 4 },
-    { criterion: "Procedural Adherence & Safety", rating: 4 },
-  ]);
+  >(
+    initialAssessment?.criteriaScores?.map(({ criterion, score }) => ({
+      criterion,
+      rating: Math.max(0, Math.min(5, Math.round(score / 20))),
+    })) ?? []
+  );
+  const [newCriterion, setNewCriterion] = useState("");
 
-  const [feedback, setFeedback] = useState<string>("");
+  const [feedback, setFeedback] = useState<string>(initialAssessment?.feedback ?? "");
 
   // Fetch assessment details on mount if not provided or if id changes
   useEffect(() => {
     let isMounted = true;
+    if (initialLoadError) return;
     if (!initialAssessment || String(initialAssessment.id) !== String(assessmentId)) {
-      setIsLoading(true);
-      setError(null);
       getAssessmentDetails(assessmentId)
         .then((data) => {
           if (!isMounted) return;
@@ -112,6 +124,9 @@ export function AssessmentGradingClient({
             setAssessment(data);
             if (data.theoryScore !== undefined && data.theoryScore !== null) {
               setTheoryScoreInput(Number(data.theoryScore));
+            }
+            if (data.practicalScore !== undefined && data.practicalScore !== null) {
+              setPracticalScore(Number(data.practicalScore));
             }
             if (data.checklistItems && data.checklistItems.length > 0) {
               setChecklist(
@@ -125,7 +140,7 @@ export function AssessmentGradingClient({
               setCriteria(
                 data.criteriaScores.map((c) => ({
                   criterion: c.criterion,
-                  rating: Math.max(1, Math.min(5, Math.round(c.score / 20))),
+                  rating: Math.max(0, Math.min(5, Math.round(c.score / 20))),
                 }))
               );
             }
@@ -143,35 +158,12 @@ export function AssessmentGradingClient({
         .finally(() => {
           if (isMounted) setIsLoading(false);
         });
-    } else {
-      if (initialAssessment.theoryScore !== undefined && initialAssessment.theoryScore !== null) {
-        setTheoryScoreInput(Number(initialAssessment.theoryScore));
-      }
-      if (initialAssessment.checklistItems && initialAssessment.checklistItems.length > 0) {
-        setChecklist(
-          initialAssessment.checklistItems.map((c) => ({
-            item: c.item,
-            checked: Boolean(c.checked),
-          }))
-        );
-      }
-      if (initialAssessment.criteriaScores && initialAssessment.criteriaScores.length > 0) {
-        setCriteria(
-          initialAssessment.criteriaScores.map((c) => ({
-            criterion: c.criterion,
-            rating: Math.max(1, Math.min(5, Math.round(c.score / 20))),
-          }))
-        );
-      }
-      if (initialAssessment.feedback) {
-        setFeedback(initialAssessment.feedback);
-      }
     }
 
     return () => {
       isMounted = false;
     };
-  }, [assessmentId, initialAssessment]);
+  }, [assessmentId, initialAssessment, initialLoadError]);
 
   // Aggregate score calculation
   const criteriaAveragePct = Math.round(
@@ -195,7 +187,63 @@ export function AssessmentGradingClient({
     });
   };
 
+  const handleAddChecklistItem = () => {
+    const item = newChecklistItem.trim();
+    if (!item) return;
+    setChecklist((current) => [...current, { item, checked: false }]);
+    setNewChecklistItem("");
+  };
+
+  const handleAddCriterion = () => {
+    const criterion = newCriterion.trim();
+    if (!criterion) return;
+    setCriteria((current) => [...current, { criterion, rating: 0 }]);
+    setNewCriterion("");
+  };
+
+  const handleSyncScores = async (
+    sync: () => Promise<unknown>,
+    label: string
+  ) => {
+    setIsSubmitting(true);
+    setStatusMessage(null);
+    try {
+      await sync();
+      setStatusMessage({ type: "success", text: `${label} synchronized from the backend.` });
+      router.refresh();
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : `Unable to sync ${label.toLowerCase()}.`,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmitAndFinalize = async () => {
+    if (criteria.length === 0 || checklist.length === 0) {
+      setStatusMessage({
+        type: "error",
+        text: "Add at least one clinical criterion and one checklist item before submitting the evaluation.",
+      });
+      return;
+    }
+    if (criteria.some((criterion) => criterion.rating < 1)) {
+      setStatusMessage({
+        type: "error",
+        text: "Score every clinical criterion before submitting the evaluation.",
+      });
+      return;
+    }
+    if (!Number.isInteger(practicalScore) || practicalScore < 1 || practicalScore > 5) {
+      setStatusMessage({
+        type: "error",
+        text: "Enter the practical assessment result on the 1-5 scale before submitting.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatusMessage(null);
 
@@ -218,10 +266,11 @@ export function AssessmentGradingClient({
         })),
       });
 
-      // 4. Review and Finalize (calls POST review followed by POST finalize)
+      await setAssessmentPracticalResult(assessmentId, practicalScore);
+
+      // 5. Review and Finalize (calls POST review followed by POST finalize)
       await reviewAndFinalize(assessmentId, {
-        feedback:
-          feedback || "Clinical competency assessment evaluated and passed by mentor preceptor.",
+        feedback,
         aggregate_score: aggregateScore,
       });
 
@@ -533,6 +582,42 @@ export function AssessmentGradingClient({
                         />
                         <span className="text-xs font-semibold text-gray-600">% score</span>
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isSubmitting}
+                        onClick={() =>
+                          handleSyncScores(() => syncAssessmentTheory(assessmentId), "Theory score")
+                        }
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Sync from quiz
+                      </Button>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Practical observation result */}
+                  <AccordionItem value="step-practical">
+                    <AccordionTrigger>
+                      <span className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-[#194611]" />
+                        <span>Practical Result</span>
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-3">
+                      <p className="text-xs text-gray-500">
+                        Record the observed practical result on the backend API 1-5 scale.
+                      </p>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        step={1}
+                        value={practicalScore || ""}
+                        onChange={(event) => setPracticalScore(Number(event.target.value))}
+                        className="w-28 font-bold text-sm"
+                        aria-label="Practical assessment result from 1 to 5"
+                      />
                     </AccordionContent>
                   </AccordionItem>
 
@@ -549,7 +634,7 @@ export function AssessmentGradingClient({
                         Check off clinical steps observed during patient care:
                       </p>
                       {checklist.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic py-1">No procedural checklist items defined for this assessment.</p>
+                        <p className="text-xs text-gray-400 italic py-1">Add the clinical steps to observe for this assessment.</p>
                       ) : checklist.map((item, idx) => (
                         <div
                           key={idx}
@@ -567,6 +652,18 @@ export function AssessmentGradingClient({
                           </span>
                         </div>
                       ))}
+                      <div className="flex gap-2 pt-2">
+                        <Input
+                          value={newChecklistItem}
+                          onChange={(event) => setNewChecklistItem(event.target.value)}
+                          placeholder="Add a clinical checklist step"
+                          aria-label="New checklist item"
+                        />
+                        <Button type="button" variant="outline" onClick={handleAddChecklistItem}>
+                          <Plus className="mr-1 h-4 w-4" />
+                          Add
+                        </Button>
+                      </div>
                     </AccordionContent>
                   </AccordionItem>
 
@@ -583,7 +680,7 @@ export function AssessmentGradingClient({
                         Score competencies on a 1 (Novice) to 5 (Mastered) scale.
                       </p>
                       {criteria.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic py-1">No criteria rubrics defined for this assessment.</p>
+                        <p className="text-xs text-gray-400 italic py-1">Add the clinical criteria to evaluate for this assessment.</p>
                       ) : criteria.map((c, idx) => (
                         <div
                           key={idx}
@@ -592,7 +689,7 @@ export function AssessmentGradingClient({
                           <div className="flex items-center justify-between text-xs font-semibold text-gray-800">
                             <span>{c.criterion}</span>
                             <span className="text-[#194611] font-bold">
-                              {c.rating} / 5 ({c.rating * 20}%)
+                              {c.rating ? `${c.rating} / 5 (${c.rating * 20}%)` : "Not scored"}
                             </span>
                           </div>
 
@@ -613,6 +710,29 @@ export function AssessmentGradingClient({
                                 {val}
                               </button>
                             ))}
+                            <div className="flex gap-2 pt-2">
+                              <Input
+                                value={newCriterion}
+                                onChange={(event) => setNewCriterion(event.target.value)}
+                                placeholder="Add a clinical criterion"
+                                aria-label="New clinical criterion"
+                              />
+                              <Button type="button" variant="outline" onClick={handleAddCriterion}>
+                                <Plus className="mr-1 h-4 w-4" />
+                                Add
+                              </Button>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={isSubmitting}
+                              onClick={() =>
+                                handleSyncScores(() => syncAssessmentCriteria(assessmentId), "Criteria scores")
+                              }
+                            >
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Sync from quiz
+                            </Button>
                           </div>
 
                           <div className="flex justify-between text-[10px] text-gray-400">

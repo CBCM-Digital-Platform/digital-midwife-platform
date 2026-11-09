@@ -19,6 +19,10 @@ export const ENDPOINTS = {
     BASE: "/api/v1/facilities",
     DETAIL: (id: string | number) => `/api/v1/facilities/${id}`,
   },
+  THEMATIC_AREAS: {
+    BASE: "/api/v1/thematic-areas",
+    DETAIL: (id: string | number) => `/api/v1/thematic-areas/${id}`,
+  },
   ASSESSMENTS: {
     BASE: "/api/v1/assessments",
     DETAIL: (id: string | number) => `/api/v1/assessments/${id}`,
@@ -28,6 +32,11 @@ export const ENDPOINTS = {
     THEORY_SCORE: (id: string | number) => `/api/v1/assessments/${id}/theory-score`,
     CHECKLIST_ITEMS: (id: string | number) => `/api/v1/assessments/${id}/checklist-items`,
     EVIDENCE: (id: string | number) => `/api/v1/assessments/${id}/evidence`,
+    PRACTICAL_RESULT: (id: string | number) => `/api/v1/assessments/${id}/practical-result`,
+    SYNC_CRITERIA: (id: string | number) => `/api/v1/assessments/${id}/sync-criteria`,
+    SYNC_THEORY: (id: string | number) => `/api/v1/assessments/${id}/sync-theory`,
+    PASSING_RULES: "/api/v1/assessment-passing-rules",
+    PASSING_RULE: (id: string | number) => `/api/v1/assessment-passing-rules/${id}`,
   },
   MESSAGES: {
     CONVERSATIONS: "/api/v1/messages/conversations",

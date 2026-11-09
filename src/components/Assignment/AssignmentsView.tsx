@@ -8,8 +8,6 @@ import {
     Sparkles,
     Users,
     History,
-    CheckCircle2,
-    X,
     LayoutList,
     TableProperties,
 } from "lucide-react";
@@ -19,11 +17,7 @@ import type {
     AssignmentStats,
     AssignmentTab,
 } from "@/types/assignment";
-import {
-    getStoredCreatedAssignments,
-    removeCreatedAssignment,
-    groupAssignmentsByMentor,
-} from "@/services/assignments.service";
+import { groupAssignmentsByMentor } from "@/services/assignments.service";
 import AssignmentFilters, { DEFAULT_FILTERS } from "./AssignmentFilters";
 import AssignmentStatsCards from "./AssignmentStatsCards";
 import AssignmentTable from "./AssignmentTable";
@@ -42,27 +36,9 @@ export default function AssignmentsView({
     const [filters, setFilters] = useState<AssignmentFiltersState>(DEFAULT_FILTERS);
     const [compact, setCompact] = useState(false);
     const [viewMode, setViewMode] = useState<"horizontal" | "table">("horizontal");
-    const [createdAssignments, setCreatedAssignments] = useState<Assignment[]>([]);
-    const [justCreated, setJustCreated] = useState<Assignment | null>(null);
 
-    // Sync client-side created assignments on mount
+    // Keep tab selection in sync with navigation query parameters.
     useEffect(() => {
-        const stored = getStoredCreatedAssignments();
-        setCreatedAssignments(stored);
-
-        // Flash banner check from submission
-        const flash = sessionStorage.getItem("cbcm_just_created_assignment");
-        if (flash) {
-            try {
-                const parsed = JSON.parse(flash);
-                setJustCreated(parsed);
-                sessionStorage.removeItem("cbcm_just_created_assignment");
-            } catch {
-                // ignore error
-            }
-        }
-
-        // Query param tab synchronization
         const params = new URLSearchParams(window.location.search);
         if (params.get("tab") === "new") {
             setTab("new");
@@ -73,22 +49,7 @@ export default function AssignmentsView({
         }
     }, []);
 
-    // Combine newly created assignments on top of server assignments
-    const allAssignments = useMemo(() => {
-        const createdIds = new Set(createdAssignments.map((a) => a.id));
-        const filteredServer = serverAssignments.filter((a) => !createdIds.has(a.id));
-        // Newly created assignments are placed strictly at the top of the list!
-        return [...createdAssignments, ...filteredServer];
-    }, [createdAssignments, serverAssignments]);
-
-    // Handle removing/dismissing a locally created assignment
-    function handleRemoveCreated(id: string) {
-        removeCreatedAssignment(id);
-        setCreatedAssignments((prev) => prev.filter((a) => a.id !== id));
-        if (justCreated?.id === id) {
-            setJustCreated(null);
-        }
-    }
+    const allAssignments = serverAssignments;
 
     // Filter options for dropdowns
     const options = useMemo(() => {
@@ -192,38 +153,6 @@ export default function AssignmentsView({
                     </Link>
                 </div>
             </header>
-
-            {/* Just-Created Success Banner */}
-            {justCreated && (
-                <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/90 p-4 text-emerald-900 shadow-xs">
-                    <div className="flex items-center gap-3">
-                        <div className="flex size-9 items-center justify-center rounded-full bg-emerald-600 text-white shrink-0">
-                            <CheckCircle2 className="size-5" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-semibold">
-                                Mentorship Assignment Created Successfully!
-                            </p>
-                            <p className="text-xs text-emerald-800 mt-0.5">
-                                Mentor <span className="font-semibold">{justCreated.mentor.name}</span> has been
-                                paired with{" "}
-                                <span className="font-semibold">
-                                    {justCreated.mentees?.length || 1} mentee(s)
-                                </span>{" "}
-                                and placed at the top of the All Assignments list.
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setJustCreated(null)}
-                        className="rounded-lg p-1 text-emerald-700 hover:bg-emerald-100 transition"
-                        title="Dismiss banner"
-                    >
-                        <X className="size-4" />
-                    </button>
-                </div>
-            )}
 
             {/* Stats Cards */}
             <AssignmentStatsCards stats={stats} />
@@ -333,7 +262,6 @@ export default function AssignmentsView({
                             {viewMode === "horizontal" ? (
                                 <HorizontalMentorMenteeView
                                     data={filteredAll}
-                                    onRemove={handleRemoveCreated}
                                     emptyTitle="No assignments found"
                                     emptyDescription="Try clearing search filters or add a new assignment."
                                 />
@@ -348,7 +276,6 @@ export default function AssignmentsView({
                             {viewMode === "horizontal" ? (
                                 <HorizontalMentorMenteeView
                                     data={filteredNew}
-                                    onRemove={handleRemoveCreated}
                                     emptyTitle="No New Assignments Created Yet"
                                     emptyDescription="When you create an assignment, the mentor and their list of assigned mentees will appear here horizontally and at the top of the All Assignments list."
                                     actionHref="/assignments/new"

@@ -22,12 +22,12 @@ export interface FacilityAdminDashboardViewProps {
     region?: string;
     type?: string;
   };
-  activeCycle: {
+  activeCycle?: {
     name: string;
     status: string;
     start_date?: string;
     end_date?: string;
-  };
+  } | null;
   facilityMentors: any[];
   facilityMentees: any[];
   totalClinicians: number;
@@ -118,11 +118,25 @@ export function FacilityAdminDashboardView({
 
         <StatCard
           title="Current Cycle"
-          value={activeCycle.name}
-          statusBadge={{
-            label: `Status: ${activeCycle.status}`,
-            className: "bg-amber-100 text-amber-800",
-          }}
+          value={activeCycle ? activeCycle.name : "No Active Cycle"}
+          statusBadge={
+            activeCycle
+              ? {
+                  label: `Status: ${activeCycle.status}`,
+                  className: "bg-amber-100 text-amber-800",
+                }
+              : {
+                  label: "None Created",
+                  className: "bg-gray-100 text-gray-600",
+                }
+          }
+          subtext={
+            activeCycle ? undefined : (
+              <span className="text-xs text-gray-500 font-medium">
+                Create a cycle to activate cohort
+              </span>
+            )
+          }
           icon={Calendar}
           iconColor="text-amber-700"
           iconBgColor="bg-amber-50"
@@ -225,22 +239,39 @@ export function FacilityAdminDashboardView({
               <h3 className="text-base font-bold text-gray-900">Active Cohort</h3>
             </div>
 
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="text-xs text-gray-500 block">Cycle Name</span>
-                <span className="font-semibold text-gray-900">{activeCycle.name}</span>
+            {activeCycle ? (
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-xs text-gray-500 block">Cycle Name</span>
+                  <span className="font-semibold text-gray-900">{activeCycle.name}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">Duration Range</span>
+                  <span className="font-medium text-gray-700">
+                    {activeCycle.start_date && activeCycle.end_date
+                      ? `${activeCycle.start_date} → ${activeCycle.end_date}`
+                      : "Schedule not configured"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">Target Facility</span>
+                  <span className="font-medium text-gray-700">{primaryFacility.name}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-gray-500 block">Duration Range</span>
-                <span className="font-medium text-gray-700">
-                  {activeCycle.start_date || "2026-11-01"} → {activeCycle.end_date || "2027-04-30"}
-                </span>
+            ) : (
+              <div className="text-center py-4 space-y-2">
+                <p className="text-xs text-gray-500">
+                  No mentorship cycle has been created for your facility yet.
+                </p>
+                <Link
+                  href="/cycles/new"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#194611] hover:underline pt-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Create First Cycle
+                </Link>
               </div>
-              <div>
-                <span className="text-xs text-gray-500 block">Target Facility</span>
-                <span className="font-medium text-gray-700">{primaryFacility.name}</span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* QUICK NAVIGATION SHORTCUTS */}

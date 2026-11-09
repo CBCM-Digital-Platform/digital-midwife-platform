@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -8,13 +8,19 @@ import type { MentorAssessment } from "@/types/mentor-assessment";
 import { AssessmentsTable, type SortKey, type SortState } from "./AssessmentsTable";
 import { AssessmentsPagination } from "./AssessmentsPagination";
 import { AssessmentDetailDialog } from "./AssessmentDetailDialog";
-import { getAssessments, getStoredAssessments } from "@/services/mentor-assessments.service";
 
 type Tab = "ALL" | "PENDING" | "COMPLETED";
+const PENDING_STATUSES = new Set(["PENDING", "DRAFT", "IN_REVIEW", "NEEDS_REVIEW"]);
 
 const PAGE_SIZE = 8; // 24 entries = 3 pages, like the design
 
-export function AssessmentsView({ assessments: initialAssessments }: { assessments: MentorAssessment[] }) {
+export function AssessmentsView({
+    assessments: initialAssessments,
+    loadError = null,
+}: {
+    assessments: MentorAssessment[];
+    loadError?: string | null;
+}) {
     const [assessments, setAssessments] = useState<MentorAssessment[]>(initialAssessments);
     const [tab, setTab] = useState<Tab>("ALL");
     const [search, setSearch] = useState("");
@@ -25,37 +31,8 @@ export function AssessmentsView({ assessments: initialAssessments }: { assessmen
     const [selectedAssessment, setSelectedAssessment] = useState<MentorAssessment | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    // Sync client-side stored assessments & live backend query
-    useEffect(() => {
-        let isMounted = true;
-        getAssessments().then((fresh) => {
-            if (isMounted && fresh && fresh.length > 0) {
-                setAssessments(fresh);
-            }
-        }).catch(() => null);
-
-        const syncStored = () => {
-            const stored = getStoredAssessments();
-            if (!stored || stored.length === 0) return;
-
-            setAssessments((prev) => {
-                const storedIds = new Set(stored.map((s) => s.id));
-                const remaining = prev.filter((p) => !storedIds.has(p.id));
-                return [...stored, ...remaining];
-            });
-        };
-
-        syncStored();
-
-        window.addEventListener("cbcm-assessments-updated", syncStored);
-        return () => {
-            isMounted = false;
-            window.removeEventListener("cbcm-assessments-updated", syncStored);
-        };
-    }, []);
-
     const pendingCount = useMemo(
-        () => assessments.filter((a) => a.status === "PENDING").length,
+        () => assessments.filter((assessment) => PENDING_STATUSES.has(assessment.status)).length,
         [assessments]
     );
 
@@ -64,7 +41,9 @@ export function AssessmentsView({ assessments: initialAssessments }: { assessmen
         const rows = assessments.filter(
             (a) =>
                 (tab === "ALL" ||
-                    (tab === "PENDING" ? a.status === "PENDING" : a.status !== "PENDING")) &&
+                    (tab === "PENDING"
+                        ? PENDING_STATUSES.has(a.status)
+                        : !PENDING_STATUSES.has(a.status))) &&
                 (!q || a.menteeName.toLowerCase().includes(q) || a.type.toLowerCase().includes(q))
         );
         if (!sort) return rows;
@@ -112,6 +91,12 @@ export function AssessmentsView({ assessments: initialAssessments }: { assessmen
                         Review and manage mentee evaluations and clinical competencies.
                     </p>
                 </div>
+
+                {loadError && (
+                    <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        {loadError}
+                    </div>
+                )}
 
                 <div className="flex shrink-0 items-center gap-3">
                     <label className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 shadow-2xs">

@@ -8,7 +8,6 @@ import HorizontalMentorMenteeCard from "./HorizontalMentorMenteeCard";
 
 interface HorizontalMentorMenteeViewProps {
     data: Assignment[];
-    onRemove?: (id: string) => void;
     emptyTitle?: string;
     emptyDescription?: string;
     actionHref?: string;
@@ -17,7 +16,6 @@ interface HorizontalMentorMenteeViewProps {
 
 export default function HorizontalMentorMenteeView({
     data,
-    onRemove,
     emptyTitle = "No assignments found",
     emptyDescription = "There are no mentorship pairings matching the current filters.",
     actionHref = "/assignments/new",
@@ -60,7 +58,6 @@ export default function HorizontalMentorMenteeView({
                     <HorizontalMentorMenteeCard
                         key={assignment.id}
                         assignment={assignment}
-                        onRemove={onRemove}
                     />
                 ))}
             </div>

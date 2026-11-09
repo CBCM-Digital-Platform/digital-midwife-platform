@@ -11,5 +11,8 @@ export interface MyMentee {
     lastSession: string; // ISO date
     overdue: boolean;
     avatarUrl: string | null;
+    assignmentIds?: Array<string | number>;
+    facilityId?: string | number;
+    cycleId?: string | number;
     assignedAssessment?: import("./mentor-assessment").MentorAssessment | null;
 }
