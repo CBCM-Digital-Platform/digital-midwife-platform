@@ -60,6 +60,7 @@ export function MenteesTable({ mentees, onSelectAssessment, highlightMenteeId }:
                                                         </span>
                                                     )}
                                                 </div>
+                                                <p className="text-xs text-gray-500">ID: {m.code}</p>
                                             </div>
                                         </div>
                                     </td>

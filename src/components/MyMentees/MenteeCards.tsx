@@ -43,6 +43,7 @@ export function MenteeCards({ mentees, onSelectAssessment, highlightMenteeId }: 
                                     <MenteeAvatar name={m.name} avatarUrl={m.avatarUrl} className="h-12 w-12" />
                                     <div className="min-w-0">
                                         <p className="truncate font-semibold text-gray-900">{m.name}</p>
+                                        <p className="text-xs text-gray-500">ID: {m.code}</p>
                                     </div>
                                 </div>
                                 {isHighlighted && (
