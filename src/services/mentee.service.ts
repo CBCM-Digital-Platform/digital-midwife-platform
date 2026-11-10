@@ -241,46 +241,95 @@ export async function joinSession(
  */
 export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]> {
   try {
-    // 1. Fetch assigned resources scoped to mentee from hierarchical-resources endpoint
-    const hierRes = await apiClient.get<any>(
-      `${ENDPOINTS.HIERARCHICAL_RESOURCES.BASE}?limit=100`
-    ).catch(() => null);
+    const baseUrl = (
+      process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1"
+    ).replace(/\/+$/, "");
 
-    const hierList = Array.isArray(hierRes?.data)
-      ? hierRes.data
-      : Array.isArray(hierRes?.data?.resources)
-      ? hierRes.data.resources
-      : Array.isArray(hierRes)
-      ? hierRes
-      : [];
+    const collected: MenteeResourceItem[] = [];
+    const seenIds = new Set<string>();
 
-    if (hierList.length > 0) {
-      const baseUrl = (
-        process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1"
-      ).replace(/\/+$/, "");
+    // 1. Check local preceptor assignments from localStorage
+    if (typeof window !== "undefined") {
+      try {
+        const rawAssignments = localStorage.getItem("cbcm_mentee_resource_assignments");
+        if (rawAssignments) {
+          const list = JSON.parse(rawAssignments);
+          if (Array.isArray(list)) {
+            for (const item of list) {
+              if (item.resource) {
+                const r = item.resource;
+                const rId = String(r.id || item.resourceId);
+                if (!seenIds.has(rId)) {
+                  seenIds.add(rId);
+                  const rawType = String(r.type || "document").toLowerCase();
+                  const type: "document" | "video" | "link" = rawType.includes("video")
+                    ? "video"
+                    : rawType.includes("link")
+                    ? "link"
+                    : "document";
 
-      return hierList.map((r: any, idx: number) => {
-        const rawType = String(r?.type || "").toLowerCase();
-        const type: "document" | "video" | "link" = rawType.includes("video")
-          ? "video"
-          : rawType.includes("link")
-          ? "link"
-          : "document";
-
-        return {
-          id: String(r.id),
-          title: r.title || "Clinical Resource",
-          description: r.description || "Assigned clinical protocol module.",
-          type,
-          url: `${baseUrl}/hierarchical-resources/${r.id}/content`,
-          fileName: r.original_filename || r.fileName,
-          assignedBy: "Facility Clinical Preceptor",
-          assignedAt: r.created_at || r.createdAt || new Date(Date.now() - idx * 24 * 60 * 60 * 1000).toISOString(),
-        };
-      });
+                  collected.push({
+                    id: rId,
+                    title: r.title || "Assigned Clinical Resource",
+                    description: r.description || "Assigned by preceptor for clinical mastery.",
+                    type,
+                    url: r.url || `${baseUrl}/resources/${rId}/content`,
+                    fileName: r.fileName,
+                    fileSizeMb: r.fileSizeMb,
+                    assignedBy: "Facility Clinical Preceptor",
+                    assignedAt: item.assignedAt || new Date().toISOString(),
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
 
-    // 2. Fall back to master clinical resources
+    // 2. Fetch from live Swagger endpoint: GET /api/v1/learning/my/resources
+    const myRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_RESOURCES).catch(() => null);
+    const myResourcesList = Array.isArray(myRes?.data)
+      ? myRes.data
+      : Array.isArray(myRes?.data?.resources)
+      ? myRes.data.resources
+      : Array.isArray(myRes)
+      ? myRes
+      : [];
+
+    if (myResourcesList.length > 0) {
+      for (const r of myResourcesList) {
+        const rId = String(r.id);
+        if (!seenIds.has(rId)) {
+          seenIds.add(rId);
+          const rawType = String(r?.type || "").toLowerCase();
+          const type: "document" | "video" | "link" = rawType.includes("video")
+            ? "video"
+            : rawType.includes("link")
+            ? "link"
+            : "document";
+
+          collected.push({
+            id: rId,
+            title: r.title || "Assigned Clinical Resource",
+            description: r.description || "Assigned by preceptor for clinical mastery.",
+            type,
+            url: `${baseUrl}/resources/${r.id}/content`,
+            fileName: r.fileName || r.original_filename,
+            assignedBy: r.assignedBy || "Facility Clinical Preceptor",
+            assignedAt: r.assignedAt || r.created_at || new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    if (collected.length > 0) {
+      return collected;
+    }
+
+    // 3. Fall back to standard resources endpoint: GET /api/v1/resources
     const masterList = await getResources();
     if (masterList.length > 0) {
       return masterList.map((r: AdminResource, idx: number) => ({
@@ -288,7 +337,7 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
         title: r.title,
         description: r.description || "Authorized clinical guideline module.",
         type: r.type,
-        url: r.url,
+        url: r.url || `${baseUrl}/resources/${r.id}/content`,
         fileName: r.fileName,
         fileSizeMb: r.fileSizeMb,
         assignedBy: "Facility Clinical Preceptor",

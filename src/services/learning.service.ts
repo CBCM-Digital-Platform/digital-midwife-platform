@@ -145,6 +145,11 @@ export function normalizeLearningModule(
       ? "archived"
       : "published";
 
+  const rawContents = Array.isArray(raw.contents) ? raw.contents : [];
+  const contents = rawContents.length > 0
+    ? rawContents.map((c: any) => normalizeModuleContent(c, id))
+    : undefined;
+
   return {
     id,
     title,
@@ -153,8 +158,11 @@ export function normalizeLearningModule(
     thematicAreaName,
     thematicArea: raw.thematic_area || raw.thematicArea || thematicAreaName,
     status,
+    isPublished: raw.isPublished ?? (status === "published"),
+    isAuthorized: raw.isAuthorized ?? (status === "published"),
     order: raw.order ?? raw.orderNumber ?? raw.sort_order ?? 1,
-    contentsCount: raw.contents_count ?? (Array.isArray(raw.contents) ? raw.contents.length : undefined),
+    contentsCount: raw.contents_count ?? (contents ? contents.length : undefined),
+    contents,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updated_at || raw.updatedAt || new Date().toISOString(),
   };
@@ -203,6 +211,8 @@ export function normalizeModuleContent(
     durationLabel: raw.duration || raw.duration_label || undefined,
     order: raw.order ?? raw.orderNumber ?? raw.sort_order ?? 1,
     isRequired: Boolean(raw.is_required ?? raw.isRequired ?? false),
+    isPublished: raw.isPublished ?? raw.is_published ?? true,
+    isAuthorized: raw.isAuthorized ?? raw.is_authorized ?? true,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updated_at || raw.updatedAt,
   };
@@ -213,19 +223,53 @@ export function normalizeModuleContent(
  * Fetches real clinical learning modules from the backend database.
  * The backend automatically filters results according to the authenticated user's role and access grants.
  */
-export async function getModules(): Promise<LearningModule[]> {
+export interface GetModulesFilters {
+  status?: string;
+  thematicAreaId?: number;
+  publishedOnly?: boolean;
+  authorizedOnly?: boolean;
+}
+
+/**
+ * GET /api/v1/learning/modules
+ * Supports live Swagger filters: status, thematicAreaId, publishedOnly, authorizedOnly.
+ */
+export async function getModules(filters?: GetModulesFilters): Promise<LearningModule[]> {
   try {
+    const params: Record<string, any> = {};
+    if (filters?.status) params.status = filters.status;
+    if (filters?.thematicAreaId) params.thematicAreaId = filters.thematicAreaId;
+    if (filters?.publishedOnly !== undefined) params.publishedOnly = filters.publishedOnly;
+    if (filters?.authorizedOnly !== undefined) params.authorizedOnly = filters.authorizedOnly;
+
     const [res, areaMap] = await Promise.all([
-      apiClient.get<any>(ENDPOINTS.LEARNING.BASE),
+      apiClient.get<any>(ENDPOINTS.LEARNING.BASE, { params }),
       getThematicAreaNameMap().catch(() => new Map<string, string>()),
     ]);
     const raw = res?.data?.modules || res?.data?.items || res?.data || res?.modules || res?.items || res;
     const list = Array.isArray(raw) ? raw : [];
-    return list.map((m) => normalizeLearningModule(m, areaMap));
+    if (list.length > 0) {
+      return list.map((m) => normalizeLearningModule(m, areaMap));
+    }
   } catch (error: any) {
-    console.error("Failed to fetch learning modules from live API:", error?.message || error);
-    return [];
+    // Expected when role is mentee without global modules read access
   }
+
+  // 1. Try mentee enrolled modules endpoint: GET /api/v1/learning/my/modules
+  try {
+    const [myRes, areaMap] = await Promise.all([
+      apiClient.get<any>(ENDPOINTS.LEARNING.MY_MODULES),
+      getThematicAreaNameMap().catch(() => new Map<string, string>()),
+    ]);
+    const rawMy = myRes?.data?.modules || myRes?.data?.items || myRes?.data || myRes?.modules || myRes?.items || myRes;
+    const myList = Array.isArray(rawMy) ? rawMy : [];
+    if (myList.length > 0) {
+      return myList.map((m) => normalizeLearningModule(m, areaMap));
+    }
+  } catch {}
+
+  // Return strictly database records: empty if none exist
+  return [];
 }
 
 /**
@@ -245,6 +289,36 @@ export async function getModuleDetails(id: string | number): Promise<LearningMod
     }
     return null;
   } catch (error: any) {
+    const status = error?.response?.status || error?.status;
+    const msg = String(error?.response?.data?.message || error?.message || "");
+
+    // Gracefully handle expected RBAC facility boundary (403 Forbidden)
+    if (status === 403 || msg.toLowerCase().includes("permission")) {
+      // If user is an enrolled mentee, try mentee enrolled module endpoint
+      try {
+        const myModRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_MODULE_DETAIL(numericId));
+        const rawMyMod = myModRes?.data?.module || myModRes?.data || myModRes?.module || myModRes;
+        if (rawMyMod && (rawMyMod.id || rawMyMod.title)) {
+          const areaMap = await getThematicAreaNameMap().catch(() => new Map<string, string>());
+          return normalizeLearningModule(rawMyMod, areaMap);
+        }
+      } catch {
+        // Fall through to facility restricted placeholder
+      }
+
+      console.warn(`Learning module #${id} is restricted to its designated facility: ${msg}`);
+      return {
+        id: numericId,
+        title: `Module #${id} (Restricted)`,
+        description: "This learning module is restricted to preceptors and administrators of its designated facility.",
+        status: "published",
+        isPublished: true,
+        isAuthorized: true,
+        thematicAreaName: "Facility Restricted",
+        isAccessRestricted: true,
+      };
+    }
+
     console.error(`Failed to fetch learning module details #${id}:`, error?.message || error);
     return null;
   }
@@ -256,15 +330,96 @@ export async function getModuleDetails(id: string | number): Promise<LearningMod
  */
 export async function getModuleContents(moduleId: string | number): Promise<ModuleContent[]> {
   const numericModuleId = parsePositiveInt(moduleId) ?? moduleId;
+  const collectedContents: ModuleContent[] = [];
+  const seenKeys = new Set<string>();
+
+  // 1. Fetch real active resources from /api/v1/resources?module_id={moduleId}
+  try {
+    const resRes = await apiClient.get<any>(ENDPOINTS.LEARNING.RESOURCES_BY_MODULE(numericModuleId));
+    const rawRes = resRes?.data?.data || resRes?.data?.items || resRes?.data || resRes?.items || resRes;
+    const resList = Array.isArray(rawRes) ? rawRes : [];
+    for (const item of resList) {
+      const normalized = normalizeModuleContent(item, moduleId);
+      const key = String(normalized.id || normalized.title).toLowerCase().trim();
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        collectedContents.push(normalized);
+      }
+    }
+  } catch (resErr: any) {
+    // Optional fallback
+  }
+
+  // 2. Supplementary check on all resources in /api/v1/resources belonging to this module
+  try {
+    const allRes = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`);
+    const rawAll = allRes?.data?.data || allRes?.data?.resources || allRes?.data?.items || allRes?.data || allRes;
+    const allList = Array.isArray(rawAll) ? rawAll : [];
+    for (const item of allList) {
+      const itemMod = item.module_id ?? item.moduleId ?? item.module?.id;
+      if (itemMod && String(itemMod) === String(numericModuleId)) {
+        const normalized = normalizeModuleContent(item, moduleId);
+        const key = String(normalized.id || normalized.title).toLowerCase().trim();
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          collectedContents.push(normalized);
+        }
+      }
+    }
+  } catch {
+    // Optional
+  }
+
+  // 3. Mentee individually assigned resources check: /api/v1/learning/my/resources
+  // Mentees access only the specific resources in the module they are assigned without full module access
+  try {
+    const myRes = await apiClient.get<any>(ENDPOINTS.LEARNING.MY_RESOURCES);
+    const rawMy = myRes?.data?.data || myRes?.data?.items || myRes?.data || myRes?.items || myRes;
+    const myList = Array.isArray(rawMy) ? rawMy : [];
+    for (const item of myList) {
+      const itemModuleId =
+        item.module_id ||
+        item.moduleId ||
+        item.learning_module_id ||
+        item.learningModuleId ||
+        item.module?.id ||
+        item.resource?.module_id ||
+        item.resource?.learning_module_id ||
+        item.resource?.moduleId;
+
+      if (itemModuleId && String(itemModuleId) === String(numericModuleId)) {
+        const rawContent = item.resource || item;
+        const normalized = normalizeModuleContent(rawContent, moduleId);
+        const key = String(normalized.id || normalized.title).toLowerCase().trim();
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          collectedContents.push(normalized);
+        }
+      }
+    }
+  } catch {
+    // Optional for non-mentees
+  }
+
+  // 4. Learning module contents: /api/v1/learning/modules/{moduleId}/contents
   try {
     const res = await apiClient.get<any>(ENDPOINTS.LEARNING.CONTENTS(numericModuleId));
     const raw = res?.data?.contents || res?.data?.items || res?.data || res?.contents || res?.items || res;
     const list = Array.isArray(raw) ? raw : [];
-    return list.map((item: any) => normalizeModuleContent(item, moduleId));
+    for (const item of list) {
+      const normalized = normalizeModuleContent(item, moduleId);
+      const key = String(normalized.id || normalized.title).toLowerCase().trim();
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        collectedContents.push(normalized);
+      }
+    }
   } catch (error: any) {
-    console.error(`Failed to fetch contents for module #${moduleId}:`, error?.message || error);
-    return [];
+    // Expected when role is mentee without global module read access
   }
+
+  // Strictly return only real database resources collected without any synthetic/mock fallbacks
+  return collectedContents;
 }
 
 /**
@@ -295,6 +450,11 @@ export function parsePositiveInt(val: any): number | null {
  * Conforms strictly to OpenAPI schema: { "mentorId": <integer, minimum: 1> }
  * Automatically authorizes and publishes the module on the backend if required.
  */
+/**
+ * POST /api/v1/learning/modules/{moduleId}/mentor-permissions
+ * Live Swagger schema: { "mentorId": <integer, minimum: 1> }
+ * Available only to the Facility Admin responsible for the module's facility.
+ */
 export async function grantMentorAccess(
   moduleId: string | number,
   mentorId: string | number
@@ -306,9 +466,9 @@ export async function grantMentorAccess(
     throw new Error(`Invalid module ID (${moduleId}) or mentor ID (${mentorId}). Both must be valid positive numbers.`);
   }
 
-  // Exact OpenAPI Swagger schema: { "mentorId": <integer> }
+  // Calls live Swagger endpoint: POST /api/v1/learning/modules/{moduleId}/mentor-permissions
   const res = await apiClient.post<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
+    ENDPOINTS.LEARNING.MENTOR_PERMISSIONS(numericModuleId),
     {
       mentorId: numericMentorId,
     }
@@ -324,6 +484,10 @@ export async function grantMentorAccess(
  * DELETE /api/v1/learning/modules/{moduleId}/mentor-access/{mentorId}
  * Revokes a preceptor/mentor's access to a specific learning module on the backend.
  */
+/**
+ * DELETE /api/v1/learning/modules/{moduleId}/mentor-permissions/{mentorId}
+ * Live Swagger endpoint: Revokes a mentor's module access.
+ */
 export async function revokeMentorAccess(
   moduleId: string | number,
   mentorId: string | number
@@ -336,7 +500,7 @@ export async function revokeMentorAccess(
   }
 
   const res = await apiClient.delete<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS_REVOKE(numericModuleId, numericMentorId)
+    ENDPOINTS.LEARNING.MENTOR_PERMISSIONS_REVOKE(numericModuleId, numericMentorId)
   );
 
   return {
@@ -411,3 +575,50 @@ export async function getModuleMentorAccessList(
 
 export { createModule, addContent } from "@/services/super-admin.service";
 export type { CreateModulePayload, AddContentPayload } from "@/services/super-admin.service";
+
+/**
+ * POST /api/v1/learning/modules/{moduleId}/resources/{resourceId}/assignments
+ * Live Swagger schema: { "mentee_id": <integer, minimum: 1> }
+ * Assigns one resource from this published module to an actively assigned mentee.
+ */
+export async function assignModuleResourceToMentee(
+  moduleId: string | number,
+  resourceId: string | number,
+  menteeId: string | number
+): Promise<{ success: boolean; data?: any }> {
+  const numericModuleId = parsePositiveInt(moduleId);
+  const numericResourceId = parsePositiveInt(resourceId);
+  const numericMenteeId = parsePositiveInt(menteeId);
+
+  if (!numericModuleId || !numericResourceId || !numericMenteeId) {
+    throw new Error("moduleId, resourceId, and menteeId must all be valid positive numbers.");
+  }
+
+  const res = await apiClient.post<any>(
+    ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(numericModuleId, numericResourceId),
+    {
+      mentee_id: numericMenteeId,
+    }
+  );
+
+  return { success: true, data: res?.data || res };
+}
+
+/**
+ * POST /api/v1/learning/resource-assignments/{assignmentId}/revoke
+ * Live Swagger endpoint to revoke an individual resource assignment.
+ */
+export async function revokeResourceAssignment(
+  assignmentId: string | number
+): Promise<{ success: boolean; message?: string }> {
+  const numericId = parsePositiveInt(assignmentId);
+  if (!numericId) {
+    throw new Error("Invalid assignment ID");
+  }
+
+  const res = await apiClient.post<any>(
+    ENDPOINTS.LEARNING.REVOKE_RESOURCE_ASSIGNMENT(numericId)
+  );
+
+  return { success: true, message: res?.message || "Resource assignment revoked." };
+}

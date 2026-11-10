@@ -20,6 +20,8 @@ export interface ModuleContent {
   durationLabel?: string;
   order?: number;
   isRequired?: boolean;
+  isPublished?: boolean;
+  isAuthorized?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -37,6 +39,7 @@ export interface LearningModule {
   order?: number;
   contentsCount?: number;
   contents?: ModuleContent[];
+  isAccessRestricted?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

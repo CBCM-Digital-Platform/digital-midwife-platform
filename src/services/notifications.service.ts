@@ -74,9 +74,81 @@ export function getFallbackNotifications(role?: string): AppNotification[] {
   const isSuperAdmin =
     (role || "").toLowerCase().includes("super") ||
     ((role || "").toLowerCase().includes("admin") && !(role || "").toLowerCase().includes("facility"));
+  const isMentor = (role || "").toLowerCase().includes("mentor");
+  const isMentee = (role || "").toLowerCase().includes("mentee");
 
   const now = Date.now();
   const formatPast = (minutesAgo: number) => new Date(now - minutesAgo * 60 * 1000).toISOString();
+
+  if (isMentor) {
+    return [
+      {
+        id: "notif-mentor-msg-1",
+        title: "New Message from Mentee",
+        message: "Bethlehem Tadesse sent a direct question regarding fundal height palpation landmarks.",
+        type: "info",
+        category: "mentorship",
+        isRead: false,
+        createdAt: formatPast(5),
+        actionUrl: "/messaging",
+      },
+      {
+        id: "notif-mentor-1",
+        title: "Clinical Skill Verification Pending",
+        message: "Mentee Hiwot Assefa requested assessment review for 'Intrapartum Partograph Management'.",
+        type: "warning",
+        category: "assessment",
+        isRead: false,
+        createdAt: formatPast(40),
+        actionUrl: "/my-assessments",
+      },
+      {
+        id: "notif-mentor-2",
+        title: "New Mentee Assigned to Your Roster",
+        message: "Tigist Haile was assigned to you for Maternal & Newborn Care clinical rotation.",
+        type: "info",
+        category: "mentorship",
+        isRead: true,
+        createdAt: formatPast(240),
+        actionUrl: "/my-mentees",
+      },
+    ];
+  }
+
+  if (isMentee) {
+    return [
+      {
+        id: "notif-mentee-msg-1",
+        title: "New Message from Clinical Mentor",
+        message: "Sister Almaz sent feedback on your Leopold maneuvers quiz results.",
+        type: "info",
+        category: "mentorship",
+        isRead: false,
+        createdAt: formatPast(5),
+        actionUrl: "/messaging",
+      },
+      {
+        id: "notif-mentee-1",
+        title: "Learning Module Unlocked",
+        message: "Your mentor approved access to 'Module 4: Fundal Height Assessment & Palpation'.",
+        type: "success",
+        category: "curriculum",
+        isRead: false,
+        createdAt: formatPast(60),
+        actionUrl: "/mentee/learning",
+      },
+      {
+        id: "notif-mentee-2",
+        title: "Mentorship Session Scheduled",
+        message: "Upcoming preceptor clinical review session scheduled for tomorrow at 10:00 AM.",
+        type: "info",
+        category: "mentorship",
+        isRead: true,
+        createdAt: formatPast(360),
+        actionUrl: "/dashboard",
+      },
+    ];
+  }
 
   if (isSuperAdmin) {
     return [
@@ -199,17 +271,51 @@ function normalizeNotification(raw: any, role?: string): AppNotification {
   const type = (raw?.type ?? raw?.notification_type ?? "info").toLowerCase() as NotificationType;
   const category = (raw?.category ?? raw?.entity_type ?? "general").toLowerCase() as NotificationCategory;
 
+  let actionUrl = raw?.action_url ?? raw?.actionUrl ?? raw?.link ?? undefined;
+
+  // Auto-resolve actionUrl from backend reference fields or notification type
+  if (!actionUrl) {
+    const refType = String(raw?.referenceType ?? raw?.reference_type ?? "").toLowerCase();
+    const refId =
+      raw?.referenceId ??
+      raw?.reference_id ??
+      raw?.data?.conversationId ??
+      raw?.data?.conversation_id ??
+      raw?.data?.userId ??
+      raw?.data?.senderId;
+    const rawType = String(raw?.type ?? raw?.notification_type ?? "").toLowerCase();
+
+    if ((refType === "conversation" || refType === "message") && refId) {
+      actionUrl = `/messaging?conversationId=${refId}`;
+    } else if (refType === "user" && refId) {
+      actionUrl = `/messaging?userId=${refId}`;
+    } else if (rawType === "message_received" || rawType.includes("message")) {
+      actionUrl = refId ? `/messaging?conversationId=${refId}` : "/messaging";
+    } else if (rawType.includes("assessment")) {
+      actionUrl = refId ? `/my-assessments/${refId}` : "/my-assessments";
+    } else if (rawType.includes("module") || rawType.includes("learning")) {
+      actionUrl = refId ? `/learning/modules/${refId}` : "/learning";
+    }
+  }
+
+  const title =
+    raw?.title ??
+    raw?.subject ??
+    (type.includes("message") ? "New message" : "Notification");
+
+  const message = raw?.message ?? raw?.body ?? raw?.content ?? "";
+
   return {
     id,
     userId: raw?.user_id ?? raw?.userId,
-    title: raw?.title ?? raw?.subject ?? "Notification",
-    message: raw?.message ?? raw?.body ?? raw?.content ?? "",
+    title,
+    message,
     type: ["info", "success", "warning", "alert", "system"].includes(type) ? type : "info",
-    category: category || "general",
+    category: category || (type.includes("message") ? "mentorship" : "general"),
     isRead,
     createdAt: raw?.created_at ?? raw?.createdAt ?? new Date().toISOString(),
     readAt: raw?.read_at ?? raw?.readAt ?? null,
-    actionUrl: raw?.action_url ?? raw?.actionUrl ?? raw?.link ?? undefined,
+    actionUrl,
     data: raw?.data,
   };
 }
@@ -219,6 +325,11 @@ function normalizeNotification(raw: any, role?: string): AppNotification {
  * Lists the authenticated user's notifications.
  */
 export async function getNotifications(role?: string): Promise<AppNotification[]> {
+  const resultList: AppNotification[] = [];
+  const deletedIds = getLocalDeletedIds();
+  const localReadIds = getLocalReadIds();
+  const allRead = isLocalAllRead(role);
+
   try {
     const res = await apiClient.get<any>("/api/v1/notifications");
     const rawList = Array.isArray(res?.data)
@@ -230,21 +341,54 @@ export async function getNotifications(role?: string): Promise<AppNotification[]
       : [];
 
     if (rawList.length > 0) {
-      const deletedIds = getLocalDeletedIds();
-      return rawList
-        .map((item: any) => normalizeNotification(item, role))
-        .filter((n: AppNotification) => !deletedIds.has(n.id));
+      for (const item of rawList) {
+        const n = normalizeNotification(item, role);
+        if (!deletedIds.has(n.id)) {
+          resultList.push(n);
+        }
+      }
     }
   } catch (err) {
     // Backend notifications request failed or table empty, fall back to tailored operational notifications
   }
 
+  // Also check active conversations with unread messages to guarantee message notifications appear
+  try {
+    const { getConversations } = await import("@/services/messages.service");
+    const conversations = await getConversations().catch(() => []);
+    for (const conv of conversations) {
+      if ((conv.unreadCount ?? 0) > 0) {
+        const notifId = `msg-conv-${conv.id}`;
+        if (
+          !deletedIds.has(notifId) &&
+          !resultList.some((n) => n.actionUrl?.includes(`conversationId=${conv.id}`))
+        ) {
+          const partner = conv.participants?.find((p) => p.role !== role) || conv.participants?.[0];
+          const name = partner?.fullName || "Mentorship Partner";
+          const isRead = allRead || localReadIds.has(notifId);
+          resultList.unshift({
+            id: notifId,
+            title: `New message from ${name}`,
+            message: conv.lastMessage?.content || "You received a new direct message.",
+            type: "info",
+            category: "mentorship",
+            isRead,
+            createdAt: conv.lastMessageAt || conv.updatedAt || new Date().toISOString(),
+            actionUrl: `/messaging?conversationId=${conv.id}&name=${encodeURIComponent(name)}`,
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-critical, ignore
+  }
+
+  if (resultList.length > 0) {
+    return resultList;
+  }
+
   // Use role-tailored notifications with local state applied
   const fallbacks = getFallbackNotifications(role);
-  const deletedIds = getLocalDeletedIds();
-  const localReadIds = getLocalReadIds();
-  const allRead = isLocalAllRead(role);
-
   return fallbacks
     .filter((n: AppNotification) => !deletedIds.has(n.id))
     .map((n) => (allRead || localReadIds.has(n.id) ? { ...n, isRead: true } : n));

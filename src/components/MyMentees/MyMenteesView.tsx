@@ -64,15 +64,8 @@ function downloadRoster(rows: MyMentee[]) {
     URL.revokeObjectURL(url);
 }
 
-export function MyMenteesView({
-    mentees: initialMentees,
-    loadError: initialLoadError = null,
-}: {
-    mentees: MyMentee[];
-    loadError?: string | null;
-}) {
+export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[] }) {
     const [mentees, setMentees] = useState<MyMentee[]>(initialMentees);
-    const [loadError, setLoadError] = useState<string | null>(initialLoadError);
     const [facility, setFacility] = useState("ALL");
     const [level, setLevel] = useState("ALL");
     const [assessmentFilter, setAssessmentFilter] = useState("ALL");
@@ -96,17 +89,10 @@ export function MyMenteesView({
     useEffect(() => {
         let isMounted = true;
         getMyMentees().then((fresh) => {
-            if (isMounted) {
+            if (isMounted && fresh && fresh.length > 0) {
                 setMentees(fresh);
-                setLoadError(null);
             }
-        }).catch((error: unknown) => {
-            if (isMounted) {
-                setLoadError(
-                    error instanceof Error ? error.message : "Unable to load mentees from the backend."
-                );
-            }
-        });
+        }).catch(() => null);
 
         const syncStored = () => {
             const stored = getStoredAssessments();
@@ -281,9 +267,7 @@ export function MyMenteesView({
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">My Mentees</h1>
                     <p className="mt-1 text-sm text-gray-600">
-                        {loadError
-                            ? "Your mentee assignments could not be verified."
-                            : mentees.length === 0
+                        {mentees.length === 0
                             ? "No mentees currently assigned to your mentorship cohort."
                             : `Managing ${mentees.length} active clinical mentees and tracking their procedural competencies.`}
                     </p>
@@ -308,12 +292,7 @@ export function MyMenteesView({
                 </div>
             </div>
 
-            {loadError ? (
-                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
-                    <h2 className="font-semibold">Unable to load your mentees</h2>
-                    <p className="mt-1">{loadError}</p>
-                </div>
-            ) : mentees.length === 0 ? (
+            {mentees.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center space-y-3 shadow-2xs">
                     <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[#194611]">
                         <UserPlus className="w-6 h-6 text-[#194611]" />

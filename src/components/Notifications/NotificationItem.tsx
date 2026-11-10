@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   CheckCircle2,
@@ -16,6 +17,7 @@ import {
   Building2,
   BookOpen,
   ShieldCheck,
+  MessageSquare,
 } from "lucide-react";
 import type { AppNotification } from "@/types/notification";
 
@@ -53,10 +55,30 @@ export function NotificationItem({
   onMarkAsRead,
   onDelete,
 }: NotificationItemProps) {
+  const router = useRouter();
   const { id, title, message, type, category, isRead, createdAt, actionUrl } = notification;
+
+  const isMessageNotification =
+    Boolean(actionUrl && actionUrl.includes("messaging")) ||
+    category === "mentorship" && (title.toLowerCase().includes("message") || message.toLowerCase().includes("message"));
+
+  const resolvedActionUrl = actionUrl || (isMessageNotification ? "/messaging" : undefined);
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("a")) return;
+
+    if (resolvedActionUrl) {
+      if (!isRead) onMarkAsRead(id);
+      router.push(resolvedActionUrl);
+    }
+  };
 
   // Icon and theme based on type
   const getIcon = () => {
+    if (isMessageNotification) {
+      return <MessageSquare className="w-4 h-4 text-[#194611]" />;
+    }
     switch (type) {
       case "success":
         return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
@@ -73,6 +95,9 @@ export function NotificationItem({
   };
 
   const getIconBg = () => {
+    if (isMessageNotification) {
+      return "bg-[#194611]/10 border-[#194611]/20";
+    }
     switch (type) {
       case "success":
         return "bg-emerald-50 border-emerald-200";
@@ -90,7 +115,10 @@ export function NotificationItem({
 
   return (
     <div
+      onClick={handleCardClick}
       className={`group relative p-4 sm:p-5 rounded-xl border transition-all duration-150 ${
+        resolvedActionUrl ? "cursor-pointer hover:shadow-sm" : ""
+      } ${
         isRead
           ? "bg-white border-gray-200/80 hover:border-gray-300"
           : "bg-emerald-50/20 border-emerald-200 shadow-2xs hover:border-emerald-300"
@@ -136,14 +164,31 @@ export function NotificationItem({
               <span className="capitalize text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">
                 {category}
               </span>
-              {actionUrl && (
-                <Link
-                  href={actionUrl}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#194611] hover:underline cursor-pointer"
-                >
-                  <span>View Details</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+              {resolvedActionUrl && (
+                isMessageNotification ? (
+                  <Link
+                    href={resolvedActionUrl}
+                    onClick={() => {
+                      if (!isRead) onMarkAsRead(id);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#194611] hover:bg-[#12330c] text-white text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Open Message</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                ) : (
+                  <Link
+                    href={resolvedActionUrl}
+                    onClick={() => {
+                      if (!isRead) onMarkAsRead(id);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#194611] hover:underline cursor-pointer"
+                  >
+                    <span>View Details</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                )
               )}
             </div>
 

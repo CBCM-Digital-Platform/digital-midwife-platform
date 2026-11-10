@@ -17,6 +17,7 @@ import type { LearningModule } from "@/types/learning";
 import {
   BookOpen,
   Search,
+  Filter,
   ArrowRight,
   GraduationCap,
   Layers,
@@ -28,6 +29,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getThematicAreas } from "@/services/thematic-areas.service";
 import {
   getModules,
   getThematicAreaNameMap,
@@ -36,6 +38,7 @@ import {
 
 interface LearningModulesListClientProps {
   initialModules: LearningModule[];
+  initialThematicAreas?: string[];
   userRole?: string;
   currentUserId?: string | number;
   currentUserEmail?: string;
@@ -44,8 +47,10 @@ interface LearningModulesListClientProps {
 
 export function LearningModulesListClient({
   initialModules = [],
+  initialThematicAreas = [],
   userRole,
 }: LearningModulesListClientProps) {
+  const [thematicAreasList, setThematicAreasList] = useState<string[]>(initialThematicAreas);
   const [modules, setModules] = useState<LearningModule[]>(initialModules);
   const [search, setSearch] = useState("");
   const [selectedThematicArea, setSelectedThematicArea] = useState<string>("ALL");
@@ -116,14 +121,14 @@ export function LearningModulesListClient({
     }
   }, [modules]);
 
-  // Extract unique thematic areas for filtering
+  // Extract unique thematic areas for filtering (all DB areas + any from modules)
   const thematicAreas = useMemo(() => {
-    const areas = new Set<string>();
+    const areas = new Set<string>(thematicAreasList);
     modules.forEach((m) => {
       if (m.thematicAreaName) areas.add(m.thematicAreaName);
     });
-    return Array.from(areas);
-  }, [modules]);
+    return Array.from(areas).filter(Boolean).sort();
+  }, [thematicAreasList, modules]);
 
   // Filter modules by search query and thematic area
   const filteredModules = useMemo(() => {
@@ -216,7 +221,7 @@ export function LearningModulesListClient({
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Search modules by title, keywords, or thematic area..."
+            placeholder="Search modules by title, keywords..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-10 text-sm bg-white border-gray-200 shadow-2xs focus-visible:ring-[#194611]"
@@ -224,34 +229,33 @@ export function LearningModulesListClient({
         </div>
 
         {thematicAreas.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setSelectedThematicArea("ALL")}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer border",
-                selectedThematicArea === "ALL"
-                  ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
-                  : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-              )}
-            >
-              All Areas
-            </button>
-            {thematicAreas.map((area) => (
-              <button
-                key={area}
-                type="button"
-                onClick={() => setSelectedThematicArea(area)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer border",
-                  selectedThematicArea === area
-                    ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
-                    : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                )}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Filter className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
+              <select
+                value={selectedThematicArea}
+                onChange={(e) => setSelectedThematicArea(e.target.value)}
+                className="h-10 pl-9 pr-8 rounded-lg border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#194611] cursor-pointer"
               >
-                {area}
-              </button>
-            ))}
+                <option value="ALL">All Thematic Areas</option>
+                {thematicAreas.map((area) => (
+                  <option key={area} value={area}>
+                    {area}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedThematicArea !== "ALL" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedThematicArea("ALL")}
+                className="h-9 text-xs text-gray-500 hover:text-gray-900 px-2"
+              >
+                Reset
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -312,13 +316,13 @@ export function LearningModulesListClient({
                       <Badge
                         variant="outline"
                         className={cn(
-                          "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full",
+                          "text-[10px] capitalize font-semibold px-2 py-0.5 rounded-full",
                           isPublished
                             ? "bg-emerald-100 text-emerald-800 border-emerald-200"
                             : "bg-amber-100 text-amber-800 border-amber-200"
                         )}
                       >
-                        {module.status}
+                        {module.status ? module.status.charAt(0).toUpperCase() + module.status.slice(1).toLowerCase() : "Draft"}
                       </Badge>
                     </div>
 

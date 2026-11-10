@@ -56,6 +56,7 @@ export interface ResumeTarget {
 }
 
 export interface AssignedMentor {
+    id?: string | number;
     name: string;
     credentials: string;
     role: string;

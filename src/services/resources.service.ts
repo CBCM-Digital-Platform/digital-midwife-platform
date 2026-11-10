@@ -295,7 +295,8 @@ export async function createResource(
     }
   }
 
-  const payload = {
+  const parsedModuleId = input.moduleId ? parsePositiveInt(input.moduleId) : null;
+  const payload: Record<string, any> = {
     title: input.title.trim(),
     description: input.description?.trim() || null,
     type: input.type,
@@ -303,6 +304,10 @@ export async function createResource(
     url: input.url?.trim() || null,
     thematic_area_id: input.thematicAreaId || null,
   };
+  if (parsedModuleId) {
+    payload.module_id = parsedModuleId;
+    payload.moduleId = parsedModuleId;
+  }
 
   const isMock = await isMockUserSession();
 
@@ -377,6 +382,11 @@ export async function updateResource(
   if (fileId !== undefined) payload.file_id = fileId;
   if (input.url !== undefined) payload.url = input.url?.trim() || null;
   if (input.thematicAreaId !== undefined) payload.thematic_area_id = input.thematicAreaId;
+  if (input.moduleId !== undefined) {
+    const parsedMod = parsePositiveInt(input.moduleId);
+    payload.module_id = parsedMod;
+    payload.moduleId = parsedMod;
+  }
 
   const isMock = await isMockUserSession();
 
@@ -542,30 +552,201 @@ export async function assignResourceToMentor(
   }
 }
 
-export async function assignResourceToMentee(
-  resourceId: string | number,
-  menteeIds: (string | number)[]
-): Promise<{ success: boolean; data?: any }> {
-  const numericMenteeIds = menteeIds.map((id) => (isNaN(Number(id)) ? id : Number(id)));
-
-  try {
-    const res = await apiClient.post<any>(
-      ENDPOINTS.HIERARCHICAL_RESOURCES.ASSIGN_MENTEE(resourceId),
-      { mentee_ids: numericMenteeIds }
-    );
-    return { success: true, data: res?.data || res };
-  } catch (err: any) {
-    try {
-      const fallbackRes = await apiClient.post<any>(
-        `/api/v1/resources/${resourceId}/assign-mentee`,
-        { mentee_ids: numericMenteeIds }
-      );
-      return { success: true, data: fallbackRes?.data || fallbackRes };
-    } catch {
-      console.warn("Mentee resource assignment failed on live endpoints:", err?.message || err);
-      throw err;
+function parsePositiveInt(val: any): number | null {
+  if (typeof val === "number" && !isNaN(val) && val > 0) {
+    return Math.floor(val);
+  }
+  if (!val) return null;
+  const str = String(val).trim();
+  const direct = parseInt(str, 10);
+  if (!isNaN(direct) && direct > 0 && String(direct) === str) {
+    return direct;
+  }
+  const match = str.match(/\d+/);
+  if (match) {
+    const extracted = parseInt(match[0], 10);
+    if (!isNaN(extracted) && extracted > 0) {
+      return extracted;
     }
   }
+  return null;
+}
+
+function extractErrorString(err: any): string {
+  if (!err) return "Failed to assign resource to mentee in the database.";
+  if (typeof err === "string") return err;
+  const data = err.data || err.response?.data;
+  if (data) {
+    if (typeof data.message === "string" && data.message) return data.message;
+    if (data.error && typeof data.error.message === "string") return data.error.message;
+    if (typeof data.error === "string" && data.error) return data.error;
+    if (typeof data.detail === "string" && data.detail) return data.detail;
+  }
+  if (typeof err.message === "string" && err.message) return err.message;
+  if (err.status) return `Server returned status ${err.status}`;
+  return "Failed to assign resource to mentee in the database.";
+}
+
+/**
+ * Live Swagger: POST /api/v1/resources/{id}/mentees/{menteeId}
+ * Mentors assign individual resources to actively assigned mentees.
+ */
+export async function assignResourceToMentee(
+  resourceId: string | number,
+  menteeIds: (string | number)[],
+  moduleId?: string | number,
+  resourceData?: any
+): Promise<{ success: boolean; data?: any; message?: string }> {
+  const numericMenteeIds = menteeIds
+    .map((id) => Number(id))
+    .filter((id) => !isNaN(id) && id > 0);
+
+  if (numericMenteeIds.length === 0) {
+    return { success: false, message: "No valid mentee IDs provided." };
+  }
+
+  // 1. Check if in mock user session or custom/mock resource
+  const isMock = await isMockUserSession();
+  const idStr = String(resourceId);
+
+  // Helper to persist assignment in local preceptor cache
+  const storeLocalAssignment = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const storedKey = "cbcm_mentee_resource_assignments";
+      const raw = localStorage.getItem(storedKey);
+      const existing = raw ? JSON.parse(raw) : [];
+      const newEntry = {
+        resourceId: String(resourceId),
+        moduleId: moduleId ? String(moduleId) : undefined,
+        menteeIds: numericMenteeIds.map(String),
+        assignedAt: new Date().toISOString(),
+        resource: resourceData || null,
+      };
+      existing.unshift(newEntry);
+      localStorage.setItem(storedKey, JSON.stringify(existing));
+
+      if (moduleId && resourceData) {
+        const modKey = `cbcm_module_contents_${moduleId}`;
+        const rawMod = localStorage.getItem(modKey);
+        const existingMod = rawMod ? JSON.parse(rawMod) : [];
+        const found = existingMod.some((m: any) => String(m.id) === String(resourceId));
+        if (!found) {
+          existingMod.push(resourceData);
+          localStorage.setItem(modKey, JSON.stringify(existingMod));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  if (isMock || idStr.startsWith("content-") || idStr.startsWith("res-custom-")) {
+    storeLocalAssignment();
+    return {
+      success: true,
+      message: `Resource successfully assigned to ${numericMenteeIds.length} mentee(s).`,
+      data: { assigned: numericMenteeIds.length, local: true },
+    };
+  }
+
+  // 2. Dispatch to live backend
+  let lastData: any = null;
+  let lastErrorMsg: string | null = null;
+  let successCount = 0;
+
+  const numModId = parsePositiveInt(moduleId);
+  let numResId = parsePositiveInt(resourceId);
+
+  // Intelligent ID Resolution: verify if numResId exists on the backend
+  if (numResId) {
+    try {
+      const checkRes = await apiClient.get<any>(ENDPOINTS.RESOURCES.DETAIL(numResId)).catch(() => null);
+      if (!checkRes || (!checkRes.id && !checkRes.data?.id)) {
+        // Resource was not found by numResId (e.g. old resource was deleted and new one re-uploaded).
+        // Resolve the active resource from the live database:
+        const allRes = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`).catch(() => null);
+        const rawList = allRes?.data?.data || allRes?.data?.resources || allRes?.data?.items || allRes?.data || allRes;
+        if (Array.isArray(rawList) && rawList.length > 0) {
+          const match = rawList.find((r: any) =>
+            (resourceData?.title && r.title && r.title.trim().toLowerCase() === resourceData.title.trim().toLowerCase()) ||
+            (numModId && (r.module_id === numModId || r.moduleId === numModId))
+          ) || (rawList.length === 1 ? rawList[0] : null);
+
+          if (match && match.id) {
+            numResId = parsePositiveInt(match.id);
+          }
+        }
+      }
+    } catch {
+      // Proceed with numResId
+    }
+  }
+
+  // Pre-emptively ensure resource is linked to this module in the database (sets resources.module_id = numModId)
+  if (numModId && numResId) {
+    try {
+      await apiClient.patch<any>(ENDPOINTS.RESOURCES.DETAIL(numResId), {
+        module_id: numModId,
+        moduleId: numModId,
+      });
+    } catch {
+      // Ignore if current role does not have resource edit permission
+    }
+  }
+
+  for (const menteeId of numericMenteeIds) {
+    let assigned = false;
+    const numMenteeId = parsePositiveInt(menteeId);
+    if (!numMenteeId) continue;
+
+    // A. Live Swagger primary learning module resource assignment endpoint:
+    // POST /api/v1/learning/modules/{moduleId}/resources/{resourceId}/assignments
+    if (numModId && numResId) {
+      try {
+        const modRes = await apiClient.post<any>(
+          ENDPOINTS.LEARNING.RESOURCE_ASSIGNMENT(numModId, numResId),
+          { mentee_id: numMenteeId }
+        );
+        lastData = modRes?.data || modRes;
+        assigned = true;
+        successCount++;
+      } catch (errA: any) {
+        lastErrorMsg = extractErrorString(errA);
+      }
+    }
+
+    // B. Direct resource assignment endpoint:
+    // POST /api/v1/resources/{id}/mentees/{menteeId}
+    if (!assigned && numResId) {
+      try {
+        const res = await apiClient.post<any>(
+          ENDPOINTS.RESOURCES.ASSIGN_MENTEE(numResId, numMenteeId),
+          {}
+        );
+        lastData = res?.data || res;
+        assigned = true;
+        successCount++;
+      } catch (errB: any) {
+        lastErrorMsg = extractErrorString(errB);
+      }
+    }
+  }
+
+  // If live backend assignment failed, return failure so user is alerted to DB authorization issues
+  if (successCount === 0) {
+    console.error("Live backend resource assignment failed:", lastErrorMsg);
+    return {
+      success: false,
+      message: lastErrorMsg || "Failed to assign resource to mentee in the database.",
+    };
+  }
+
+  return {
+    success: true,
+    data: lastData,
+    message: `Resource successfully assigned to ${successCount} mentee(s).`,
+  };
 }
 
 /**

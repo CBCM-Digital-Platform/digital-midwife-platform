@@ -32,8 +32,12 @@ import {
 import {
   getThematicAreaNameMap,
   resolveThematicAreaTitle,
+  getModuleContents,
 } from "@/services/learning.service";
 import { MentorAccessTab } from "@/components/LearningModules/MentorAccessTab";
+import { getMyMentees } from "@/services/my-mentees.service";
+import type { MyMentee } from "@/types/my-mentee";
+import { assignResourceToMentee } from "@/services/resources.service";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ArrowLeft,
@@ -47,6 +51,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Layers,
   Sparkles,
@@ -57,6 +62,8 @@ import {
   GraduationCap,
   ClipboardCheck,
   UploadCloud,
+  UserPlus,
+  Users,
   X,
   Stethoscope,
   Pencil,
@@ -101,6 +108,51 @@ export function ModuleDetailClient({
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const isModuleAuthorized =
+    currentModule.isAuthorized !== false &&
+    (currentModule.isAuthorized === true || String(currentModule.status).toLowerCase() === "published");
+
+  // Persistent assignments cache for current mentee/module
+  const [assignedResourceIds, setAssignedResourceIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("cbcm_mentee_resource_assignments");
+        if (stored) {
+          const list = JSON.parse(stored);
+          if (Array.isArray(list)) {
+            const ids = list
+              .filter(
+                (a: any) =>
+                  !a.moduleId ||
+                  String(a.moduleId) === String(currentModule.id)
+              )
+              .map((a: any) => String(a.resourceId));
+            setAssignedResourceIds(new Set(ids));
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [currentModule.id]);
+
+  // Client-side fetch to load database contents (e.g. mentee assigned resources via /api/v1/learning/my/resources)
+  useEffect(() => {
+    if (contents.length === 0 && currentModule?.id) {
+      getModuleContents(currentModule.id)
+        .then((fresh: ModuleContent[]) => {
+          if (fresh && fresh.length > 0) {
+            setContents(fresh);
+          }
+        })
+        .catch(() => {
+          // Keep empty if none assigned in the database
+        });
+    }
+  }, [currentModule?.id, contents.length]);
 
   // Mentee Progress State (Persistent via localStorage)
   const [completedContentIds, setCompletedContentIds] = useState<Set<string>>(new Set());
@@ -162,6 +214,122 @@ export function ModuleDetailClient({
     contents.length > 0 ? Math.round((menteeCompletedCount / contents.length) * 100) : 0;
 
   // ----------------------------------------------------
+  // Mentor Resource Assignment State & Handlers
+  // ----------------------------------------------------
+  const [myMentees, setMyMentees] = useState<MyMentee[]>([]);
+  const [isLoadingMentees, setIsLoadingMentees] = useState<boolean>(false);
+  const [assigningResource, setAssigningResource] = useState<ModuleContent | null>(null);
+  const [selectedMenteeIds, setSelectedMenteeIds] = useState<(string | number)[]>([]);
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState<boolean>(false);
+  const [resourceAssignments, setResourceAssignments] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`cbcm_module_resource_assignments_${currentModule.id}`);
+        if (stored) {
+          setResourceAssignments(JSON.parse(stored));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [currentModule.id]);
+
+  useEffect(() => {
+    if (isMentor) {
+      setIsLoadingMentees(true);
+      getMyMentees()
+        .then((data) => setMyMentees(data || []))
+        .catch(() => setMyMentees([]))
+        .finally(() => setIsLoadingMentees(false));
+    }
+  }, [isMentor]);
+
+  const handleOpenAssignResource = (item: ModuleContent) => {
+    setAssigningResource(item);
+    setSelectedMenteeIds([]);
+  };
+
+  const handleToggleMentee = (menteeId: string | number) => {
+    setSelectedMenteeIds((prev) =>
+      prev.includes(menteeId) ? prev.filter((id) => id !== menteeId) : [...prev, menteeId]
+    );
+  };
+
+  const handleToggleSelectAllMentees = () => {
+    if (selectedMenteeIds.length === myMentees.length) {
+      setSelectedMenteeIds([]);
+    } else {
+      setSelectedMenteeIds(myMentees.map((m) => m.id));
+    }
+  };
+
+  const handleConfirmAssignResource = async () => {
+    if (!assigningResource || selectedMenteeIds.length === 0) return;
+    setIsSubmittingAssignment(true);
+    try {
+      const res = await assignResourceToMentee(
+        assigningResource.id,
+        selectedMenteeIds,
+        currentModule.id,
+        assigningResource
+      );
+      if (res.success) {
+        const assignedNames = myMentees
+          .filter((m) => selectedMenteeIds.includes(m.id))
+          .map((m) => m.name);
+
+        setResourceAssignments((prev) => {
+          const updated = {
+            ...prev,
+            [String(assigningResource.id)]: Array.from(
+              new Set([...(prev[String(assigningResource.id)] || []), ...assignedNames])
+            ),
+          };
+          try {
+            localStorage.setItem(
+              `cbcm_module_resource_assignments_${currentModule.id}`,
+              JSON.stringify(updated)
+            );
+            // Also ensure all current contents and assigned resource are saved in module contents cache
+            const modKey = `cbcm_module_contents_${currentModule.id}`;
+            const rawMod = localStorage.getItem(modKey);
+            const existingMod = rawMod ? JSON.parse(rawMod) : [...contents];
+            const found = existingMod.some((m: any) => String(m.id) === String(assigningResource.id));
+            if (!found) {
+              existingMod.push(assigningResource);
+            }
+            localStorage.setItem(modKey, JSON.stringify(existingMod));
+          } catch {
+            // ignore
+          }
+          return updated;
+        });
+
+        // Track resource locally as assigned
+        setAssignedResourceIds((prev) => new Set([...Array.from(prev), String(assigningResource.id)]));
+
+        setFeedbackMessage({
+          type: "success",
+          text: res.message || `Resource "${assigningResource.title}" assigned successfully to ${selectedMenteeIds.length} mentee(s).`,
+        });
+        setAssigningResource(null);
+        setSelectedMenteeIds([]);
+      } else {
+        throw new Error(res.message || "Failed to assign resource to mentees.");
+      }
+    } catch (err: any) {
+      setFeedbackMessage({
+        type: "error",
+        text: err?.message || "Failed to assign resource to selected mentees.",
+      });
+    } finally {
+      setIsSubmittingAssignment(false);
+    }
+  };
+
+  // ----------------------------------------------------
   // Super Admin CRUD Modals State
   // ----------------------------------------------------
 
@@ -171,6 +339,12 @@ export function ModuleDetailClient({
   const [editDescription, setEditDescription] = useState(currentModule.description);
   const [editStatus, setEditStatus] = useState(currentModule.status);
   const [isSavingModule, setIsSavingModule] = useState(false);
+  const [editIsAuthorized, setEditIsAuthorized] = useState(Boolean(currentModule.isAuthorized));
+  const [newMaterialIsPublished, setNewMaterialIsPublished] = useState(true);
+  const [newMaterialIsAuthorized, setNewMaterialIsAuthorized] = useState(true);
+  const [editContentIsPublished, setEditContentIsPublished] = useState(true);
+  const [editContentIsAuthorized, setEditContentIsAuthorized] = useState(true);
+  const [isQuickPublishing, setIsQuickPublishing] = useState(false);
 
   // B. Delete Module Modal
   const [isDeleteModuleOpen, setIsDeleteModuleOpen] = useState(false);
@@ -212,6 +386,39 @@ export function ModuleDetailClient({
   // Handlers for Super Admin Module Operations
   // ----------------------------------------------------
 
+  // Quick one-click action for Super Admin to authorize and publish the module
+  const handleQuickAuthorizePublish = async () => {
+    setIsQuickPublishing(true);
+    try {
+      const res = await updateModule(currentModule.id, {
+        status: "published",
+        isPublished: true,
+        isAuthorized: true,
+      });
+      if (res.success) {
+        setCurrentModule((prev) => ({
+          ...prev,
+          status: "published",
+          isPublished: true,
+          isAuthorized: true,
+        }));
+        setFeedbackMessage({
+          type: "success",
+          text: "Module published and authorized on the platform!",
+        });
+      } else {
+        throw new Error(res.message || "Failed to authorize module.");
+      }
+    } catch (err: any) {
+      setFeedbackMessage({
+        type: "error",
+        text: err?.message || "Failed to authorize module.",
+      });
+    } finally {
+      setIsQuickPublishing(false);
+    }
+  };
+
   const handleUpdateModule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editTitle.trim()) {
@@ -225,6 +432,8 @@ export function ModuleDetailClient({
         title: editTitle.trim(),
         description: editDescription.trim(),
         status: editStatus,
+        isPublished: editStatus === "published",
+        isAuthorized: editIsAuthorized,
       });
 
       if (res.success) {
@@ -233,6 +442,8 @@ export function ModuleDetailClient({
           title: editTitle.trim(),
           description: editDescription.trim(),
           status: editStatus,
+          isPublished: editStatus === "published",
+          isAuthorized: editIsAuthorized,
         }));
         setIsEditModuleOpen(false);
         setFeedbackMessage({ type: "success", text: "Module updated successfully." });
@@ -296,6 +507,8 @@ export function ModuleDetailClient({
         file: newMaterialFile || undefined,
         order: contents.length + 1,
         isRequired: true,
+        isPublished: newMaterialIsPublished,
+        isAuthorized: newMaterialIsAuthorized,
       };
 
       const res = await addContent(currentModule.id, payload);
@@ -326,6 +539,8 @@ export function ModuleDetailClient({
     setEditContentDesc(item.description || "");
     setEditContentType(item.type || "document");
     setEditContentUrl(item.url || "");
+    setEditContentIsPublished(item.isPublished !== false);
+    setEditContentIsAuthorized(item.isAuthorized !== false);
   };
 
   const handleSaveEditContent = async (e: React.FormEvent) => {
@@ -425,42 +640,6 @@ export function ModuleDetailClient({
       <div className="bg-white rounded-2xl border border-gray-200/90 p-6 sm:p-8 shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-[#194611] border border-emerald-200/80">
-                <Layers className="w-3.5 h-3.5 text-[#194611]" />
-                {currentModule.thematicAreaName || "Clinical Midwifery"}
-              </span>
-
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-xs uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full",
-                  isPublished
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                    : "bg-amber-100 text-amber-800 border-amber-200"
-                )}
-              >
-                {currentModule.status}
-              </Badge>
-
-              {/* Role Perspective Badge */}
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[11px] font-semibold px-2.5 py-0.5 rounded-full",
-                  isSuperAdmin && "bg-purple-50 text-purple-800 border-purple-200",
-                  isFacilityAdmin && "bg-blue-50 text-blue-800 border-blue-200",
-                  isMentor && "bg-amber-50 text-amber-900 border-amber-200",
-                  isMentee && "bg-emerald-50 text-[#194611] border-emerald-200"
-                )}
-              >
-                {isSuperAdmin && "Super Admin (Full CRUD Control)"}
-                {isFacilityAdmin && "Facility Admin (Content Distribution)"}
-                {isMentor && "Clinical Preceptor View"}
-                {isMentee && "Junior Midwife Learning View"}
-              </Badge>
-            </div>
-
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 leading-tight">
               {currentModule.title}
             </h1>
@@ -476,11 +655,28 @@ export function ModuleDetailClient({
             {/* 2. Super Admin: Conditionally Render Edit Module & Delete Module */}
             {isSuperAdmin && (
               <>
+                {isSuperAdmin && (!currentModule.isAuthorized || currentModule.status !== "published") && (
+                  <Button
+                    size="sm"
+                    disabled={isQuickPublishing}
+                    onClick={handleQuickAuthorizePublish}
+                    className="bg-[#194611] hover:bg-[#13360d] text-white h-9 px-3.5 text-xs font-semibold shadow-xs cursor-pointer"
+                  >
+                    {isQuickPublishing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Authorize &amp; Publish Module
+                  </Button>
+                )}
+
                 <Button
                   onClick={() => {
                     setEditTitle(currentModule.title);
                     setEditDescription(currentModule.description);
                     setEditStatus(currentModule.status);
+                    setEditIsAuthorized(Boolean(currentModule.isAuthorized));
                     setIsEditModuleOpen(true);
                   }}
                   variant="outline"
@@ -608,8 +804,8 @@ export function ModuleDetailClient({
             </span>
           </TabsTrigger>
 
-          {/* Mentor Access Tab: Available to Facility Admin and Super Admin for preceptor authorization */}
-          {(isFacilityAdmin || isSuperAdmin) && (
+          {/* Mentor Access Tab: Available EXCLUSIVELY to Facility Admin for preceptor authorization */}
+          {isFacilityAdmin && (
             <TabsTrigger value="mentor-access" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Mentor Access</span>
@@ -619,12 +815,7 @@ export function ModuleDetailClient({
             </TabsTrigger>
           )}
 
-          {isMentor && (
-            <TabsTrigger value="mentor-evaluation" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
-              <ClipboardCheck className="w-3.5 h-3.5" />
-              <span>Preceptor Evaluation Guide</span>
-            </TabsTrigger>
-          )}
+          
 
           {isMentee && (
             <TabsTrigger value="competencies" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
@@ -680,6 +871,56 @@ export function ModuleDetailClient({
                     3. Once prepared, request a clinical competency assessment to verify your procedural compliance under Ministry of Health rubrics.
                   </p>
                 </div>
+              )}
+
+              {/* Mentee Quick-Access Assigned Materials */}
+              {isMentee && (
+                contents.length > 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-[#194611]" />
+                        Assigned Learning Materials ({contents.length})
+                      </h3>
+                      <Badge className="bg-emerald-50 text-[#194611] border-emerald-200 text-[10px] font-semibold">
+                        Study Materials Ready
+                      </Badge>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {contents.map((item, idx) => (
+                        <div key={item.id || idx} className="py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-gray-900 truncate">{item.title}</p>
+                            <p className="text-[11px] text-gray-500 capitalize">
+                              {item.type} {item.durationLabel ? `• ${item.durationLabel}` : item.fileSizeMb ? `• ${item.fileSizeMb} MB` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {item.url && item.url !== "#" ? (
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Study</span>
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-center space-y-2">
+                    <BookOpen className="w-6 h-6 text-gray-300 mx-auto" />
+                    <h4 className="text-xs font-bold text-gray-800">No Learning Materials Assigned Yet</h4>
+                    <p className="text-[11px] text-gray-500 max-w-sm mx-auto leading-relaxed">
+                      Mentees receive access to specific learning resources assigned by their clinical mentor rather than the entire module curriculum. Once your mentor assigns a clinical guide or checklist to you, it will appear here.
+                    </p>
+                  </div>
+                )
               )}
 
               {isMentor && (
@@ -750,9 +991,41 @@ export function ModuleDetailClient({
                     <span className="text-gray-500">Publication Status</span>
                     <Badge
                       variant="outline"
-                      className="text-[10px] uppercase font-bold text-emerald-800 bg-emerald-50 border-emerald-200"
+                      className={cn(
+                        "text-[10px] capitalize font-bold",
+                        isPublished
+                          ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+                          : "text-amber-800 bg-amber-50 border-amber-200"
+                      )}
                     >
-                      {currentModule.status}
+                      {currentModule.status
+                        ? currentModule.status.charAt(0).toUpperCase() + currentModule.status.slice(1).toLowerCase()
+                        : "Draft"}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-500">Clinical QA Status</span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] font-semibold flex items-center gap-1",
+                        currentModule.isAuthorized
+                          ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+                          : "text-amber-800 bg-amber-50 border-amber-200"
+                      )}
+                    >
+                      {currentModule.isAuthorized ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Authorized QA
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          Pending Approval
+                        </>
+                      )}
                     </Badge>
                   </div>
 
@@ -810,12 +1083,24 @@ export function ModuleDetailClient({
               )}
             </div>
 
-            {contents.length === 0 ? (
+            {isMentor && !isModuleAuthorized ? (
+              <div className="text-center py-12 border-2 border-dashed border-amber-200 bg-amber-50/50 rounded-xl space-y-3 p-6">
+                <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
+                <h4 className="text-sm font-bold text-gray-900">Module Pending Clinical QA Authorization</h4>
+                <p className="text-xs text-gray-600 max-w-md mx-auto leading-relaxed">
+                  Only resources linked to an authorized learning module are available to mentors. Once this module is authorized by the national quality assurance team, its attached clinical guides, videos, and protocols will be accessible for preceptors to review and assign to junior midwives.
+                </p>
+              </div>
+            ) : contents.length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl space-y-3">
                 <BookOpen className="w-8 h-8 text-gray-300 mx-auto" />
-                <h4 className="text-sm font-semibold text-gray-700">No Learning Materials Attached</h4>
+                <h4 className="text-sm font-semibold text-gray-700">
+                  {isMentee ? "No Clinical Materials Assigned Yet" : "No Learning Materials Attached"}
+                </h4>
                 <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                  {isSuperAdmin
+                  {isMentee
+                    ? "Your clinical preceptor has not yet assigned any materials for this module. Assigned materials, surgical videos, and checklists will appear here once dispatched by your mentor."
+                    : isSuperAdmin
                     ? "Click '+ Add Learning Material' above to upload your first PDF, instructional video, or external guide."
                     : "Curriculum materials are currently being prepared by the national clinical team."}
                 </p>
@@ -874,9 +1159,42 @@ export function ModuleDetailClient({
                             >
                               {item.type}
                             </Badge>
+
+                            {/* Super Admin Publication & Authorization Badges */}
+                            {isSuperAdmin && (
+                              <div className="flex items-center gap-1.5">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
+                                    item.isPublished !== false
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                      : "bg-gray-100 text-gray-600 border-gray-200"
+                                  )}
+                                >
+                                  {item.isPublished !== false ? "Published" : "Draft"}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
+                                    item.isAuthorized !== false
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                      : "bg-amber-50 text-amber-800 border-amber-200"
+                                  )}
+                                >
+                                  {item.isAuthorized !== false ? "Authorized" : "Pending QA"}
+                                </Badge>
+                              </div>
+                            )}
                             {isCompleted && (
                               <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
                                 <Check className="w-3 h-3" /> Reviewed
+                              </Badge>
+                            )}
+                            {isMentee && (assignedResourceIds.has(String(item.id)) || Boolean((item as any).assignedBy)) && (
+                              <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
+                                <Sparkles className="w-3 h-3 text-[#194611]" /> Assigned by Preceptor
                               </Badge>
                             )}
                           </div>
@@ -890,6 +1208,15 @@ export function ModuleDetailClient({
                             {item.durationLabel && <span>{item.durationLabel}</span>}
                             <span>Material #{item.order || index + 1}</span>
                           </div>
+
+                          {resourceAssignments[String(item.id)] && resourceAssignments[String(item.id)].length > 0 && (
+                            <div className="pt-1">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-[#194611] border border-emerald-200">
+                                <Users className="w-3 h-3 text-[#194611]" />
+                                Assigned to: {resourceAssignments[String(item.id)].join(", ")}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -910,6 +1237,29 @@ export function ModuleDetailClient({
                             <Check className={cn("w-3.5 h-3.5", isCompleted ? "text-[#194611]" : "text-gray-400")} />
                             <span>{isCompleted ? "Completed" : "Mark as Done"}</span>
                           </button>
+                        )}
+
+                        {/* Mentor Action: Assign Resource to Mentee (Only available on authorized modules and resources) */}
+                        {isMentor && (
+                          item.isAuthorized !== false && isModuleAuthorized ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleOpenAssignResource(item)}
+                              className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3 font-semibold shadow-2xs cursor-pointer flex items-center gap-1.5"
+                            >
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>Assign to Mentee</span>
+                            </Button>
+                          ) : (
+                            <span
+                              title="Only resources linked to an authorized learning module are available to mentors."
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-amber-800 bg-amber-50 rounded-lg border border-amber-200"
+                            >
+                              <Lock className="w-3 h-3 text-amber-700" />
+                              <span>Requires QA Approval</span>
+                            </span>
+                          )
                         )}
 
                         {/* View/Download link (available to all roles) */}
@@ -969,8 +1319,8 @@ export function ModuleDetailClient({
           </div>
         </TabsContent>
 
-        {/* 3. MENTOR ACCESS TAB: Available to Facility Admin and Super Admin */}
-        {(isFacilityAdmin || isSuperAdmin) && (
+        {/* 3. MENTOR ACCESS TAB: Available EXCLUSIVELY to Facility Admin */}
+        {isFacilityAdmin && (
           <TabsContent value="mentor-access" className="space-y-6">
             <MentorAccessTab
               moduleId={currentModule.id}
@@ -1001,59 +1351,7 @@ export function ModuleDetailClient({
           </TabsContent>
         )}
 
-        {/* Mentor Preceptor Guidance Tab */}
-        {isMentor && (
-          <TabsContent value="mentor-evaluation" className="space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-6">
-              <div>
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <ClipboardCheck className="w-4 h-4 text-[#194611]" />
-                  Preceptor Observational Checklist & Grading Guide
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Standardized observation rubrics and evaluation benchmarks for junior midwives working through this curriculum.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/50 space-y-2">
-                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    Procedural Verification Milestones
-                  </h4>
-                  <ul className="text-xs text-gray-700 space-y-1.5 list-disc list-inside">
-                    <li>Strict adherence to universal sterile technique & PPE protocol</li>
-                    <li>Accurate timely recording on national digital clinical partographs</li>
-                    <li>Safe administration of uterotonics and prompt hemorrhage staging</li>
-                    <li>Patient dignity, adolescent-sensitive communication, and informed consent</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/50 space-y-2">
-                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <Award className="w-4 h-4 text-amber-800" />
-                    Passing Criteria & Sign-off
-                  </h4>
-                  <p className="text-xs text-gray-700 leading-relaxed">
-                    Mentees must score at least <strong>80%</strong> on procedural observation rubrics and complete all prerequisites before you sign off on clinical competency certification.
-                  </p>
-                  <div className="pt-2">
-                    <Link
-                      href={`/my-assessments/new?moduleTitle=${encodeURIComponent(currentModule.title)}`}
-                      className={cn(
-                        buttonVariants({ size: "sm" }),
-                        "bg-[#194611] hover:bg-[#13360d] text-white text-xs cursor-pointer shadow-2xs"
-                      )}
-                    >
-                      <Stethoscope className="w-3.5 h-3.5 mr-1" />
-                      Begin Clinical Assessment
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-        )}
+        
 
         {/* Mentee Clinical Competencies Tab */}
         {isMentee && (
@@ -1129,6 +1427,140 @@ export function ModuleDetailClient({
       </Tabs>
 
       {/* ---------------------------------------------------- */}
+      {/* MENTOR MODAL: ASSIGN RESOURCE TO MENTEE */}
+      {/* ---------------------------------------------------- */}
+      {isMentor && (
+        <Dialog open={!!assigningResource} onOpenChange={(open) => !open && setAssigningResource(null)}>
+          <DialogContent className="max-w-md bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <DialogTitle className="text-lg font-bold text-[#194611] flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-[#194611]" />
+                Assign Resource to Mentee
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-500">
+                Grant your assigned junior midwives direct access to study this material.
+              </DialogDescription>
+            </DialogHeader>
+
+            {assigningResource && (
+              <div className="space-y-4 py-2">
+                {/* Resource summary banner */}
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#194611] flex items-center justify-center shrink-0">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate">{assigningResource.title}</p>
+                    <p className="text-[11px] text-gray-500 capitalize">
+                      {assigningResource.type || "Document"} • Module #{currentModule.id}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mentees checklist */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-700">
+                      Select Mentees ({selectedMenteeIds.length} of {myMentees.length} selected)
+                    </label>
+                    {myMentees.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleSelectAllMentees}
+                        className="text-xs font-semibold text-[#194611] hover:underline cursor-pointer"
+                      >
+                        {selectedMenteeIds.length === myMentees.length ? "Deselect All" : "Select All"}
+                      </button>
+                    )}
+                  </div>
+
+                  {isLoadingMentees ? (
+                    <div className="py-8 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#194611]" />
+                      Loading your assigned mentees...
+                    </div>
+                  ) : myMentees.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-gray-500 bg-gray-50 rounded-xl border border-gray-200 p-4">
+                      <Users className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
+                      <p className="font-semibold text-gray-700">No Active Mentees Found</p>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        You do not currently have any junior midwives assigned to you in this mentorship cycle.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-xl">
+                      {myMentees.map((mentee) => {
+                        const isSelected = selectedMenteeIds.includes(mentee.id);
+                        return (
+                          <div
+                            key={mentee.id}
+                            onClick={() => handleToggleMentee(mentee.id)}
+                            className={cn(
+                              "p-3 flex items-center justify-between cursor-pointer transition select-none",
+                              isSelected ? "bg-emerald-50/70" : "hover:bg-gray-50"
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 text-[#194611] flex items-center justify-center text-xs font-bold shrink-0">
+                                {mentee.name ? mentee.name.charAt(0).toUpperCase() : "M"}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-gray-900 truncate">{mentee.name}</p>
+                                <p className="text-[11px] text-gray-500 truncate">
+                                  {mentee.title || mentee.code || "Resident Midwife"}{" "}
+                                  {mentee.facility ? `• ${mentee.facility}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="size-4 rounded text-[#194611] focus:ring-[#194611] border-gray-300"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssigningResource(null)}
+                disabled={isSubmittingAssignment}
+                className="text-xs text-gray-600 hover:text-gray-900"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmAssignResource}
+                disabled={isSubmittingAssignment || selectedMenteeIds.length === 0}
+                className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold gap-1.5 shadow-2xs"
+              >
+                {isSubmittingAssignment ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Assign to {selectedMenteeIds.length} Mentee{selectedMenteeIds.length === 1 ? "" : "s"}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ---------------------------------------------------- */}
       {/* SUPER ADMIN MODALS: EDIT MODULE, DELETE, ADD/EDIT CONTENT */}
       {/* ---------------------------------------------------- */}
 
@@ -1169,6 +1601,20 @@ export function ModuleDetailClient({
                 </select>
               </div>
 
+              {/* Super Admin Module Clinical QA Authorization Checkbox */}
+              <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                <input
+                  type="checkbox"
+                  id="editIsAuthorized"
+                  checked={editIsAuthorized}
+                  onChange={(e) => setEditIsAuthorized(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                />
+                <label htmlFor="editIsAuthorized" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                  Clinical QA Authorization (Accredited by National Administration)
+                </label>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-800">Description / Syllabus</label>
                 <Textarea
@@ -1177,6 +1623,34 @@ export function ModuleDetailClient({
                   onChange={(e) => setEditDescription(e.target.value)}
                   className="text-xs bg-white"
                 />
+              </div>
+
+              {/* Super Admin Material Publication & Authorization Checkboxes */}
+              <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newMaterialIsPublished"
+                    checked={newMaterialIsPublished}
+                    onChange={(e) => setNewMaterialIsPublished(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="newMaterialIsPublished" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Publish Immediately (Visible to preceptors &amp; mentees)
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newMaterialIsAuthorized"
+                    checked={newMaterialIsAuthorized}
+                    onChange={(e) => setNewMaterialIsAuthorized(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="newMaterialIsAuthorized" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Clinical Authorization (QA Approved Protocol)
+                  </label>
+                </div>
               </div>
 
               <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
@@ -1464,6 +1938,34 @@ export function ModuleDetailClient({
                   />
                 </div>
               )}
+
+              {/* Super Admin Edit Resource Publication & Authorization */}
+              <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editContentIsPublished"
+                    checked={editContentIsPublished}
+                    onChange={(e) => setEditContentIsPublished(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="editContentIsPublished" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Published (Visible to facility preceptors and mentees)
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editContentIsAuthorized"
+                    checked={editContentIsAuthorized}
+                    onChange={(e) => setEditContentIsAuthorized(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#194611] focus:ring-[#194611] cursor-pointer"
+                  />
+                  <label htmlFor="editContentIsAuthorized" className="text-xs font-semibold text-gray-800 cursor-pointer">
+                    Authorized (Clinical QA Protocol Approved)
+                  </label>
+                </div>
+              </div>
 
               <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                 <Button

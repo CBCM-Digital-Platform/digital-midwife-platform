@@ -3,6 +3,7 @@ import { ENDPOINTS } from "@/services/endpoints";
 import { FACILITY_ID_MAP } from "@/services/users.service";
 import { getStoredAssessments } from "@/services/mentor-assessments.service";
 import type { CompetencyLevel, MyMentee } from "@/types/my-mentee";
+import type { MentorAssessment } from "@/types/mentor-assessment";
 
 function parseCompetencyLevel(rawLevel?: string, qualification?: string): CompetencyLevel {
     const l = (rawLevel || "").toUpperCase();
@@ -37,6 +38,10 @@ function isApiRecord(value: unknown): value is ApiRecord {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function getId(value: unknown): string | number | undefined {
+    return typeof value === "string" || typeof value === "number" ? value : undefined;
+}
+
 function getApiList(response: unknown, collectionKeys: string[]): ApiRecord[] {
     let payload = response;
     for (let depth = 0; depth < 4; depth += 1) {
@@ -68,69 +73,30 @@ function getApiRecord(response: unknown, recordKeys: string[]): ApiRecord {
 }
 
 function getMenteeDisplayName(mentee: ApiRecord): string {
-    const records: ApiRecord[] = [];
-    const visited = new Set<ApiRecord>();
-    const pending = [mentee];
-    while (pending.length > 0) {
-        const record = pending.shift();
-        if (!record || visited.has(record)) continue;
-        visited.add(record);
-        records.push(record);
-        for (const value of Object.values(record)) {
-            if (isApiRecord(value)) pending.push(value);
+    const firstName = String(mentee.first_name ?? mentee.firstName ?? "").trim();
+    const lastName = String(mentee.last_name ?? mentee.lastName ?? "").trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+    for (const candidate of [
+        mentee.full_name,
+        mentee.fullName,
+        fullName,
+        mentee.name,
+        mentee.username,
+        mentee.user_name,
+    ]) {
+        if (
+            typeof candidate === "string" &&
+            candidate.trim() &&
+            !["mentee", "mentor", "clinician", "user", "resident midwife"].includes(
+                candidate.trim().toLowerCase()
+            )
+        ) {
+            return candidate.trim();
         }
     }
 
-    for (const record of records) {
-        const firstName = String(
-            record.first_name ??
-            record.firstName ??
-            record.mentee_first_name ??
-            record.menteeFirstName ??
-            ""
-        ).trim();
-        const lastName = String(
-            record.last_name ??
-            record.lastName ??
-            record.mentee_last_name ??
-            record.menteeLastName ??
-            ""
-        ).trim();
-        const fullName = `${firstName} ${lastName}`.trim();
-        for (const candidate of [
-            record.mentee_name,
-            record.menteeName,
-            record.mentee_full_name,
-            record.menteeFullName,
-            record.full_name,
-            record.fullName,
-            fullName,
-            record.name,
-        ]) {
-            if (
-                typeof candidate === "string" &&
-                candidate.trim() &&
-                !["mentee", "mentor", "clinician", "user", "resident midwife"].includes(
-                    candidate.trim().toLowerCase()
-                )
-            ) {
-                return candidate.trim();
-            }
-        }
-    }
-
-    for (const record of records) {
-        for (const candidate of [record.username, record.user_name]) {
-            if (typeof candidate === "string" && candidate.trim()) {
-                return candidate.trim();
-            }
-        }
-    }
-
-    for (const record of records) {
-        if (typeof record.email === "string" && record.email.includes("@")) {
-            return record.email.slice(0, record.email.indexOf("@")).replace(/[._-]+/g, " ").trim();
-        }
+    if (typeof mentee.email === "string" && mentee.email.includes("@")) {
+        return mentee.email.slice(0, mentee.email.indexOf("@")).replace(/[._-]+/g, " ").trim();
     }
 
     return "Name unavailable";
@@ -138,7 +104,7 @@ function getMenteeDisplayName(mentee: ApiRecord): string {
 
 /**
  * Fetches real active mentees assigned specifically to the logged-in mentor from the backend database.
- * Only backend assignments linked to this mentor are used to build the list.
+ * No mock data fallback is used; returns real assigned mentees or empty array.
  */
 export async function getMyMentees(mentorIdOverride?: string | number): Promise<MyMentee[]> {
     try {
@@ -169,14 +135,12 @@ export async function getMyMentees(mentorIdOverride?: string | number): Promise<
             throw new Error("Unable to determine the signed-in mentor ID.");
         }
 
-        const assignmentsResponse = await apiClient<unknown>(
-            ENDPOINTS.ASSIGNMENTS.MENTOR_ASSIGNMENTS(myId)
-        );
-        const allAssignments = getApiList(assignmentsResponse, [
-            "assignments",
-            "items",
-            "results",
+        const [assignmentsResponse, facilitiesRes, rawAssessmentsRes] = await Promise.all([
+            apiClient<unknown>(ENDPOINTS.ASSIGNMENTS.MENTOR_ASSIGNMENTS(myId)),
+            apiClient<any>("/api/v1/facilities?limit=100").catch(() => null),
+            apiClient<any>(`${ENDPOINTS.ASSESSMENTS.BASE}?limit=100`).catch(() => null),
         ]);
+        const allAssignments = getApiList(assignmentsResponse, ["assignments", "items", "results"]);
         const contactsById = new Map<string, ApiRecord>();
         try {
             const contactsResponse = await apiClient<unknown>("/api/v1/messages/contacts");
@@ -193,138 +157,128 @@ export async function getMyMentees(mentorIdOverride?: string | number): Promise<
         // Build facilities lookup map
         const facilityMap = new Map<string, string>();
         Object.entries(FACILITY_ID_MAP).forEach(([k, v]) => facilityMap.set(String(k), v));
+        for (const facility of getApiList(facilitiesRes, ["facilities"])) {
+            if (facility.id && facility.name) {
+                facilityMap.set(String(facility.id), String(facility.name));
+            }
+        }
 
         // Find mentee IDs assigned to this mentor
         const assignedMenteeIds = new Set<string>();
-        const assignedMenteeMap = new Map<string, any>();
+        const assignedMenteeMap = new Map<string, ApiRecord>();
         const assignmentIdsByMentee = new Map<string, Set<string | number>>();
         const assignmentContextByMentee = new Map<
             string,
             { facilityId?: string | number; cycleId?: string | number }
         >();
-        const addAssignmentContext = (menteeId: string, assignment: any) => {
-            const facilityId =
-                assignment.facility_id ??
-                assignment.facilityId ??
-                assignment.facility?.id;
-            const cycleId = assignment.cycle_id ?? assignment.cycleId;
-            const current = assignmentContextByMentee.get(menteeId) ?? {};
-            assignmentContextByMentee.set(menteeId, {
-                facilityId: current.facilityId ?? facilityId,
-                cycleId: current.cycleId ?? cycleId,
-            });
-        };
 
-        for (const a of allAssignments) {
-            const mentor = getApiRecord(a, ["mentor"]);
-            const assignMentorId = String(a.mentor_id || a.mentorId || mentor.id || "");
+        for (const assignment of allAssignments) {
+            const mentor = getApiRecord(assignment, ["mentor"]);
+            const assignmentMentorId = String(
+                assignment.mentor_id ?? assignment.mentorId ?? mentor.id ?? ""
+            );
+            if (assignmentMentorId && !isSameId(assignmentMentorId, myId)) continue;
 
-            const isMatch =
-                isSameId(assignMentorId, myId) ||
-                !assignMentorId;
+            const mentee = getApiRecord(assignment, [
+                "mentee",
+                "mentee_user",
+                "menteeUser",
+                "mentee_profile",
+            ]);
+            const menteeId = String(
+                assignment.mentee_id ?? assignment.menteeId ?? mentee.id ?? ""
+            );
+            if (!menteeId || menteeId === "undefined" || menteeId === "null") continue;
 
-            if (isMatch) {
-                // Single mentee reference
-                const menteeRecord =
-                    getApiRecord(a, ["mentee", "mentee_user", "menteeUser", "mentee_profile"]);
-                const singleId = String(a.mentee_id || a.menteeId || menteeRecord.id || "");
-                if (singleId && singleId !== "undefined" && singleId !== "null") {
-                    assignedMenteeIds.add(singleId);
-                    if (Object.keys(menteeRecord).length > 0) {
-                        assignedMenteeMap.set(singleId, menteeRecord);
-                    } else {
-                        assignedMenteeMap.set(singleId, a);
-                    }
-                    addAssignmentContext(singleId, a);
-                    const assignmentId = a.id ?? a.assignment_id;
-                    if (typeof assignmentId === "string" || typeof assignmentId === "number") {
-                        const assignmentIds = assignmentIdsByMentee.get(singleId) ?? new Set();
-                        assignmentIds.add(assignmentId);
-                        assignmentIdsByMentee.set(singleId, assignmentIds);
-                    }
-                }
+            assignedMenteeIds.add(menteeId);
+            assignedMenteeMap.set(
+                menteeId,
+                Object.keys(mentee).length > 0 ? mentee : assignment
+            );
 
-                // Array of mentees
-                if (Array.isArray(a.mentees)) {
-                    for (const m of a.mentees) {
-                        const mid = String(m.id || m.mentee_id || "");
-                        if (mid && mid !== "undefined" && mid !== "null") {
-                            assignedMenteeIds.add(mid);
-                            const menteeRecord = getApiRecord(m, ["user", "mentee", "profile"]);
-                            assignedMenteeMap.set(
-                                mid,
-                                Object.keys(menteeRecord).length > 0 ? menteeRecord : m
-                            );
-                            addAssignmentContext(mid, a);
-                            const assignmentId = a.id ?? a.assignment_id;
-                            if (typeof assignmentId === "string" || typeof assignmentId === "number") {
-                                const assignmentIds = assignmentIdsByMentee.get(mid) ?? new Set();
-                                assignmentIds.add(assignmentId);
-                                assignmentIdsByMentee.set(mid, assignmentIds);
-                            }
-                        }
-                    }
-                }
+            const assignmentId = assignment.id ?? assignment.assignment_id;
+            if (typeof assignmentId === "string" || typeof assignmentId === "number") {
+                const assignmentIds = assignmentIdsByMentee.get(menteeId) ?? new Set();
+                assignmentIds.add(assignmentId);
+                assignmentIdsByMentee.set(menteeId, assignmentIds);
             }
+
+            const facilityId = getId(assignment.facility_id ?? assignment.facilityId);
+            const cycleId = getId(assignment.cycle_id ?? assignment.cycleId);
+            assignmentContextByMentee.set(menteeId, { facilityId, cycleId });
         }
 
         // If no assignments exist for this mentor, return empty list (NO MOCK DATA)
         if (assignedMenteeIds.size === 0) {
             if (allAssignments.length > 0) {
                 throw new Error(
-                    `The backend returned ${allAssignments.length} assignments, but none matched the signed-in mentor ID${myId ? ` ${myId}` : ""}. Verify that the assignment's mentor_id matches this account.`
+                    `The backend returned ${allAssignments.length} assignments, but none matched the signed-in mentor ID ${myId}.`
                 );
             }
             return [];
         }
 
-        const allAssessments = getStoredAssessments();
-        const menteeById = new Map<string, any>();
-
-        // Use profile data embedded in the mentor's assignment if the bulk user list omits it.
-        for (const assignedId of assignedMenteeIds) {
-            if (menteeById.has(assignedId)) continue;
-            const assignmentMentee = assignedMenteeMap.get(assignedId);
-            menteeById.set(
-                assignedId,
-                assignmentMentee && typeof assignmentMentee === "object"
-                    ? { ...assignmentMentee, id: assignmentMentee.id ?? assignedId }
-                    : { id: assignedId }
-            );
-        }
+        // Parse assessments without calling getAssessments() to avoid circular recursion
+        const parsedAssessments: MentorAssessment[] = [];
+        const rawAstList = getApiList(rawAssessmentsRes, ["assessments", "items", "results"]);
+        rawAstList.forEach((ast: any) => {
+            parsedAssessments.push({
+                id: String(ast.id),
+                menteeId: String(ast.mentee_id || ast.menteeId),
+                menteeName: ast.mentee?.full_name || ast.mentee_name || "Mentee",
+                menteeTitle: ast.mentee?.highest_qualification || "Resident Midwife",
+                date: ast.assessment_date || ast.date || new Date().toISOString().slice(0, 10),
+                type: ast.thematic_area?.name || ast.title || ast.type || "Clinical Assessment",
+                status: ast.status || "PENDING",
+                scorePct: ast.score !== undefined ? ast.score : null,
+                dueDate: ast.due_date || ast.dueDate,
+                instructions: ast.instructions,
+            });
+        });
+        const storedAssessments = getStoredAssessments();
+        const allAssessments = [...storedAssessments, ...parsedAssessments];
 
         // Build MyMentee list from real assigned mentees
         const result: MyMentee[] = [];
 
         for (const assignedId of Array.from(assignedMenteeIds)) {
-            const userObj = menteeById.get(assignedId);
-            if (!userObj) continue;
+            const assignmentProfile = assignedMenteeMap.get(assignedId);
+            const contactProfile = contactsById.get(assignedId);
+            const userObj: ApiRecord = {
+                ...(contactProfile ?? {}),
+                ...(assignmentProfile ?? {}),
+                id: assignmentProfile?.id ?? contactProfile?.id ?? assignedId,
+            };
 
-            const facId = String(userObj.facility_id ?? userObj.facilityId ?? userObj.facility?.id ?? "");
+            const facility = getApiRecord(userObj, ["facility"]);
+            const facilityValue = userObj.facility;
+            const facId = String(userObj.facility_id ?? userObj.facilityId ?? facility.id ?? "");
             const facName =
                 (facId && facilityMap.get(facId)) ||
                 userObj.facility_name ||
-                userObj.facility?.name ||
-                (typeof userObj.facility === "string" ? userObj.facility : "Assigned Facility");
+                facility.name ||
+                (typeof facilityValue === "string" ? facilityValue : "Assigned Facility");
 
-            const active = userObj.status ? userObj.status.toLowerCase() !== "inactive" : true;
-            const title =
+            const active = userObj.status ? String(userObj.status).toLowerCase() !== "inactive" : true;
+            const title = String(
                 userObj.highest_qualification ||
                 userObj.specialty ||
                 userObj.subtitle ||
                 userObj.profession ||
                 userObj.training_status ||
-                "Resident Midwife";
+                "Resident Midwife"
+            );
             const level = parseCompetencyLevel(
-                userObj.competency_level || userObj.cadreLevel || userObj.level,
+                String(userObj.competency_level ?? userObj.cadreLevel ?? userObj.level ?? ""),
                 title
             );
 
-            const lastSession =
+            const lastSession = String(
                 userObj.last_session_date ||
-                userObj.updated_at?.slice(0, 10) ||
+                String(userObj.updated_at ?? "").slice(0, 10) ||
                 userObj.assignedDate ||
-                new Date().toISOString().slice(0, 10);
+                new Date().toISOString().slice(0, 10)
+            );
 
             const daysSinceSession = Math.floor(
                 (Date.now() - new Date(lastSession).getTime()) / 86_400_000
@@ -343,20 +297,19 @@ export async function getMyMentees(mentorIdOverride?: string | number): Promise<
 
             result.push({
                 id: assignedId,
-                code: userObj.code || userObj.systemId || `M-${String(assignedId).padStart(4, "0")}`,
+                code: String(userObj.code || userObj.systemId || `M-${String(assignedId).padStart(4, "0")}`),
                 name: menteeName,
                 title,
-                facility: facName,
+                facility: String(facName),
                 level,
                 active,
                 lastSession,
                 overdue: daysSinceSession > 14,
-                avatarUrl: userObj.avatar_url || userObj.avatarUrl || null,
+                avatarUrl: typeof (userObj.avatar_url ?? userObj.avatarUrl) === "string"
+                    ? String(userObj.avatar_url ?? userObj.avatarUrl)
+                    : null,
                 assignmentIds: Array.from(assignmentIdsByMentee.get(assignedId) ?? []),
-                facilityId:
-                    userObj.facility_id ??
-                    userObj.facilityId ??
-                    userObj.facility?.id ??
+                facilityId: getId(userObj.facility_id ?? userObj.facilityId ?? facility.id) ??
                     assignmentContextByMentee.get(assignedId)?.facilityId,
                 cycleId: assignmentContextByMentee.get(assignedId)?.cycleId,
                 assignedAssessment: menteeAssessment,

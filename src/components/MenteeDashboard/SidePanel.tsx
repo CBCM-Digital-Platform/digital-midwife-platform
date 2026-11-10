@@ -48,7 +48,7 @@ export function SidePanel({ mentor, handbook }: { mentor: AssignedMentor; handbo
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
                     <Link
-                        href="/messaging"
+                        href={mentor.id ? `/messaging?userId=${String(mentor.id).replace(/\D/g, "") || mentor.id}&name=${encodeURIComponent(mentor.name)}` : "/messaging"}
                         className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm font-semibold text-gray-800 hover:bg-gray-50"
                     >
                         Message

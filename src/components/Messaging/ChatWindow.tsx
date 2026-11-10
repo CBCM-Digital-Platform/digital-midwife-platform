@@ -112,7 +112,11 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
                 </button>
               </div>
 
-              {contacts.length > 0 && (
+              {loadingContacts ? (
+                <div className="py-2 text-center text-xs text-gray-500">
+                  Loading contacts...
+                </div>
+              ) : contacts.length > 0 ? (
                 <div className="mb-2">
                   <input
                     value={contactSearch}
@@ -125,7 +129,7 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() => startConversationWithContact(c.id)}
+                        onClick={() => startConversationWithContact(c.id, c.full_name)}
                         disabled={creating}
                         className="flex w-full items-center justify-between rounded p-1.5 text-left text-xs transition hover:bg-[#eef3ea]"
                       >
@@ -148,7 +152,7 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
                     )}
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <form onSubmit={createConversation} className="mt-2 flex gap-1.5 border-t border-gray-200/60 pt-2">
                 <input
@@ -230,7 +234,7 @@ export default function ChatWindow({ role }: { role: MessagingRole }) {
                       {conversation.name}
                     </span>
                     <span className="shrink-0 text-[11px] text-[#758071]">
-                      {conversation.lastMessageTime}
+                      {conversation.lastMessageTime || (conversation.id < 0 ? "Assigned" : "")}
                     </span>
                   </span>
                   <span className="mt-1 block truncate text-xs text-[#697466]">

@@ -28,6 +28,10 @@ export const resourceFormSchema = z
       .trim()
       .optional()
       .or(z.literal("")),
+    moduleId: z
+      .string()
+      .optional()
+      .or(z.literal("")),
   })
   .superRefine((data, ctx) => {
     // If resource type is "link", a valid URL or web reference is required

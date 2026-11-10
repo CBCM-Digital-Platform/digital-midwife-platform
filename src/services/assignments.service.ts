@@ -274,6 +274,53 @@ export async function getAssignmentStats(facilityId?: number | string): Promise<
     }
 }
 
+export const CREATED_ASSIGNMENTS_STORAGE_KEY = "cbcm_created_assignments";
+
+/**
+ * Retrieves newly created assignments stored locally in the browser.
+ */
+export function getStoredCreatedAssignments(): Assignment[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = localStorage.getItem(CREATED_ASSIGNMENTS_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        console.error("Error reading stored assignments:", e);
+        return [];
+    }
+}
+
+/**
+ * Saves a newly created assignment to local storage, placing it at the very top.
+ */
+export function saveCreatedAssignment(newAssignment: Assignment): void {
+    if (typeof window === "undefined") return;
+    try {
+        const existing = getStoredCreatedAssignments();
+        const filtered = existing.filter((a) => a.id !== newAssignment.id);
+        const updated = [{ ...newAssignment, isNew: true }, ...filtered];
+        localStorage.setItem(CREATED_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+        console.error("Error saving assignment to localStorage:", e);
+    }
+}
+
+/**
+ * Removes a created assignment from local storage.
+ */
+export function removeCreatedAssignment(id: string): void {
+    if (typeof window === "undefined") return;
+    try {
+        const existing = getStoredCreatedAssignments();
+        const updated = existing.filter((a) => a.id !== id);
+        localStorage.setItem(CREATED_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+        console.error("Error removing assignment from localStorage:", e);
+    }
+}
+
 /**
  * Groups a flat list of assignments by mentor so each mentor is associated
  * with the horizontal list of their assigned mentees.
