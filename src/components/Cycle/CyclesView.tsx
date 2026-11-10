@@ -1,13 +1,30 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Calendar, Filter, Plus, AlertCircle, CheckCircle2 } from "lucide-react";
 import type { Cycle, CycleStatus } from "@/types/cycle";
-import { deleteCycle, transitionCycleStatus } from "@/services/cycle-data.service";
+import {
+    deleteCycle,
+    transitionCycleStatus,
+    getLocallyCreatedCycles,
+    removeLocallyCreatedCycle,
+} from "@/services/cycle-data.service";
 import CycleCard from "./CycleCard";
 import CycleSnapshot from "./CycleSnapshot";
 
-export default function CyclesView({ cycles }: { cycles: Cycle[] }) {
+export default function CyclesView({
+    cycles,
+    facilityId,
+    isFacilityAdmin = false,
+    loadError = null,
+}: {
+    cycles: Cycle[];
+    facilityId?: string | number | null;
+    isFacilityAdmin?: boolean;
+    loadError?: string | null;
+}) {
+    const router = useRouter();
     const [cycleList, setCycleList] = useState<Cycle[]>(cycles);
     const [status, setStatus] = useState<"ALL" | CycleStatus>("ALL");
     const [year, setYear] = useState("ALL");
@@ -17,8 +34,23 @@ export default function CyclesView({ cycles }: { cycles: Cycle[] }) {
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
     useEffect(() => {
-        setCycleList(cycles);
-    }, [cycles]);
+        const localCycles =
+            isFacilityAdmin && (facilityId === undefined || facilityId === null)
+                ? []
+                : getLocallyCreatedCycles(facilityId);
+        const combined = [...cycles];
+        for (const lc of localCycles) {
+            if (!combined.some((c) => String(c.id) === String(lc.id))) {
+                combined.unshift(lc);
+            }
+        }
+        setCycleList(combined);
+
+        setSelectedId((current) => {
+            if (current && combined.some((c) => c.id === current)) return current;
+            return combined.find((c) => c.status === "ACTIVE")?.id ?? combined[0]?.id ?? null;
+        });
+    }, [cycles, facilityId, isFacilityAdmin]);
 
     const showFeedback = (type: "success" | "error", message: string) => {
         setFeedback({ type, message });
@@ -28,6 +60,7 @@ export default function CyclesView({ cycles }: { cycles: Cycle[] }) {
     const handleDeleteCycle = async (id: string) => {
         try {
             await deleteCycle(id);
+            removeLocallyCreatedCycle(id);
             setCycleList((prev) => prev.filter((c) => c.id !== id));
             if (selectedId === id) {
                 setSelectedId(null);
@@ -145,36 +178,80 @@ export default function CyclesView({ cycles }: { cycles: Cycle[] }) {
                 </div>
             )}
 
-            <div
-                className={`grid gap-6 ${selected ? "lg:grid-cols-[1fr_340px]" : "grid-cols-1"} items-start`}
-            >
-                <div className="space-y-4">
-                    {filtered.length === 0 ? (
-                        <p className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
-                            No cycles match these filters.
-                        </p>
-                    ) : (
-                        filtered.map((cycle) => (
-                            <CycleCard
-                                key={cycle.id}
-                                cycle={cycle}
-                                selected={cycle.id === selectedId}
-                                onSelect={() => setSelectedId(cycle.id)}
-                                onDelete={handleDeleteCycle}
-                                onStatusChange={handleStatusChange}
-                            />
-                        ))
+            {loadError ? (
+                <div
+                    role="alert"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800"
+                >
+                    <span>{loadError}</span>
+                    <button
+                        type="button"
+                        onClick={() => router.refresh()}
+                        className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-medium hover:bg-red-100"
+                    >
+                        Retry
+                    </button>
+                </div>
+            ) : cycleList.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center shadow-xs">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-[#0B5D3B] mb-4">
+                        <Calendar className="h-7 w-7" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">No Mentorship Cycles Yet</h3>
+                    <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
+                        {isFacilityAdmin
+                            ? "No mentorship cycles have been created for your facility yet. Create your first cycle to begin scheduling cohorts and preceptor assignments."
+                            : "No mentorship cycles found in the system. Click below to create a new cycle."}
+                    </p>
+                    <Link
+                        href="/cycles/new"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#0B5D3B] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#094d31] transition shadow-xs"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Create New Cycle
+                    </Link>
+                </div>
+            ) : (
+                <div
+                    className={`grid gap-6 ${selected ? "lg:grid-cols-[1fr_340px]" : "grid-cols-1"} items-start`}
+                >
+                    <div className="space-y-4">
+                        {filtered.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
+                                <p>No cycles match the selected filters.</p>
+                                <button
+                                    onClick={() => {
+                                        setStatus("ALL");
+                                        setYear("ALL");
+                                    }}
+                                    className="mt-3 text-xs font-semibold text-[#0B5D3B] hover:underline cursor-pointer"
+                                >
+                                    Reset Filters
+                                </button>
+                            </div>
+                        ) : (
+                            filtered.map((cycle) => (
+                                <CycleCard
+                                    key={cycle.id}
+                                    cycle={cycle}
+                                    selected={cycle.id === selectedId}
+                                    onSelect={() => setSelectedId(cycle.id)}
+                                    onDelete={handleDeleteCycle}
+                                    onStatusChange={handleStatusChange}
+                                />
+                            ))
+                        )}
+                    </div>
+
+                    {selected && (
+                        <CycleSnapshot
+                            cycle={selected}
+                            onClose={() => setSelectedId(null)}
+                            onDelete={handleDeleteCycle}
+                        />
                     )}
                 </div>
-
-                {selected && (
-                    <CycleSnapshot
-                        cycle={selected}
-                        onClose={() => setSelectedId(null)}
-                        onDelete={handleDeleteCycle}
-                    />
-                )}
-            </div>
+            )}
         </div>
     );
 }

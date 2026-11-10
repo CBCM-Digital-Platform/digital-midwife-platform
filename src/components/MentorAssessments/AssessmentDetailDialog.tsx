@@ -6,22 +6,18 @@ import {
     Calendar,
     CheckCircle2,
     Clock,
-    Download,
     ExternalLink,
     FileText,
-    HelpCircle,
     Paperclip,
-    UserCheck,
     X,
     XCircle,
     Award,
     Building2,
 } from "lucide-react";
-import type { MentorAssessment, AssessmentStatus } from "@/types/mentor-assessment";
+import type { MentorAssessment } from "@/types/mentor-assessment";
 import type { MyMentee } from "@/types/my-mentee";
 import { CompetencyBadge, MenteeAvatar, formatSessionDate } from "@/components/MyMentees/MenteeParts";
 import { updateAssessmentStatus } from "@/services/mentor-assessments.service";
-import { cn } from "@/lib/utils";
 
 interface AssessmentDetailDialogProps {
     assessment: MentorAssessment | null;
@@ -41,11 +37,17 @@ export function AssessmentDetailDialog({
     const [isUpdating, setIsUpdating] = useState(false);
     const [scoreInput, setScoreInput] = useState<string>("");
     const [showScorePrompt, setShowScorePrompt] = useState(false);
+    const [actionError, setActionError] = useState<string | null>(null);
 
     if (!isOpen || !assessment) return null;
 
-    const handleMarkPass = async (score: number = 90) => {
+    const handleMarkPass = async (score: number) => {
+        if (!Number.isFinite(score) || score < 0 || score > 100) {
+            setActionError("Enter an aggregate score from 0 to 100 before submitting.");
+            return;
+        }
         setIsUpdating(true);
+        setActionError(null);
         try {
             const updated = await updateAssessmentStatus(assessment.id, "PASS", score);
             if (updated && onAssessmentUpdated) {
@@ -54,6 +56,7 @@ export function AssessmentDetailDialog({
             setShowScorePrompt(false);
         } catch (e) {
             console.error("Failed to update assessment status:", e);
+            setActionError(e instanceof Error ? e.message : "Unable to submit the assessment review.");
         } finally {
             setIsUpdating(false);
         }
@@ -61,6 +64,7 @@ export function AssessmentDetailDialog({
 
     const handleMarkNeedsReview = async () => {
         setIsUpdating(true);
+        setActionError(null);
         try {
             const updated = await updateAssessmentStatus(assessment.id, "NEEDS_REVIEW", 65);
             if (updated && onAssessmentUpdated) {
@@ -68,6 +72,7 @@ export function AssessmentDetailDialog({
             }
         } catch (e) {
             console.error("Failed to update assessment status:", e);
+            setActionError(e instanceof Error ? e.message : "Unable to submit the assessment review.");
         } finally {
             setIsUpdating(false);
         }
@@ -111,6 +116,11 @@ export function AssessmentDetailDialog({
 
                 {/* Body Content (scrollable) */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {actionError && (
+                        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                            {actionError}
+                        </div>
+                    )}
                     {/* Mentee Profile Summary Card */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-gray-200 bg-linear-to-r from-gray-50 to-white p-4">
                         <div className="flex items-center gap-3">
@@ -159,15 +169,15 @@ export function AssessmentDetailDialog({
                                 Status
                             </span>
                             <div className="mt-1 flex items-center gap-1.5">
-                                {assessment.status === "PENDING" ? (
+                                {["PENDING", "DRAFT", "IN_REVIEW"].includes(assessment.status) ? (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                                         <Clock className="h-3 w-3" />
                                         Pending
                                     </span>
-                                ) : assessment.status === "PASS" ? (
+                                ) : ["PASS", "FINALIZED", "REVIEWED"].includes(assessment.status) ? (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
                                         <CheckCircle2 className="h-3 w-3" />
-                                        Passed
+                                        {assessment.status === "PASS" ? "Passed" : assessment.status}
                                     </span>
                                 ) : (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800">
@@ -278,7 +288,7 @@ export function AssessmentDetailDialog({
                     )}
 
                     {/* Quick Evaluation Toolbar */}
-                    {assessment.status === "PENDING" && (
+                    {["PENDING", "DRAFT", "IN_REVIEW"].includes(assessment.status) && (
                         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/70 p-4 space-y-3">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-gray-800">
@@ -295,15 +305,16 @@ export function AssessmentDetailDialog({
                                         type="number"
                                         min="0"
                                         max="100"
-                                        placeholder="Enter score (e.g. 90%)"
+                                        placeholder="Enter aggregate score"
                                         value={scoreInput}
                                         onChange={(e) => setScoreInput(e.target.value)}
+                                        aria-label="Aggregate assessment score"
                                         className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#194611]"
                                     />
                                     <button
                                         type="button"
-                                        disabled={isUpdating}
-                                        onClick={() => handleMarkPass(Number(scoreInput) || 90)}
+                                        disabled={!scoreInput || isUpdating}
+                                        onClick={() => handleMarkPass(Number(scoreInput))}
                                         className="rounded-lg bg-[#194611] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f2f0b] disabled:opacity-50"
                                     >
                                         Save Passed
@@ -373,4 +384,3 @@ export function AssessmentDetailDialog({
         </div>
     );
 }
-

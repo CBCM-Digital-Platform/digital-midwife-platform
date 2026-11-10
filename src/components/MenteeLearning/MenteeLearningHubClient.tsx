@@ -18,7 +18,6 @@ import {
   MapPin,
   UploadCloud,
   CheckSquare,
-  ArrowUpRight,
   Loader2,
   Sparkles,
   Info,
@@ -48,21 +47,30 @@ import {
   MenteeResourceItem,
   joinSession,
 } from "@/services/mentee.service";
+import {
+  addAssessmentEvidence,
+  uploadAssessmentEvidenceFile,
+} from "@/services/mentor-assessments.service";
 
 interface MenteeLearningHubClientProps {
   initialResources: MenteeResourceItem[];
   initialSessions: MenteeSessionItem[];
   initialAssessments: MenteeAssessmentItem[];
+  sessionsError?: string | null;
+  assessmentsError?: string | null;
 }
 
 export function MenteeLearningHubClient({
   initialResources,
   initialSessions,
   initialAssessments,
+  sessionsError = null,
+  assessmentsError = null,
 }: MenteeLearningHubClientProps) {
   const [activeTab, setActiveTab] = useState<string>("resources");
   const [resourceViewMode, setResourceViewMode] = useState<"table" | "grid">("table");
   const [resourceTypeFilter, setResourceTypeFilter] = useState<string>("all");
+  const [assessments, setAssessments] = useState(initialAssessments);
 
   // Joining session state
   const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
@@ -71,7 +79,6 @@ export function MenteeLearningHubClient({
   const [selectedAssessment, setSelectedAssessment] =
     useState<MenteeAssessmentItem | null>(null);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
-  const [evidenceNotes, setEvidenceNotes] = useState<string>("");
   const [isSubmittingEvidence, setIsSubmittingEvidence] = useState<boolean>(false);
 
   // Toast notification state
@@ -100,30 +107,50 @@ export function MenteeLearningHubClient({
         window.open(joinUrl, "_blank", "noopener,noreferrer");
       }
       showToast(`Connected to video session with ${session.mentorName}`, "success");
-    } catch (err: any) {
-      showToast(err?.message || "Could not launch video session room", "error");
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Could not launch video session room",
+        "error"
+      );
     } finally {
       setJoiningSessionId(null);
     }
   };
 
-  // Evidence submit mock handler
-  const handleSubmitEvidence = () => {
-    if (!evidenceFile && !evidenceNotes.trim()) {
-      showToast("Please select a file or provide clinical case notes.", "error");
+  const handleSubmitEvidence = async () => {
+    if (!selectedAssessment || !evidenceFile) {
+      showToast("Select a supporting evidence file before submitting.", "error");
       return;
     }
+    if (evidenceFile.size > 10 * 1024 * 1024) {
+      showToast("Evidence files must be 10 MB or smaller.", "error");
+      return;
+    }
+
     setIsSubmittingEvidence(true);
-    setTimeout(() => {
-      setIsSubmittingEvidence(false);
-      showToast(
-        `Clinical evidence for "${selectedAssessment?.title}" submitted to preceptor for verification!`,
-        "success"
+    try {
+      const fileId = await uploadAssessmentEvidenceFile(evidenceFile);
+      await addAssessmentEvidence(selectedAssessment.id, evidenceFile.name, fileId);
+      setAssessments((current) =>
+        current.map((assessment) =>
+          assessment.id === selectedAssessment.id
+            ? {
+                ...assessment,
+                evidenceCount: assessment.evidenceCount + 1,
+                needsEvidence: false,
+              }
+            : assessment
+        )
       );
+      showToast("Evidence was uploaded and attached to the assessment.", "success");
       setSelectedAssessment(null);
       setEvidenceFile(null);
-      setEvidenceNotes("");
-    }, 1200);
+    } catch (error) {
+      console.error("Could not submit assessment evidence:", error);
+      showToast(error instanceof Error ? error.message : "Could not submit assessment evidence.", "error");
+    } finally {
+      setIsSubmittingEvidence(false);
+    }
   };
 
   // Resource Filter
@@ -136,8 +163,8 @@ export function MenteeLearningHubClient({
   const totalResources = initialResources.length;
   const activeSessionsCount = initialSessions.filter((s) => s.isActiveNow).length;
   const totalUpcomingSessions = initialSessions.length;
-  const pendingAssessmentsCount = initialAssessments.filter(
-    (a) => a.status === "PENDING" || a.status === "NEEDS_REVIEW"
+  const pendingAssessmentsCount = assessments.filter(
+    (a) => ["PENDING", "NEEDS_REVIEW", "DRAFT", "IN_REVIEW"].includes(a.status)
   ).length;
 
   // Format date helper
@@ -603,7 +630,11 @@ export function MenteeLearningHubClient({
             </div>
           </div>
 
-          {initialSessions.length === 0 ? (
+          {sessionsError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+              {sessionsError}
+            </div>
+          ) : initialSessions.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <Calendar className="w-10 h-10 text-gray-400 mx-auto mb-3" />
               <h3 className="text-sm font-semibold text-gray-800">
@@ -783,7 +814,11 @@ export function MenteeLearningHubClient({
             </div>
           </div>
 
-          {initialAssessments.length === 0 ? (
+          {assessmentsError ? (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              {assessmentsError}
+            </div>
+          ) : assessments.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <ClipboardCheck className="w-10 h-10 text-gray-400 mx-auto mb-3" />
               <h3 className="text-sm font-semibold text-gray-800">
@@ -795,7 +830,7 @@ export function MenteeLearningHubClient({
             </div>
           ) : (
             <div className="space-y-4">
-              {initialAssessments.map((assessment) => {
+              {assessments.map((assessment) => {
                 const percentCompleted =
                   assessment.checklistTotal > 0
                     ? Math.round(
@@ -872,7 +907,9 @@ export function MenteeLearningHubClient({
                           )}
                           <span className="flex items-center gap-1.5">
                             <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                            <span>Target Due Date: {formatDate(assessment.dueDate)}</span>
+                            {assessment.dueDate && (
+                              <span>Target Due Date: {formatDate(assessment.dueDate)}</span>
+                            )}
                           </span>
                         </div>
                       </div>
@@ -884,7 +921,9 @@ export function MenteeLearningHubClient({
                           <div className="flex items-center justify-between text-xs font-semibold mb-1">
                             <span className="text-gray-700">Checklist Progress</span>
                             <span className="text-[#194611]">
-                              {assessment.checklistCompleted} / {assessment.checklistTotal} verified ({percentCompleted}%)
+                              {assessment.checklistTotal > 0
+                                ? `${assessment.checklistCompleted} / ${assessment.checklistTotal} verified (${percentCompleted}%)`
+                                : "No checklist data"}
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
@@ -931,7 +970,6 @@ export function MenteeLearningHubClient({
           if (!open) {
             setSelectedAssessment(null);
             setEvidenceFile(null);
-            setEvidenceNotes("");
           }
         }}
       >
@@ -942,7 +980,7 @@ export function MenteeLearningHubClient({
               <span>Submit Clinical Evidence</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-gray-500">
-              Provide clinical documentation, scanned partograph records, or supervised shift notes for mentor verification.
+              Upload a supported evidence file to attach it to this assessment for mentor review.
             </DialogDescription>
           </DialogHeader>
 
@@ -978,7 +1016,7 @@ export function MenteeLearningHubClient({
                   >
                     {Math.round(
                       (selectedAssessment.checklistCompleted /
-                        selectedAssessment.checklistTotal) *
+                        Math.max(1, selectedAssessment.checklistTotal)) *
                         100
                     )}
                     %
@@ -989,13 +1027,13 @@ export function MenteeLearningHubClient({
               {/* Upload Case File */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-700 block">
-                  Upload Case Plot / Supervision Record (PDF, JPG, PNG)
+                  Upload supporting evidence (PDF, MP3, WAV, MP4, MOV, WebM)
                 </label>
                 <div className="border-2 border-dashed border-gray-300 hover:border-[#194611] rounded-xl p-4 text-center cursor-pointer transition bg-gray-50/50">
                   <input
                     type="file"
                     id="evidence-upload"
-                    accept=".pdf,.png,.jpg,.jpeg"
+                    accept=".pdf,.mp3,.wav,.mp4,.mov,.webm"
                     className="hidden"
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
@@ -1026,19 +1064,6 @@ export function MenteeLearningHubClient({
                 </div>
               </div>
 
-              {/* Mentee Clinical Notes */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-700 block">
-                  Clinical Reflection / Case Notes (Optional)
-                </label>
-                <textarea
-                  value={evidenceNotes}
-                  onChange={(e) => setEvidenceNotes(e.target.value)}
-                  placeholder="Detail clinical context, patient vital observations, or specific questions for your mentor..."
-                  rows={3}
-                  className="w-full text-xs p-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#194611] bg-white resize-none"
-                />
-              </div>
             </div>
           )}
 

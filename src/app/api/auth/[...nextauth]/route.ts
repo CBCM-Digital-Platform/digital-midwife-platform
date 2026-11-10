@@ -123,7 +123,7 @@ async function refreshAccessToken(token: any) {
 
   const refreshPromise = (async () => {
     try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com").replace(/\/+$/, "");
       const endpoint = baseUrl.endsWith("/api/v1")
         ? `${baseUrl}/auth/refresh-token`
         : `${baseUrl}/api/v1/auth/refresh-token`;
@@ -214,7 +214,7 @@ export const authOptions: NextAuthOptions = {
         const inputPassword = credentials.password;
 
         // Construct backend endpoint using NEXT_PUBLIC_API_URL
-        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com").replace(/\/+$/, "");
+        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com").replace(/\/+$/, "");
         const endpoint = baseUrl.endsWith("/api/v1")
           ? `${baseUrl}/auth/login`
           : `${baseUrl}/api/v1/auth/login`;

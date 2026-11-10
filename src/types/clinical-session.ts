@@ -29,12 +29,19 @@ export interface ClinicalSession {
 }
 
 export interface ClinicalSessionNote {
-    id: number;
-    encounterId: number;
-    mentorId: number;
+    id: string | number;
+    encounterId: string | number;
+    mentorId?: number;
     mentorName?: string;
     note: string;
     createdAt: string;
+}
+
+export interface SessionJoinToken {
+    domain?: string;
+    room?: string;
+    token?: string;
+    joinUrl?: string;
 }
 
 export interface CreateSessionInput {

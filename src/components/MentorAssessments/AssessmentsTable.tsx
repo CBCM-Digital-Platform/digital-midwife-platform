@@ -8,16 +8,25 @@ export type SortKey = "name" | "date" | "type";
 export type SortState = { key: SortKey; dir: "asc" | "desc" } | null;
 
 function StatusBadge({ a }: { a: MentorAssessment }) {
-    if (a.status === "PENDING") {
+    if (["PENDING", "DRAFT", "IN_REVIEW"].includes(a.status)) {
         return (
             <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2.5 py-1 text-[11px] font-semibold uppercase text-amber-800">
                 <Clock className="h-3 w-3" />
-                Pending
+                {a.status === "IN_REVIEW" ? "In Review" : a.status === "DRAFT" ? "Draft" : "Pending"}
             </span>
         );
     }
 
     const needsReview = a.status === "NEEDS_REVIEW";
+    const statusLabel = needsReview
+        ? "Needs Review"
+        : a.status === "PASS"
+        ? "Pass"
+        : a.status === "FINALIZED"
+        ? "Finalized"
+        : a.status === "REVIEWED"
+        ? "Reviewed"
+        : "Completed";
     return (
         <span
             className={cn(
@@ -28,7 +37,7 @@ function StatusBadge({ a }: { a: MentorAssessment }) {
             <span
                 className={cn("h-1.5 w-1.5 rounded-full", needsReview ? "bg-red-600" : "bg-[#194611]")}
             />
-            {needsReview ? "Needs Review" : "Pass"}
+            {statusLabel}
             {a.scorePct !== null && ` (${a.scorePct}%)`}
         </span>
     );
@@ -102,7 +111,10 @@ export function AssessmentsTable({
                         rows.map((a) => (
                             <tr
                                 key={a.id}
-                                className={cn("hover:bg-gray-50/80 transition-colors", a.status === "PENDING" && "bg-yellow-50/60")}
+                                className={cn(
+                                    "hover:bg-gray-50/80 transition-colors",
+                                    ["PENDING", "DRAFT", "IN_REVIEW"].includes(a.status) && "bg-yellow-50/60"
+                                )}
                             >
                                 <td className="px-4 py-4">
                                     <div className="flex items-center gap-3">

@@ -8,7 +8,6 @@ import {
     Calendar,
     ArrowRight,
     Users,
-    Trash2,
     FileText,
     ExternalLink,
     CheckCircle2,
@@ -19,7 +18,6 @@ import Avatar from "./Avatar";
 
 interface HorizontalMentorMenteeCardProps {
     assignment: Assignment;
-    onRemove?: (id: string) => void;
 }
 
 function formatDate(isoString: string) {
@@ -37,7 +35,6 @@ function formatDate(isoString: string) {
 
 export default function HorizontalMentorMenteeCard({
     assignment,
-    onRemove,
 }: HorizontalMentorMenteeCardProps) {
     const { mentor, thematicDomain, assignedDate, status, isNew, cycleName, notes } = assignment;
 
@@ -228,17 +225,6 @@ export default function HorizontalMentorMenteeCard({
                 </span>
 
                 <div className="flex items-center gap-2">
-                    {isNew && onRemove && (
-                        <button
-                            type="button"
-                            onClick={() => onRemove(assignment.id)}
-                            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 transition"
-                            title="Remove this newly created assignment"
-                        >
-                            <Trash2 className="size-3.5" />
-                            Remove
-                        </button>
-                    )}
                     <Link
                         href={`/assignments/${assignment.id}`}
                         className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1 font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition shadow-2xs"

@@ -23,12 +23,21 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
   const id = String(raw.id ?? raw._id ?? `user-${Date.now()}`);
   const role = (raw.role || defaultRole) as "mentor" | "mentee";
 
+  const firstName = raw.first_name || raw.firstName || "";
+  const lastName = raw.last_name || raw.lastName || "";
+  const fullName = `${firstName} ${lastName}`.trim();
+  const rawName = typeof raw.name === "string" ? raw.name.trim() : "";
+  const isGenericName = ["mentee", "mentor", "clinician", "user", "resident midwife"].includes(
+    rawName.toLowerCase()
+  );
   const name =
-    raw.name ||
     raw.full_name ||
     raw.fullName ||
-    (raw.firstName && raw.lastName ? `${raw.firstName} ${raw.lastName}` : "") ||
+    fullName ||
+    raw.username ||
+    raw.user_name ||
     raw.email?.split("@")[0] ||
+    (!isGenericName ? rawName : "") ||
     "Clinician";
 
   const initials =
@@ -164,10 +173,7 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
     }
   }
 
-  const query = new URLSearchParams({ role: "mentor" });
-  if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
-    query.set("facility_id", String(activeFacilityId));
-  }
+  const query = new URLSearchParams({ role: "mentor", page: "1", limit: "100" });
 
   try {
     const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
@@ -203,10 +209,7 @@ export async function getMentees(facilityId?: number | string): Promise<MenteeUs
     }
   }
 
-  const query = new URLSearchParams({ role: "mentee" });
-  if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
-    query.set("facility_id", String(activeFacilityId));
-  }
+  const query = new URLSearchParams({ role: "mentee", page: "1", limit: "100" });
 
   try {
     const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);

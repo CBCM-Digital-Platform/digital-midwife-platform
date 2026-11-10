@@ -4,6 +4,7 @@ import {
   getUpcomingSessions,
   getMenteeAssessments,
 } from "@/services/mentee.service";
+import type { MenteeAssessmentItem, MenteeSessionItem } from "@/services/mentee.service";
 import { MenteeLearningHubClient } from "@/components/MenteeLearning/MenteeLearningHubClient";
 
 export const metadata = {
@@ -13,17 +14,31 @@ export const metadata = {
 };
 
 export default async function MenteeLearningHubPage() {
-  const [resources, sessions, assessments] = await Promise.all([
-    getMenteeAssignedResources(),
-    getUpcomingSessions(),
-    getMenteeAssessments(),
-  ]);
+  const resources = await getMenteeAssignedResources();
+  let assessments: MenteeAssessmentItem[] = [];
+  let assessmentsError: string | null = null;
+  try {
+    assessments = await getMenteeAssessments();
+  } catch (error) {
+    console.error("Could not load mentee assessments:", error);
+    assessmentsError = "Unable to load assessments from the backend. Please try again later.";
+  }
+  let sessions: MenteeSessionItem[] = [];
+  let sessionsError: string | null = null;
+  try {
+    sessions = await getUpcomingSessions();
+  } catch (error) {
+    console.error("Could not load mentee sessions:", error);
+    sessionsError = "Unable to load sessions from the backend. Please try again later.";
+  }
 
   return (
     <MenteeLearningHubClient
       initialResources={resources}
       initialSessions={sessions}
       initialAssessments={assessments}
+      sessionsError={sessionsError}
+      assessmentsError={assessmentsError}
     />
   );
 }
