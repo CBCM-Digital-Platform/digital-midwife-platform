@@ -1,6 +1,8 @@
 import { getSessions } from "@/services/sessions.service";
 import { getMyMentees } from "@/services/my-mentees.service";
 import { SessionsView } from "@/components/Sessions/SessionsView";
+import type { ClinicalSession } from "@/types/clinical-session";
+import type { MyMentee } from "@/types/my-mentee";
 
 export const metadata = {
     title: "Clinical Sessions | Digital Midwife Mentorship Platform",
@@ -8,10 +10,30 @@ export const metadata = {
 };
 
 export default async function SessionsPage() {
-    const [sessions, mentees] = await Promise.all([
-        getSessions(),
-        getMyMentees(),
-    ]);
+    let sessions: ClinicalSession[] = [];
+    let loadError: string | null = null;
+    let mentees: MyMentee[] = [];
+    try {
+        mentees = await getMyMentees();
+    } catch (error) {
+        console.error("Could not load mentor's assigned mentees:", error);
+        loadError = "Unable to load your assigned mentees from the backend.";
+    }
+    try {
+        sessions = await getSessions();
+    } catch (error) {
+        console.error("Could not load clinical sessions:", error);
+        loadError = [
+            loadError,
+            "Unable to load sessions from the backend. Check your connection and try again.",
+        ].filter(Boolean).join(" ");
+    }
 
-    return <SessionsView initialSessions={sessions} mentees={mentees} />;
+    return (
+        <SessionsView
+            initialSessions={sessions}
+            mentees={mentees}
+            loadError={loadError}
+        />
+    );
 }

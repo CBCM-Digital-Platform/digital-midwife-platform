@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import {
     ArrowLeft,
     Building2,
     Calendar,
-    CheckCircle2,
-    Layers,
     UserCheck,
     Users,
     Mail,
@@ -24,13 +24,27 @@ interface Props {
 
 export default async function CycleDetailPage({ params }: Props) {
     const { cycleId } = await params;
-    const [cycle, allAvailableAreas] = await Promise.all([
+    const [session, cycle, allAvailableAreas] = await Promise.all([
+        getServerSession(authOptions),
         getCycleById(cycleId),
         getThematicAreas().catch(() => []),
     ]);
 
     if (!cycle) {
         notFound();
+    }
+
+    const user = session?.user;
+    if (user?.role?.toLowerCase() === "facility_admin") {
+        const facilityId = user.facility_id ?? user.facilityId;
+        const ownsCycle =
+            facilityId !== undefined &&
+            facilityId !== null &&
+            (String(cycle.ownerFacilityId) === String(facilityId) ||
+                cycle.facilityList?.some((facility) => String(facility.id) === String(facilityId)));
+        if (!ownsCycle) {
+            notFound();
+        }
     }
 
     return (

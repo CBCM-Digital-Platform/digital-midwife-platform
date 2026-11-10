@@ -43,11 +43,44 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
 let clientCachedToken: string | null = null;
 let clientTokenExpiry = 0;
 let inFlightSessionPromise: Promise<string | null> | null = null;
+const inFlightRefreshes = new Map<string, Promise<string | null>>();
 
 export function clearTokenCache(): void {
   clientCachedToken = null;
   clientTokenExpiry = 0;
   inFlightSessionPromise = null;
+}
+
+async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+  const pendingRefresh = inFlightRefreshes.get(refreshToken);
+  if (pendingRefresh) return pendingRefresh;
+
+  const refreshPromise = (async () => {
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com").replace(/\/+$/, "");
+    const refreshEndpoint = baseUrl.endsWith("/api/v1")
+      ? `${baseUrl}/auth/refresh-token`
+      : `${baseUrl}/api/v1/auth/refresh-token`;
+    const response = await fetch(refreshEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json().catch(() => null);
+    const payload = data?.data || data;
+    return payload?.accessToken || payload?.token || null;
+  })();
+
+  inFlightRefreshes.set(refreshToken, refreshPromise);
+  try {
+    return await refreshPromise;
+  } finally {
+    if (inFlightRefreshes.get(refreshToken) === refreshPromise) {
+      inFlightRefreshes.delete(refreshToken);
+    }
+  }
 }
 
 /**
@@ -249,30 +282,13 @@ export async function apiClient<T = any>(
         }
 
         if (refreshToken) {
-          const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-tntq.onrender.com").replace(/\/+$/, "");
-          const refreshEndpoint = baseUrl.endsWith("/api/v1")
-            ? `${baseUrl}/auth/refresh-token`
-            : `${baseUrl}/api/v1/auth/refresh-token`;
-
-          const refreshRes = await fetch(refreshEndpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ refreshToken }),
-          });
-
-          if (refreshRes.ok) {
-            const data = await refreshRes.json().catch(() => null);
-            const payload = data?.data || data;
-            const freshAccessToken = payload?.accessToken || payload?.token;
-            if (freshAccessToken) {
-              return apiClient<T>(endpoint, {
-                ...options,
-                _isRetry: true,
-                token: freshAccessToken,
-              });
-            }
+          const freshAccessToken = await refreshAccessToken(refreshToken);
+          if (freshAccessToken) {
+            return apiClient<T>(endpoint, {
+              ...options,
+              _isRetry: true,
+              token: freshAccessToken,
+            });
           }
         }
       } catch {

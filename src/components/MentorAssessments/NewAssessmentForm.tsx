@@ -3,10 +3,11 @@
 import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ClipboardList, Paperclip, Upload, X } from "lucide-react";
 import type { MyMentee } from "@/types/my-mentee";
+import type { AssessmentTypeOption } from "@/types/mentor-assessment";
 import { createAssessment } from "@/services/mentor-assessments.service";
 import { MenteeAvatar } from "@/components/MyMentees/MenteeParts";
 import { Field, inputClass } from "@/components/Settings/FormField";
@@ -21,8 +22,9 @@ import {
 
 interface Props {
     mentees: MyMentee[];
-    types: string[];
+    types: AssessmentTypeOption[];
     initialMenteeId?: string;
+    loadError?: string | null;
 }
 
 function formatSize(bytes: number) {
@@ -51,34 +53,31 @@ function Card({
     );
 }
 
-export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
+export function NewAssessmentForm({ mentees, types, initialMenteeId, loadError = null }: Props) {
     const router = useRouter();
     const fileInput = useRef<HTMLInputElement>(null);
     const [files, setFiles] = useState<File[]>([]);
     const [fileError, setFileError] = useState<string | null>(null);
     const [serverError, setServerError] = useState<string | null>(null);
 
-    const today = new Date().toISOString().slice(0, 10);
-
     const {
+        control,
         register,
         handleSubmit,
-        watch,
         formState: { errors, isSubmitting },
     } = useForm<AssessmentFormValues>({
         resolver: zodResolver(assessmentSchema),
         defaultValues: {
             menteeId: mentees.find((m) => m.id === initialMenteeId)?.id ?? "",
-            type: "",
-            dueDate: "",
-            instructions: "",
-            referenceLink: "",
+            thematicAreaId: "",
             feedback: "",
-            notifyMentee: true,
         },
     });
 
-    const selected = mentees.find((m) => m.id === watch("menteeId"));
+    const selectedMenteeId = useWatch({ control, name: "menteeId" });
+    const selectedThematicAreaId = useWatch({ control, name: "thematicAreaId" });
+    const selected = mentees.find((m) => m.id === selectedMenteeId);
+    const selectedType = types.find((type) => type.id === selectedThematicAreaId);
 
     const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
         const picked = Array.from(e.target.files ?? []);
@@ -116,10 +115,13 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
     const onSubmit = async (values: AssessmentFormValues) => {
         setServerError(null);
         try {
-            await createAssessment({ ...values, attachmentNames: files.map((f) => f.name) }, files);
+            await createAssessment(
+                { ...values, thematicAreaName: selectedType?.name ?? "" },
+                files
+            );
             const menteeName = mentees.find((m) => m.id === values.menteeId)?.name || "Mentee";
             router.push(
-                `/my-mentees?assignedMenteeId=${encodeURIComponent(values.menteeId)}&assignedType=${encodeURIComponent(values.type)}&menteeName=${encodeURIComponent(menteeName)}`
+                `/my-mentees?assignedMenteeId=${encodeURIComponent(values.menteeId)}&assignedType=${encodeURIComponent(selectedType?.name ?? "")}&menteeName=${encodeURIComponent(menteeName)}`
             );
             router.refresh();
         } catch (err) {
@@ -141,9 +143,25 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
                 </nav>
                 <h1 className="text-3xl font-bold tracking-tight text-[#194611]">New Assessment</h1>
                 <p className="mt-1 text-sm text-gray-600">
-                    Assign an assessment or reading task to one of your mentees.
+                    Create a backend assessment for a mentee and attach supporting evidence.
                 </p>
             </div>
+
+            {loadError && (
+                <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {loadError}
+                </p>
+            )}
+            {mentees.length === 0 && (
+                <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    No mentees assigned to your account were returned by the backend.
+                </p>
+            )}
+            {!loadError && types.length === 0 && (
+                <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    No active thematic areas were returned by the backend.
+                </p>
+            )}
 
             <Card icon={<ClipboardList className="h-5 w-5" />} title="Assessment Details">
                 <Field label="Mentee *" htmlFor="menteeId" error={errors.menteeId?.message}>
@@ -151,7 +169,7 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
                         <option value="">Select a mentee</option>
                         {mentees.map((m) => (
                             <option key={m.id} value={m.id}>
-                                {m.name} ({m.code})
+                                {m.name}
                             </option>
                         ))}
                     </select>
@@ -169,34 +187,19 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
                     </div>
                 )}
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Assessment Type *" htmlFor="type" error={errors.type?.message}>
-                        <select id="type" {...register("type")} className={inputClass}>
-                            <option value="">Select assessment type</option>
-                            {types.map((t) => (
-                                <option key={t} value={t}>
-                                    {t}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field label="Due Date *" htmlFor="dueDate" error={errors.dueDate?.message}>
-                        <input id="dueDate" type="date" min={today} {...register("dueDate")} className={inputClass} />
-                    </Field>
-                </div>
-
                 <Field
-                    label="Task / Instructions *"
-                    htmlFor="instructions"
-                    error={errors.instructions?.message}
+                    label="Thematic Area *"
+                    htmlFor="thematicAreaId"
+                    error={errors.thematicAreaId?.message}
                 >
-                    <textarea
-                        id="instructions"
-                        rows={5}
-                        placeholder="Describe what the mentee needs to do or study..."
-                        {...register("instructions")}
-                        className={inputClass}
-                    />
+                    <select id="thematicAreaId" {...register("thematicAreaId")} className={inputClass}>
+                        <option value="">Select a thematic area</option>
+                        {types.map((type) => (
+                            <option key={type.id} value={type.id}>
+                                    {type.name}
+                                </option>
+                        ))}
+                    </select>
                 </Field>
             </Card>
 
@@ -213,7 +216,7 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
                         <Upload className="h-5 w-5 text-gray-500" />
                         <span className="text-sm font-medium text-gray-700">Click to upload files</span>
                         <span className="text-xs text-gray-500">
-                            PDF, Word, PowerPoint, images or MP4 · up to {MAX_FILES} files, {MAX_FILE_MB} MB each
+                            PDF, MP3, WAV, MP4, MOV or WebM · up to {MAX_FILES} files, {MAX_FILE_MB} MB each
                         </span>
                     </button>
                     <input
@@ -253,41 +256,18 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
                 </div>
 
                 <Field
-                    label="Reference link (optional)"
-                    htmlFor="referenceLink"
-                    error={errors.referenceLink?.message}
-                >
-                    <input
-                        id="referenceLink"
-                        type="url"
-                        placeholder="https://..."
-                        {...register("referenceLink")}
-                        className={inputClass}
-                    />
-                </Field>
-
-                <Field
-                    label="Comment / feedback for the mentee (optional)"
+                    label="Feedback (optional)"
                     htmlFor="feedback"
                     error={errors.feedback?.message}
                 >
                     <textarea
                         id="feedback"
                         rows={4}
-                        placeholder="Add encouragement, feedback or things to focus on..."
+                        placeholder="Add feedback for this assessment..."
                         {...register("feedback")}
                         className={inputClass}
                     />
                 </Field>
-
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                        type="checkbox"
-                        {...register("notifyMentee")}
-                        className="h-4 w-4 rounded border-gray-300 accent-[#194611]"
-                    />
-                    Notify the mentee about this assessment
-                </label>
             </Card>
 
             {serverError && (
@@ -305,10 +285,10 @@ export function NewAssessmentForm({ mentees, types, initialMenteeId }: Props) {
                 </Link>
                 <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || mentees.length === 0 || types.length === 0 || Boolean(loadError)}
                     className="rounded-lg bg-[#194611] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0f2f0b] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    {isSubmitting ? "Assigning..." : "Assign Assessment"}
+                    {isSubmitting ? "Creating..." : "Create Assessment"}
                 </button>
             </div>
         </form>

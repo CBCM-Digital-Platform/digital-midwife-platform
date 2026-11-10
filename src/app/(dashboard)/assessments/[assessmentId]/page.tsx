@@ -1,6 +1,7 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { getAssessmentById } from "@/services/mentor-assessments.service";
-import { MentorAssessmentView } from "@/components/MentorAssessments/MentorAssessmentView";
+import { AssessmentGradingClient } from "@/components/MentorAssessments/AssessmentGradingClient";
+import type { MentorAssessment } from "@/types/mentor-assessment";
 
 export default async function Page({
   params,
@@ -12,10 +13,21 @@ export default async function Page({
     redirect("/my-assessments/new");
   }
 
-  const assessment = await getAssessmentById(assessmentId);
-  if (!assessment) {
-    notFound();
+  let assessment: MentorAssessment | null = null;
+  let initialLoadError: string | null = null;
+  try {
+    assessment = await getAssessmentById(assessmentId);
+    if (!assessment) initialLoadError = `Assessment #${assessmentId} was not found.`;
+  } catch (error) {
+    console.error(`Could not load assessment ${assessmentId}:`, error);
+    initialLoadError = error instanceof Error ? error.message : "Unable to load assessment details.";
   }
 
-  return <MentorAssessmentView assessment={assessment} />;
+  return (
+    <AssessmentGradingClient
+      assessmentId={assessmentId}
+      initialAssessment={assessment}
+      initialLoadError={initialLoadError}
+    />
+  );
 }

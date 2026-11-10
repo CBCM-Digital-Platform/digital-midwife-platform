@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
     Calendar,
     CheckCircle2,
@@ -17,14 +18,24 @@ import {
     Stethoscope,
     AlertCircle,
     User,
+    Pencil,
 } from "lucide-react";
-import type { ClinicalSession, ClinicalSessionNote, SessionMode, SessionStatus } from "@/types/clinical-session";
+import type {
+    ClinicalSession,
+    ClinicalSessionNote,
+    SessionJoinToken,
+    SessionMode,
+    SessionStatus,
+} from "@/types/clinical-session";
 import type { MyMentee } from "@/types/my-mentee";
 import {
     addSessionNote,
     createSession,
+    getSessionById,
     getSessionJoinToken,
     getSessionNotes,
+    recordSessionParticipantJoin,
+    updateSession,
     updateSessionStatus,
 } from "@/services/sessions.service";
 import { cn } from "@/lib/utils";
@@ -32,6 +43,7 @@ import { cn } from "@/lib/utils";
 interface SessionsViewProps {
     initialSessions: ClinicalSession[];
     mentees: MyMentee[];
+    loadError?: string | null;
 }
 
 type TabFilter = "ALL" | "SCHEDULED" | "IN_PROGRESS" | "COMPLETED";
@@ -48,23 +60,49 @@ function formatDateTime(iso: string) {
     });
 }
 
-export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
+function toLocalDateTimeInput(iso: string): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+        .toISOString()
+        .slice(0, 16);
+}
+
+function getDefaultScheduleTime(): string {
+    return toLocalDateTimeInput(new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString());
+}
+
+export function SessionsView({ initialSessions, mentees, loadError = null }: SessionsViewProps) {
+    const router = useRouter();
     const [sessions, setSessions] = useState<ClinicalSession[]>(initialSessions);
     const [tab, setTab] = useState<TabFilter>("ALL");
     const [search, setSearch] = useState("");
 
     // Schedule Modal
     const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-    const [selectedMenteeId, setSelectedMenteeId] = useState(mentees[0]?.id || "1");
-    const [mode, setMode] = useState<SessionMode>("in_person");
-    const [scheduledAt, setScheduledAt] = useState(
-        new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().slice(0, 16)
+    const [editingSession, setEditingSession] = useState<ClinicalSession | null>(null);
+    const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+    const assignmentOptions = useMemo(
+        () =>
+            mentees.flatMap((mentee) =>
+                (mentee.assignmentIds ?? []).map((assignmentId) => ({
+                    assignmentId: String(assignmentId),
+                    mentee,
+                }))
+            ),
+        [mentees]
     );
+    const [selectedAssignmentId, setSelectedAssignmentId] = useState(
+        assignmentOptions[0]?.assignmentId ?? ""
+    );
+    const [mode, setMode] = useState<SessionMode>("in_person");
+    const [scheduledAt, setScheduledAt] = useState("");
     const [durationMinutes, setDurationMinutes] = useState(45);
     const [clinicalSetting, setClinicalSetting] = useState("Labor & Delivery Ward");
     const [sessionGoals, setSessionGoals] = useState("");
     const [isScheduling, setIsScheduling] = useState(false);
     const [scheduleError, setScheduleError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
 
     // Notes Modal
     const [activeSessionForNotes, setActiveSessionForNotes] = useState<ClinicalSession | null>(null);
@@ -72,9 +110,11 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
     const [newNoteText, setNewNoteText] = useState("");
     const [loadingNotes, setLoadingNotes] = useState(false);
     const [addingNote, setAddingNote] = useState(false);
+    const [notesError, setNotesError] = useState<string | null>(null);
 
     // Call Token Dialog
-    const [virtualCallInfo, setVirtualCallInfo] = useState<{ domain?: string; room?: string; token?: string } | null>(null);
+    const [virtualCallInfo, setVirtualCallInfo] = useState<SessionJoinToken | null>(null);
+    const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -102,8 +142,9 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
         e.preventDefault();
         setScheduleError(null);
 
-        if (!selectedMenteeId) {
-            setScheduleError("Please select a mentee.");
+        const selectedAssignment = assignmentOptions.find((option) => option.assignmentId === selectedAssignmentId);
+        if (!editingSession && !selectedAssignment) {
+            setScheduleError("Select a mentee with an active assignment before scheduling a session.");
             return;
         }
 
@@ -133,50 +174,99 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
             return;
         }
 
+        const assignmentId = Number(selectedAssignmentId);
+        if (!editingSession && (!Number.isInteger(assignmentId) || assignmentId <= 0)) {
+            setScheduleError("The selected mentee assignment has an invalid ID.");
+            return;
+        }
+
         setIsScheduling(true);
         try {
-            const mentee = mentees.find((m) => String(m.id) === String(selectedMenteeId));
-            const newSess = await createSession({
-                assignmentId: Number(selectedMenteeId) || 1,
+            const values = {
                 mode,
                 scheduledAt: new Date(scheduledAt).toISOString(),
                 durationMinutes,
                 clinicalSetting: clinicalSetting.trim(),
-                sessionGoals: sessionGoals.trim() || "Direct clinical mentorship and supervised procedure observation.",
-                status: "scheduled",
-            });
+                sessionGoals: sessionGoals.trim(),
+            };
+            const savedSession = editingSession
+                ? await updateSession(editingSession.id, values)
+                : await createSession({
+                    ...values,
+                    assignmentId,
+                    status: "scheduled",
+                });
 
             // Ensure mentee details are visible
             const resolved = {
-                ...newSess,
-                menteeName: mentee?.name || newSess.menteeName,
-                menteeTitle: mentee?.title || newSess.menteeTitle,
+                ...savedSession,
+                menteeName: selectedAssignment?.mentee.name || editingSession?.menteeName || savedSession.menteeName,
+                menteeTitle: selectedAssignment?.mentee.title || editingSession?.menteeTitle || savedSession.menteeTitle,
             };
 
-            setSessions((prev) => [resolved, ...prev]);
+            setSessions((prev) =>
+                editingSession
+                    ? prev.map((session) => session.id === resolved.id ? resolved : session)
+                    : [resolved, ...prev]
+            );
             setIsScheduleOpen(false);
-            setSessionGoals("");
-        } catch (err: any) {
+            setEditingSession(null);
+            if (!editingSession) setSessionGoals("");
+        } catch (err) {
             console.error("Failed to schedule session:", err);
-            setScheduleError(err?.message || "Failed to schedule session. Please try again.");
+            setScheduleError(err instanceof Error ? err.message : "Failed to schedule session. Please try again.");
         } finally {
             setIsScheduling(false);
         }
     };
 
+    const handleEditSession = async (sessionId: string) => {
+        setScheduleError(null);
+        setActionError(null);
+        setLoadingSessionId(sessionId);
+        try {
+            const session = await getSessionById(sessionId);
+            setEditingSession(session);
+            setMode(session.mode);
+            setScheduledAt(toLocalDateTimeInput(session.scheduledAt));
+            setDurationMinutes(session.durationMinutes);
+            setClinicalSetting(session.clinicalSetting ?? "");
+            setSessionGoals(session.sessionGoals ?? "");
+            if (session.assignmentId !== undefined) {
+                setSelectedAssignmentId(String(session.assignmentId));
+            }
+            setIsScheduleOpen(true);
+        } catch (error) {
+            console.error(`Could not load session ${sessionId} for editing:`, error);
+            setActionError(error instanceof Error ? error.message : "Unable to load session details.");
+        } finally {
+            setLoadingSessionId(null);
+        }
+    };
+
     const handleStatusChange = async (sessionId: string, newStatus: SessionStatus) => {
-        const success = await updateSessionStatus(sessionId, newStatus);
-        setSessions((prev) =>
-            prev.map((s) => (s.id === sessionId ? { ...s, status: newStatus } : s))
-        );
+        setActionError(null);
+        try {
+            await updateSessionStatus(sessionId, newStatus);
+            setSessions((prev) =>
+                prev.map((s) => (s.id === sessionId ? { ...s, status: newStatus } : s))
+            );
+        } catch (error) {
+            console.error(`Failed to update session ${sessionId}:`, error);
+            setActionError(error instanceof Error ? error.message : "Unable to update the session.");
+        }
     };
 
     const handleOpenNotes = async (session: ClinicalSession) => {
         setActiveSessionForNotes(session);
         setLoadingNotes(true);
+        setNotesError(null);
         try {
             const notes = await getSessionNotes(session.id);
             setNotesList(notes);
+        } catch (error) {
+            console.error(`Could not load notes for session ${session.id}:`, error);
+            setNotesError(error instanceof Error ? error.message : "Unable to load session notes.");
         } finally {
             setLoadingNotes(false);
         }
@@ -186,27 +276,34 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
         e.preventDefault();
         if (!activeSessionForNotes || !newNoteText.trim()) return;
         setAddingNote(true);
+        setNotesError(null);
         try {
             const created = await addSessionNote(activeSessionForNotes.id, newNoteText.trim());
-            if (created) {
-                setNotesList((prev) => [created, ...prev]);
-                setNewNoteText("");
-            }
+            setNotesList((prev) => [created, ...prev]);
+            setNewNoteText("");
+        } catch (error) {
+            console.error("Could not save clinical session note:", error);
+            setNotesError(error instanceof Error ? error.message : "Unable to save the note.");
         } finally {
             setAddingNote(false);
         }
     };
 
     const handleJoinVirtual = async (sessionId: string) => {
-        const tokenData = await getSessionJoinToken(sessionId);
-        if (tokenData && tokenData.room) {
+        setJoiningSessionId(sessionId);
+        setActionError(null);
+        try {
+            const tokenData = await getSessionJoinToken(sessionId);
+            if (!tokenData.room && !tokenData.joinUrl) {
+                throw new Error("The backend did not return a meeting room for this session.");
+            }
+            await recordSessionParticipantJoin(sessionId);
             setVirtualCallInfo(tokenData);
-        } else {
-            // Default virtual meeting room
-            setVirtualCallInfo({
-                domain: "meet.jit.si",
-                room: `cbcm-session-${sessionId}`,
-            });
+        } catch (error) {
+            console.error(`Unable to join session ${sessionId}:`, error);
+            setActionError(error instanceof Error ? error.message : "Unable to join the virtual session.");
+        } finally {
+            setJoiningSessionId(null);
         }
     };
 
@@ -225,13 +322,29 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
 
                 <button
                     type="button"
-                    onClick={() => setIsScheduleOpen(true)}
+                    onClick={() => {
+                        setEditingSession(null);
+                        setScheduledAt(getDefaultScheduleTime());
+                        setMode("in_person");
+                        setDurationMinutes(45);
+                        setClinicalSetting("Labor & Delivery Ward");
+                        setSessionGoals("");
+                        setScheduleError(null);
+                        setIsScheduleOpen(true);
+                    }}
+                    disabled={assignmentOptions.length === 0}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#194611] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#12330c]"
                 >
                     <Plus className="h-4 w-4" />
                     Schedule Clinical Session
                 </button>
             </div>
+
+            {actionError && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {actionError}
+                </div>
+            )}
 
             {/* Filters Bar */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -278,7 +391,19 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                 </label>
             </div>
 
-            {/* Sessions Cards Grid */}
+            {loadError ? (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+                    <span>{loadError}</span>
+                    <button
+                        type="button"
+                        onClick={() => router.refresh()}
+                        className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-medium hover:bg-red-100"
+                    >
+                        Retry
+                    </button>
+                </div>
+            ) : (
+            /* Sessions Cards Grid */
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filtered.map((s) => (
                     <div
@@ -363,14 +488,26 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
 
                         {/* Action buttons */}
                         <div className="mt-5 border-t border-gray-100 pt-3 flex flex-wrap items-center gap-2">
+                            {(s.status === "scheduled" || s.status === "draft") && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleEditSession(s.id)}
+                                    disabled={loadingSessionId === s.id}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+                                >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    {loadingSessionId === s.id ? "Loading..." : "Edit"}
+                                </button>
+                            )}
                             {s.mode === "virtual" && s.status !== "completed" && s.status !== "cancelled" && (
                                 <button
                                     type="button"
                                     onClick={() => handleJoinVirtual(s.id)}
+                                    disabled={joiningSessionId === s.id}
                                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-purple-800 transition"
                                 >
                                     <Video className="h-3.5 w-3.5" />
-                                    Join Call
+                                    {joiningSessionId === s.id ? "Connecting..." : "Join Call"}
                                 </button>
                             )}
 
@@ -414,17 +551,29 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                     </div>
                 )}
             </div>
+            )}
 
             {/* Schedule Session Modal */}
             {isScheduleOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs" onClick={() => setIsScheduleOpen(false)} />
+                    <div
+                        className="fixed inset-0 bg-black/50 backdrop-blur-xs"
+                        onClick={() => {
+                            setIsScheduleOpen(false);
+                            setEditingSession(null);
+                        }}
+                    />
                     <div className="relative z-50 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
                         <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-3">
-                            <h2 className="text-lg font-bold text-gray-900">Schedule Clinical Session</h2>
+                            <h2 className="text-lg font-bold text-gray-900">
+                                {editingSession ? "Edit Clinical Session" : "Schedule Clinical Session"}
+                            </h2>
                             <button
                                 type="button"
-                                onClick={() => setIsScheduleOpen(false)}
+                                onClick={() => {
+                                    setIsScheduleOpen(false);
+                                    setEditingSession(null);
+                                }}
                                 className="rounded p-1 text-gray-400 hover:text-gray-600"
                             >
                                 <X className="h-5 w-5" />
@@ -438,20 +587,32 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                                     <div className="flex-1 font-medium">{scheduleError}</div>
                                 </div>
                             )}
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-700">Resident Mentee</label>
-                                <select
-                                    value={selectedMenteeId}
-                                    onChange={(e) => setSelectedMenteeId(e.target.value)}
-                                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 text-xs outline-none focus:border-[#194611]"
-                                >
-                                    {mentees.map((m) => (
-                                        <option key={m.id} value={m.id}>
-                                            {m.name} ({m.title || "Resident"})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                            {!editingSession && (
+                                <>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-700">Resident Mentee</label>
+                                        <select
+                                            value={selectedAssignmentId}
+                                            onChange={(e) => setSelectedAssignmentId(e.target.value)}
+                                            disabled={assignmentOptions.length === 0}
+                                            className="mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 text-xs outline-none focus:border-[#194611]"
+                                        >
+                                            {assignmentOptions.length === 0 ? (
+                                                <option value="">No active mentee assignments</option>
+                                            ) : assignmentOptions.map(({ assignmentId, mentee }) => (
+                                                <option key={`${assignmentId}-${mentee.id}`} value={assignmentId}>
+                                                    {mentee.name} ({mentee.title || "Resident"})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {assignmentOptions.length === 0 && (
+                                        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                                            A mentee must have an active assignment before a clinical session can be scheduled.
+                                        </p>
+                                    )}
+                                </>
+                            )}
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -525,7 +686,9 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                                     disabled={isScheduling}
                                     className="rounded-lg bg-[#194611] px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#12330c] disabled:opacity-50"
                                 >
-                                    {isScheduling ? "Scheduling..." : "Schedule Session"}
+                                    {isScheduling
+                                        ? editingSession ? "Saving..." : "Scheduling..."
+                                        : editingSession ? "Save Changes" : "Schedule Session"}
                                 </button>
                             </div>
                         </form>
@@ -560,6 +723,10 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                         <div className="max-h-60 overflow-y-auto space-y-2.5 mb-4 pr-1">
                             {loadingNotes ? (
                                 <p className="text-center text-xs text-gray-400 py-4">Loading notes...</p>
+                            ) : notesError ? (
+                                <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-700">
+                                    {notesError}
+                                </p>
                             ) : notesList.length > 0 ? (
                                 notesList.map((n) => (
                                     <div key={n.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs">
@@ -626,7 +793,7 @@ export function SessionsView({ initialSessions, mentees }: SessionsViewProps) {
                                 Close
                             </button>
                             <a
-                                href={`https://${virtualCallInfo.domain || "meet.jit.si"}/${virtualCallInfo.room}${
+                                href={virtualCallInfo.joinUrl || `https://${virtualCallInfo.domain}/${virtualCallInfo.room}${
                                     virtualCallInfo.token ? `?jwt=${virtualCallInfo.token}` : ""
                                 }`}
                                 target="_blank"

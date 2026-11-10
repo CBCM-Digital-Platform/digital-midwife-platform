@@ -7,7 +7,7 @@ export interface MenteeAssessmentItem {
   id: string;
   title: string;
   type: string;
-  status: "PENDING" | "NEEDS_REVIEW" | "IN_REVIEW" | "PASS" | "DRAFT" | "FINALIZED";
+  status: "PENDING" | "NEEDS_REVIEW" | "IN_REVIEW" | "PASS" | "DRAFT" | "FINALIZED" | "REVIEWED";
   dueDate?: string;
   checklistTotal: number;
   checklistCompleted: number;
@@ -31,7 +31,7 @@ export interface MenteeSessionItem {
   clinicalSetting?: string;
   sessionGoals?: string;
   preparationNotes?: string;
-  status: "scheduled" | "in_progress" | "completed" | "cancelled";
+  status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "terminated" | "no_show";
   isActiveNow: boolean;
   joinUrl?: string;
 }
@@ -48,149 +48,63 @@ export interface MenteeResourceItem {
   assignedAt: string;
 }
 
-// Fallback assessments for when backend is unseeded or running in mock development
-const FALLBACK_MENTEE_ASSESSMENTS: MenteeAssessmentItem[] = [
-  {
-    id: "asm-1",
-    title: "Active Phase Labor & Partograph Interpretation",
-    type: "Labor & Delivery Competency",
-    status: "PENDING",
-    dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-    checklistTotal: 6,
-    checklistCompleted: 4,
-    evidenceCount: 0,
-    needsEvidence: true,
-    needsChecklist: true,
-    instructions:
-      "Complete the 6-point clinical partograph checklist and upload a scan or photo of your supervised case plot.",
-    mentorName: "Sr. Preceptor Almaz Tadesse",
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "asm-2",
-    title: "Neonatal Resuscitation & Bag-Mask Ventilation Drill",
-    type: "Neonatal Care Competency",
-    status: "NEEDS_REVIEW",
-    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    checklistTotal: 5,
-    checklistCompleted: 5,
-    evidenceCount: 1,
-    needsEvidence: false,
-    needsChecklist: false,
-    instructions:
-      "All checklist items verified by preceptor. Awaiting final simulation score from clinical lead.",
-    mentorName: "Dr. Yonas Bekele",
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "asm-3",
-    title: "Postpartum Hemorrhage Medical Intervention Protocol",
-    type: "Obstetric Care",
-    status: "PENDING",
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    checklistTotal: 8,
-    checklistCompleted: 2,
-    evidenceCount: 0,
-    needsEvidence: true,
-    needsChecklist: true,
-    instructions:
-      "Observe and document oxytocin administration and uterine balloon tamponade readiness.",
-    mentorName: "Sr. Bethlehem Haile",
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-// Fallback sessions for when backend is unseeded or running in mock development
-const FALLBACK_MENTEE_SESSIONS: MenteeSessionItem[] = [
-  {
-    id: "ses-1",
-    title: "Virtual Preceptor Case Review: Eclampsia & Severe Preeclampsia",
-    mentorName: "Dr. Yonas Bekele",
-    mentorRole: "Obstetric Clinical Preceptor",
-    mode: "virtual",
-    scheduledAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // Starts in 15 mins (active)
-    durationMinutes: 45,
-    clinicalSetting: "Tele-Mentorship Video Conference",
-    sessionGoals: "Case management walk-through of Magnesium Sulfate loading and maintenance dosing.",
-    preparationNotes: "Review hospital MgSO4 emergency kit chart beforehand.",
-    status: "in_progress",
-    isActiveNow: true,
-    joinUrl: "https://meet.google.com/cbcm-midwife-session",
-  },
-  {
-    id: "ses-2",
-    title: "Bedside Clinical Supervision: Labor Ward Stage II Management",
-    mentorName: "Sr. Preceptor Almaz Tadesse",
-    mentorRole: "Senior Midwife Lead",
-    mode: "in_person",
-    scheduledAt: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
-    durationMinutes: 60,
-    clinicalSetting: "Labor & Delivery Ward — Suite 4",
-    sessionGoals: "Direct observation of non-pharmacological pain relief and perineal support technique.",
-    preparationNotes: "Ensure sanitized instruments and partograph chart ready.",
-    status: "scheduled",
-    isActiveNow: false,
-  },
-  {
-    id: "ses-3",
-    title: "Post-Delivery Debrief & Neonatal Resuscitation Review",
-    mentorName: "Sr. Bethlehem Haile",
-    mentorRole: "Clinical Midwife Supervisor",
-    mode: "virtual",
-    scheduledAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-    durationMinutes: 30,
-    clinicalSetting: "Virtual Skill Reflection Hub",
-    sessionGoals: "Evaluate resuscitation timing and identify clinical learning opportunities.",
-    preparationNotes: "Bring case summary from yesterday's night shift.",
-    status: "scheduled",
-    isActiveNow: false,
-    joinUrl: "https://meet.google.com/cbcm-midwife-review",
-  },
-];
-
 /**
  * Normalizes raw assessment response to strongly typed MenteeAssessmentItem
  */
 function normalizeAssessment(raw: any): MenteeAssessmentItem {
   const id = String(raw?.id ?? raw?._id ?? "");
-  const title = String(raw?.title || raw?.type || "Clinical Competency Assessment");
-  const type = String(raw?.type || "General Midwifery");
-  const status = String(raw?.status || "PENDING").toUpperCase() as any;
+  const thematicArea = raw?.thematic_area || raw?.thematicArea || {};
+  const title = String(thematicArea.name || raw?.title || raw?.type || "Assessment");
+  const type = String(thematicArea.name || raw?.type || "Assessment");
+  const rawStatus = String(raw?.status || "").toLowerCase();
+  const statusByApi: Record<string, MenteeAssessmentItem["status"]> = {
+    draft: "DRAFT",
+    pending: "PENDING",
+    in_review: "IN_REVIEW",
+    needs_review: "NEEDS_REVIEW",
+    pass: "PASS",
+    finalized: "FINALIZED",
+    reviewed: "REVIEWED",
+  };
+  const status = statusByApi[rawStatus];
+  if (!id || !status) {
+    throw new Error("The assessments API returned an invalid mentee assessment.");
+  }
 
   const checklistItems = Array.isArray(raw?.checklistItems || raw?.checklist_items)
     ? raw?.checklistItems || raw?.checklist_items
     : [];
-  const checklistTotal = checklistItems.length || Number(raw?.checklistTotal || 5);
+  const checklistTotal = checklistItems.length;
   const checklistCompleted = checklistItems.filter((i: any) => i.checked || i.completed).length;
 
   const evidence = Array.isArray(raw?.evidence) ? raw?.evidence : [];
-  const evidenceCount = evidence.length || Number(raw?.evidenceCount || 0);
+  const evidenceCount = evidence.length;
 
-  const needsEvidence = evidenceCount === 0 && status !== "PASS" && status !== "FINALIZED";
-  const needsChecklist = checklistCompleted < checklistTotal && status !== "PASS";
+  const isComplete = status === "PASS" || status === "FINALIZED" || status === "REVIEWED";
+  const needsEvidence = evidenceCount === 0 && !isComplete;
+  const needsChecklist = checklistTotal > 0 && checklistCompleted < checklistTotal && !isComplete;
 
   const mentorName =
     raw?.mentor?.name ||
     raw?.mentor?.full_name ||
-    raw?.mentorName ||
-    raw?.assignedBy ||
-    "Assigned Clinical Mentor";
+    raw?.mentor_name ||
+    raw?.mentorName;
 
   return {
     id,
     title,
     type,
     status,
-    dueDate: raw?.due_date || raw?.dueDate || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    dueDate: raw?.due_date || raw?.dueDate || undefined,
     checklistTotal,
     checklistCompleted,
     evidenceCount,
     needsEvidence,
     needsChecklist,
     scorePct: raw?.score_pct !== undefined ? raw?.score_pct : raw?.scorePct ?? null,
-    instructions: raw?.instructions || raw?.description || "Complete clinical criteria checklist.",
+    instructions: raw?.instructions || undefined,
     mentorName,
-    createdAt: raw?.created_at || raw?.createdAt || new Date().toISOString(),
+    createdAt: raw?.created_at || raw?.createdAt || "",
   };
 }
 
@@ -199,9 +113,7 @@ function normalizeAssessment(raw: any): MenteeAssessmentItem {
  */
 function normalizeSession(raw: any): MenteeSessionItem {
   const id = String(raw?.id ?? raw?._id ?? "");
-  const title = String(
-    raw?.session_goals || raw?.sessionGoals || raw?.title || "Clinical Mentorship Supervision"
-  );
+  const title = String(raw?.session_goals || raw?.sessionGoals || raw?.title || "Clinical Mentorship Session");
   const mentor = raw?.mentor || {};
   const mentorName =
     raw?.mentor_name ||
@@ -211,10 +123,12 @@ function normalizeSession(raw: any): MenteeSessionItem {
     "Assigned Mentor";
 
   const mode = String(raw?.mode || "virtual").toLowerCase() as any;
-  const scheduledAt = raw?.scheduled_at || raw?.scheduledAt || new Date().toISOString();
+  const scheduledAt = raw?.scheduled_at || raw?.scheduledAt || "";
   const durationMinutes = Number(raw?.duration_minutes || raw?.durationMinutes || 45);
 
-  const status = String(raw?.status || "scheduled").toLowerCase() as any;
+  const rawStatus = String(raw?.status || "scheduled").toLowerCase().replaceAll("-", "_");
+  const allowedStatuses = ["draft", "scheduled", "in_progress", "completed", "cancelled", "terminated", "no_show"];
+  const status = allowedStatuses.includes(rawStatus) ? rawStatus : "scheduled";
 
   // A session is active now if it is currently in progress or within 30 minutes of scheduled time
   const scheduledTime = new Date(scheduledAt).getTime();
@@ -232,8 +146,8 @@ function normalizeSession(raw: any): MenteeSessionItem {
     mode: mode === "in_person" ? "in_person" : mode === "hybrid" ? "hybrid" : "virtual",
     scheduledAt,
     durationMinutes,
-    clinicalSetting: raw?.clinical_setting || raw?.clinicalSetting || (mode === "in_person" ? "Hospital Ward" : "Tele-Mentorship Video Call"),
-    sessionGoals: raw?.session_goals || raw?.sessionGoals || "Skill direct observation and feedback.",
+    clinicalSetting: raw?.clinical_setting || raw?.clinicalSetting || undefined,
+    sessionGoals: raw?.session_goals || raw?.sessionGoals || undefined,
     preparationNotes: raw?.preparation_notes || raw?.preparationNotes || undefined,
     status: status === "completed" ? "completed" : status === "cancelled" ? "cancelled" : isActiveNow ? "in_progress" : "scheduled",
     isActiveNow,
@@ -246,26 +160,24 @@ function normalizeSession(raw: any): MenteeSessionItem {
  * Fetches pending and completed clinical competency assessments for the mentee.
  */
 export async function getMenteeAssessments(): Promise<MenteeAssessmentItem[]> {
-  try {
-    const res = await apiClient.get<any>(`${ENDPOINTS.ASSESSMENTS.BASE}?limit=50`);
-    const rawList = Array.isArray(res?.data)
-      ? res.data
-      : Array.isArray(res?.data?.assessments)
-      ? res.data.assessments
-      : Array.isArray(res?.assessments)
-      ? res.assessments
-      : Array.isArray(res)
-      ? res
-      : [];
-
-    if (rawList.length > 0) {
-      return rawList.map((a: any) => normalizeAssessment(a));
-    }
-  } catch (err: any) {
-    console.warn("Could not fetch assessments from backend API (falling back to initial cohort list):", err?.message || err);
+  const res = await apiClient.get<any>(ENDPOINTS.ASSESSMENTS.BASE, {
+    params: { limit: 50 },
+  });
+  const rawList = Array.isArray(res?.data)
+    ? res.data
+    : Array.isArray(res?.data?.assessments)
+    ? res.data.assessments
+    : Array.isArray(res?.data?.items)
+    ? res.data.items
+    : Array.isArray(res?.assessments)
+    ? res.assessments
+    : Array.isArray(res)
+    ? res
+    : null;
+  if (!rawList) {
+    throw new Error("The assessments API returned an unexpected list response.");
   }
-
-  return FALLBACK_MENTEE_ASSESSMENTS;
+  return rawList.map((assessment: any) => normalizeAssessment(assessment));
 }
 
 /**
@@ -274,29 +186,27 @@ export async function getMenteeAssessments(): Promise<MenteeAssessmentItem[]> {
  */
 export async function getUpcomingSessions(): Promise<MenteeSessionItem[]> {
   try {
-    // Attempt fetching from available-times or sessions list
-    const res = await apiClient
-      .get<any>(`${ENDPOINTS.SESSIONS.BASE}?limit=30`)
-      .catch(() => apiClient.get<any>(ENDPOINTS.SESSIONS.AVAILABLE_TIMES));
+    const res = await apiClient.get<any>(`${ENDPOINTS.SESSIONS.BASE}?limit=30`);
 
     const rawList = Array.isArray(res?.data)
       ? res.data
       : Array.isArray(res?.data?.sessions)
       ? res.data.sessions
+      : Array.isArray(res?.data?.items)
+      ? res.data.items
       : Array.isArray(res?.sessions)
       ? res.sessions
+      : Array.isArray(res?.items)
+      ? res.items
       : Array.isArray(res)
       ? res
       : [];
 
-    if (rawList.length > 0) {
-      return rawList.map((s: any) => normalizeSession(s));
-    }
-  } catch (err: any) {
-    console.warn("Could not fetch upcoming sessions from backend API (falling back to cohort schedule):", err?.message || err);
+    return rawList.map((s: any) => normalizeSession(s));
+  } catch (err) {
+    console.error("Could not fetch upcoming sessions from backend API:", err);
+    throw err;
   }
-
-  return FALLBACK_MENTEE_SESSIONS;
 }
 
 /**
@@ -305,29 +215,25 @@ export async function getUpcomingSessions(): Promise<MenteeSessionItem[]> {
  */
 export async function joinSession(
   sessionId: string
-): Promise<{ token: string; joinUrl: string }> {
-  try {
-    const res = await apiClient.post<any>(
-      ENDPOINTS.SESSIONS.JOIN_TOKEN(sessionId),
-      {}
-    );
+): Promise<{ token?: string; joinUrl: string }> {
+  const res = await apiClient.post<any>(ENDPOINTS.SESSIONS.JOIN_TOKEN(sessionId), {});
+  const data = res?.data?.join ?? res?.data ?? res?.join ?? res;
+  const token = data?.token || undefined;
+  const directUrl = data?.joinUrl || data?.join_url;
+  const domain = data?.domain;
+  const room = data?.room;
+  const joinUrl =
+    directUrl ||
+    (domain && room
+      ? `https://${domain}/${room}${token ? `?jwt=${token}` : ""}`
+      : undefined);
 
-    const token = res?.data?.token || res?.token || `token-${Date.now()}`;
-    const joinUrl =
-      res?.data?.joinUrl ||
-      res?.data?.join_url ||
-      res?.joinUrl ||
-      res?.join_url ||
-      `https://meet.jit.si/cbcm-midwife-session-${sessionId}`;
-
-    return { token, joinUrl };
-  } catch (err: any) {
-    console.warn("Live join token generation failed, generating local meeting link:", err?.message || err);
-    return {
-      token: `mock-token-${Date.now()}`,
-      joinUrl: `https://meet.jit.si/cbcm-midwife-session-${sessionId}`,
-    };
+  if (!joinUrl) {
+    throw new Error("The backend did not return a meeting room for this session.");
   }
+
+  await apiClient.post(ENDPOINTS.SESSIONS.PARTICIPANT_JOIN(sessionId), {});
+  return { token, joinUrl };
 }
 
 /**

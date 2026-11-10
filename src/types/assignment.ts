@@ -31,6 +31,11 @@ export interface Assignment {
     notes?: string;
     /** Timestamp when the assignment was created */
     createdAt?: string;
+    facilityId?: string | number;
+    cycleId?: string | number;
+    thematicAreaId?: string | number;
+    matchingReason?: string;
+    backendStatus?: string;
 }
 
 export interface MentorLead {
