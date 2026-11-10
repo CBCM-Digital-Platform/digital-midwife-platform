@@ -9,6 +9,7 @@ import {
     FileText,
     LayoutGrid,
     List,
+    Search,
     SlidersHorizontal,
     UserPlus,
     X,
@@ -68,6 +69,7 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
     const [facility, setFacility] = useState("ALL");
     const [level, setLevel] = useState("ALL");
     const [assessmentFilter, setAssessmentFilter] = useState("ALL");
+    const [search, setSearch] = useState("");
     const [view, setView] = useState<"list" | "grid">("list");
     const [page, setPage] = useState(1);
 
@@ -176,7 +178,13 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
     );
 
     const filtered = useMemo(() => {
+        const query = search.trim().toLowerCase();
         return mentees.filter((m) => {
+            const matchSearch =
+                !query ||
+                [m.name, m.id, m.code].some((value) =>
+                    value.toLowerCase().includes(query)
+                );
             const matchFac = facility === "ALL" || m.facility === facility;
             const matchLevel = level === "ALL" || m.level === level;
 
@@ -189,9 +197,9 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                 matchAssessment = !m.assignedAssessment;
             }
 
-            return matchFac && matchLevel && matchAssessment;
+            return matchSearch && matchFac && matchLevel && matchAssessment;
         });
-    }, [mentees, facility, level, assessmentFilter]);
+    }, [mentees, search, facility, level, assessmentFilter]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const safePage = Math.min(page, totalPages);
@@ -303,6 +311,23 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                         <SlidersHorizontal className="h-4 w-4" />
                         Filters
                     </span>
+                    <div className="relative">
+                        <Search
+                            aria-hidden="true"
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                        />
+                        <input
+                            type="search"
+                            aria-label="Search mentees by name or ID"
+                            placeholder="Search by name or ID"
+                            value={search}
+                            onChange={(e) => {
+                                setSearch(e.target.value);
+                                setPage(1);
+                            }}
+                            className="w-full rounded-lg border border-gray-200 bg-gray-100 py-2 pl-9 pr-3 text-sm text-gray-800 outline-none placeholder:text-gray-500 focus:border-[#194611] sm:w-56"
+                        />
+                    </div>
                     <select
                         aria-label="Filter by facility"
                         value={facility}
