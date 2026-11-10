@@ -177,6 +177,18 @@ export async function getMyMentees(mentorIdOverride?: string | number): Promise<
             "items",
             "results",
         ]);
+        const contactsById = new Map<string, ApiRecord>();
+        try {
+            const contactsResponse = await apiClient<unknown>("/api/v1/messages/contacts");
+            for (const contact of getApiList(contactsResponse, [])) {
+                const contactId = contact.id;
+                if (typeof contactId === "string" || typeof contactId === "number") {
+                    contactsById.set(String(contactId), contact);
+                }
+            }
+        } catch (error) {
+            console.warn("Could not load assigned mentee contacts for profile names:", error);
+        }
 
         // Build facilities lookup map
         const facilityMap = new Map<string, string>();
@@ -323,7 +335,11 @@ export async function getMyMentees(mentorIdOverride?: string | number): Promise<
                 (ast) => String(ast.menteeId) === assignedId
             );
 
-            const menteeName = getMenteeDisplayName(userObj);
+            const assignmentName = getMenteeDisplayName(userObj);
+            const menteeName =
+                assignmentName !== "Name unavailable"
+                    ? assignmentName
+                    : getMenteeDisplayName(contactsById.get(assignedId) ?? {});
 
             result.push({
                 id: assignedId,

@@ -21,6 +21,14 @@ export default async function SessionsPage() {
     }
     try {
         sessions = await getSessions();
+        const menteeNames = new Map(
+            mentees.map((mentee) => [mentee.id, mentee.name])
+        );
+        sessions = sessions.map((session) => ({
+            ...session,
+            menteeName:
+                menteeNames.get(String(session.menteeId)) || session.menteeName,
+        }));
     } catch (error) {
         console.error("Could not load clinical sessions:", error);
         loadError = [
