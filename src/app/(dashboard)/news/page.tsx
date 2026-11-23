@@ -1,8 +1,15 @@
-export default function Page() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-      <h2 className="text-lg font-semibold text-gray-700 capitalize">News</h2>
-      <p className="text-sm text-gray-500 mt-1">This page is currently under construction.</p>
-    </div>
-  );
+import { getServerSession } from "next-auth/next";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { NewsManagement } from "@/components/News/NewsManagement";
+import newsManagement from "@/lib/news-management";
+
+export default async function NewsPage() {
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/login");
+
+  const role = (session.user as { role?: string } | undefined)?.role;
+  if (!newsManagement.isNewsAdminRole(role)) redirect("/dashboard");
+
+  return <NewsManagement />;
 }

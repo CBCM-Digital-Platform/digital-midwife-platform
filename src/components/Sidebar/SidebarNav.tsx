@@ -24,6 +24,8 @@ import {
   Calendar,
   MessageSquare,
   Layers,
+  Newspaper,
+  PanelsTopLeft,
   type LucideIcon,
 } from "lucide-react";
 import { NavItem } from "@/types/navigation";
@@ -52,6 +54,8 @@ const iconMap: Record<string, LucideIcon> = {
   resources: Library,
   sessions: Calendar,
   messages: MessageSquare,
+  news: Newspaper,
+  "landing-page": PanelsTopLeft,
 };
 
 interface SidebarNavProps {

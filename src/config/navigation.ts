@@ -1,4 +1,5 @@
 import { NavItem, UserRole } from "@/types/navigation";
+import newsManagement from "@/lib/news-management";
 
 export const superAdminNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
@@ -6,6 +7,8 @@ export const superAdminNavLinks: NavItem[] = [
   { name: "Facility Admins", href: "/facility-admins", icon: "users" },
   { name: "Thematic Areas", href: "/thematic-areas", icon: "thematic" },
   { name: "Reports", href: "/reports", icon: "reports" },
+  { name: "News", href: "/news", icon: "news" },
+  { name: "Landing Page", href: "/super-admin/landing-page", icon: "landing-page" },
   { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
@@ -44,11 +47,7 @@ export const menteeNavLinks: NavItem[] = [
 
 export function getNavLinksByRole(role?: UserRole | string): NavItem[] {
   const normalized = (role || "").toLowerCase().replace(/[-_\s]/g, "");
-  if (
-    normalized.includes("superadmin") ||
-    role === "super_admin" ||
-    normalized === "admin"
-  ) {
+  if (newsManagement.isNewsAdminRole(role)) {
     return superAdminNavLinks;
   }
   if (normalized.includes("facilityadmin") || role === "facility_admin") {
