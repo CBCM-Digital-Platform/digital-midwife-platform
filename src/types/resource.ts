@@ -20,7 +20,16 @@ export interface Resource {
   url: string; // "#" until the backend provides a file or video link
 }
 
-export type AdminResourceType = "document" | "video" | "link";
+export type AdminResourceType = "document" | "video" | "link" | "audio" | "presentation";
+
+export type LearningMaterialCategory =
+  | "PARTICIPANT_MANUAL"
+  | "POWERPOINT_PRESENTATION"
+  | "FACILITATOR_GUIDE"
+  | "EXAMINATION"
+  | "ANSWER_KEY";
+
+export type LearningExaminationStage = "PRETEST" | "POST_TEST";
 
 export interface AdminResource {
   id: string;
@@ -35,6 +44,9 @@ export interface AdminResource {
   thematicAreaName?: string;
   moduleId?: number | string;
   isLearningModule?: boolean;
+  category?: LearningMaterialCategory;
+  examinationStage?: LearningExaminationStage;
+  isRequired?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +60,9 @@ export interface CreateResourceInput {
   fileId?: number | string;
   thematicAreaId?: number | string;
   moduleId?: number | string;
+  category?: LearningMaterialCategory;
+  examinationStage?: LearningExaminationStage;
+  isRequired?: boolean;
 }
 
 export interface UpdateResourceInput {
@@ -59,4 +74,7 @@ export interface UpdateResourceInput {
   fileId?: number | string;
   thematicAreaId?: number | string;
   moduleId?: number | string;
+  category?: LearningMaterialCategory;
+  examinationStage?: LearningExaminationStage;
+  isRequired?: boolean;
 }

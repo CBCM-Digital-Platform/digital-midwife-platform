@@ -244,6 +244,8 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
     const baseUrl = (
       process.env.NEXT_PUBLIC_API_URL || "https://cbcm-backend-1.onrender.com/api/v1"
     ).replace(/\/+$/, "");
+    const menteeContentUrl = (resourceId: string | number) =>
+      `${baseUrl}/learning/my/resources/${resourceId}/content`;
 
     const collected: MenteeResourceItem[] = [];
     const seenIds = new Set<string>();
@@ -273,7 +275,7 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
                     title: r.title || "Assigned Clinical Resource",
                     description: r.description || "Assigned by preceptor for clinical mastery.",
                     type,
-                    url: r.url || `${baseUrl}/resources/${rId}/content`,
+                    url: type === "link" ? r.url : menteeContentUrl(rId),
                     fileName: r.fileName,
                     fileSizeMb: r.fileSizeMb,
                     assignedBy: "Facility Clinical Preceptor",
@@ -301,10 +303,13 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
 
     if (myResourcesList.length > 0) {
       for (const r of myResourcesList) {
-        const rId = String(r.id);
+        // The backend returns resource assignments with the resource nested
+        // under `resource`; normalize that nested record for the mentee UI.
+        const resource = r?.resource || r;
+        const rId = String(resource.id ?? r.resourceId ?? r.id);
         if (!seenIds.has(rId)) {
           seenIds.add(rId);
-          const rawType = String(r?.type || "").toLowerCase();
+          const rawType = String(resource?.type || "").toLowerCase();
           const type: "document" | "video" | "link" = rawType.includes("video")
             ? "video"
             : rawType.includes("link")
@@ -313,13 +318,13 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
 
           collected.push({
             id: rId,
-            title: r.title || "Assigned Clinical Resource",
-            description: r.description || "Assigned by preceptor for clinical mastery.",
+            title: resource.title || "Assigned Clinical Resource",
+            description: resource.description || "Assigned by preceptor for clinical mastery.",
             type,
-            url: `${baseUrl}/resources/${r.id}/content`,
-            fileName: r.fileName || r.original_filename,
+            url: menteeContentUrl(rId),
+            fileName: resource.fileName || resource.original_filename,
             assignedBy: r.assignedBy || "Facility Clinical Preceptor",
-            assignedAt: r.assignedAt || r.created_at || new Date().toISOString(),
+            assignedAt: r.assignedAt || resource.created_at || new Date().toISOString(),
           });
         }
       }
@@ -336,8 +341,8 @@ export async function getMenteeAssignedResources(): Promise<MenteeResourceItem[]
         id: r.id,
         title: r.title,
         description: r.description || "Authorized clinical guideline module.",
-        type: r.type,
-        url: r.url || `${baseUrl}/resources/${r.id}/content`,
+        type: r.type === "audio" || r.type === "presentation" ? "document" : r.type,
+        url: r.type === "link" ? r.url : menteeContentUrl(r.id),
         fileName: r.fileName,
         fileSizeMb: r.fileSizeMb,
         assignedBy: "Facility Clinical Preceptor",

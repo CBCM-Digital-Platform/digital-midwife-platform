@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   deleteResource,
   getStoredResources,
+  openResourceInNewTab,
 } from "@/services/resources.service";
 import type { AdminResource, AdminResourceType } from "@/types/resource";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,18 @@ export function SuperAdminResourcesTableClient({
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const openResource = async (resource: AdminResource) => {
+    try {
+      if (resource.type === "link" && resource.url) {
+        window.open(resource.url, "_blank", "noopener,noreferrer");
+      } else {
+        await openResourceInNewTab(resource.id);
+      }
+    } catch (error: any) {
+      setToastMessage({ type: "error", text: error?.message || "Unable to open this resource." });
+    }
+  };
 
   // Synchronize with local storage on mount for mock sessions or offline edits
   useEffect(() => {
@@ -178,15 +191,14 @@ export function SuperAdminResourcesTableClient({
                     {res.title}
                   </span>
                   {res.url && res.url !== "#" && (
-                    <a
-                      href={res.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => openResource(res)}
                       className="text-gray-400 hover:text-[#194611] inline-flex items-center transition"
                       title="Open external resource"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   )}
                 </div>
                 {res.description && (
@@ -268,7 +280,7 @@ export function SuperAdminResourcesTableClient({
             actionItems.push({
               label: "View / Open Link",
               icon: <Eye className="w-4 h-4 text-emerald-600" />,
-              onClick: () => window.open(res.url, "_blank", "noopener,noreferrer"),
+              onClick: () => openResource(res),
             });
           }
 

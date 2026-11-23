@@ -248,12 +248,11 @@ function normalizeResource(raw: any, starredIds: Set<string>): Resource {
 }
 
 /**
- * Fetches learning resources from backend GET /api/v1/hierarchical-resources.
- * Falls back to curated mock data only if the backend returns nothing or errors.
+ * Fetches learning resources from the backend only.
+ * Empty or failed API responses produce an empty list; no demo resources are shown.
  */
 export async function getResources(): Promise<Resource[]> {
     const starredIds = getStarredResourceIds();
-
     try {
         const res = await apiClient.get<any>(`${ENDPOINTS.RESOURCES.BASE}?limit=100`);
 
@@ -270,14 +269,10 @@ export async function getResources(): Promise<Resource[]> {
             return rawList.map((r: any) => normalizeResource(r, starredIds));
         }
     } catch (err) {
-        console.warn("Failed to fetch resources from backend API (falling back to mock dataset):", err);
+        console.warn("Failed to fetch resources from backend API:", err);
     }
 
-    // Only fall back to mock data when the backend returns nothing
-    return MOCK_RESOURCES.map((r) => ({
-        ...r,
-        starred: starredIds.has(r.id) ? true : r.starred,
-    }));
+    return [];
 }
 
 /**

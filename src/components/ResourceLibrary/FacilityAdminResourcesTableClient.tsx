@@ -23,7 +23,7 @@ import { AssignResourceDialog } from "@/components/ResourceLibrary/AssignResourc
 import { Badge } from "@/components/ui/badge";
 import type { AdminResource } from "@/types/resource";
 import type { MentorUser } from "@/types/user";
-import { getStoredResources } from "@/services/resources.service";
+import { getStoredResources, openResourceInNewTab } from "@/services/resources.service";
 import { cn } from "@/lib/utils";
 
 interface FacilityAdminResourcesTableClientProps {
@@ -43,6 +43,18 @@ export function FacilityAdminResourcesTableClient({
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const openResource = async (resource: AdminResource) => {
+    try {
+      if (resource.type === "link" && resource.url) {
+        window.open(resource.url, "_blank", "noopener,noreferrer");
+      } else {
+        await openResourceInNewTab(resource.id);
+      }
+    } catch (error: any) {
+      setToastMessage({ type: "error", text: error?.message || "Unable to open this resource." });
+    }
+  };
 
   // Sync with client-side storage to ensure any user-created resources display
   useEffect(() => {
@@ -211,10 +223,9 @@ export function FacilityAdminResourcesTableClient({
           }
 
           return (
-            <a
-              href={res.url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => openResource(res)}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#194611] hover:text-[#12360d] hover:underline transition"
             >
               <span>
@@ -225,7 +236,7 @@ export function FacilityAdminResourcesTableClient({
                   : "View Document"}
               </span>
               <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#194611]" />
-            </a>
+            </button>
           );
         },
       },
@@ -248,7 +259,7 @@ export function FacilityAdminResourcesTableClient({
             actionItems.push({
               label: "Open Resource",
               icon: <Eye className="w-4 h-4 text-gray-500" />,
-              onClick: () => window.open(res.url, "_blank", "noopener,noreferrer"),
+              onClick: () => openResource(res),
             });
           }
 

@@ -363,4 +363,35 @@ apiClient.delete = <T = any>(endpoint: string, options?: Omit<ApiRequestOptions,
   return apiClient<T>(endpoint, { ...options, method: "DELETE" });
 };
 
+/** GET a protected binary response while preserving the same API URL and auth handling. */
+apiClient.getBlob = async (endpoint: string, options: Omit<ApiRequestOptions, "method" | "body"> = {}) => {
+  const { params, token: explicitToken, headers: customHeaders, ...fetchOptions } = options;
+  const url = buildUrl(endpoint, params);
+  const headers = new Headers(customHeaders);
+  const token = explicitToken || (await resolveAccessToken());
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    ...fetchOptions,
+    method: "GET",
+    headers,
+    signal: fetchOptions.signal || AbortSignal.timeout(options.timeout || 45000),
+  });
+
+  if (!response.ok) {
+    let message = `API request failed with status ${response.status}`;
+    try {
+      const data = await response.json();
+      message = data?.error?.message || data?.message || message;
+    } catch {
+      // Keep the status-based message for non-JSON responses.
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  return response.blob();
+};
+
 export default apiClient;

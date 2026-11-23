@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type MaterialTypeOption = "pdf" | "video" | "audio" | "link";
+export type MaterialTypeOption = "pdf" | "video" | "audio" | "presentation" | "link";
 
 interface CreateModuleWizardClientProps {
   thematicAreas: ThematicArea[];
@@ -78,6 +78,11 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
   const [materialType, setMaterialType] = useState<MaterialTypeOption>("pdf");
   const [materialTitle, setMaterialTitle] = useState("");
   const [materialDescription, setMaterialDescription] = useState("");
+  const [materialCategory, setMaterialCategory] = useState<
+    "PARTICIPANT_MANUAL" | "POWERPOINT_PRESENTATION" | "FACILITATOR_GUIDE" | "EXAMINATION" | "ANSWER_KEY"
+  >("PARTICIPANT_MANUAL");
+  const [examinationStage, setExaminationStage] = useState<"PRETEST" | "POST_TEST">("PRETEST");
+  const [isRequired, setIsRequired] = useState(true);
   const [linkUrl, setLinkUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -185,16 +190,8 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
       errors.materialTitle = "Learning material title is required.";
     }
 
-    if (materialType === "link") {
-      if (!linkUrl.trim()) {
-        errors.fileOrUrl = "External resource URL is required for Link type.";
-      } else if (!/^https?:\/\/.+/i.test(linkUrl.trim())) {
-        errors.fileOrUrl = "Please provide a valid web URL starting with http:// or https://";
-      }
-    } else {
-      if (!selectedFile) {
-        errors.fileOrUrl = `Please select or upload a ${materialType.toUpperCase()} file.`;
-      }
+    if (!selectedFile) {
+      errors.fileOrUrl = `Please select or upload a ${materialType.toUpperCase()} file.`;
     }
 
     setStep2Errors(errors);
@@ -252,6 +249,8 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
         return ".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime";
       case "audio":
         return ".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4";
+      case "presentation":
+        return ".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation";
       default:
         return "*";
     }
@@ -280,9 +279,12 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
         type: materialType,
         description: materialDescription.trim() || undefined,
         file: selectedFile || undefined,
-        url: materialType === "link" ? linkUrl.trim() : undefined,
+        url: undefined,
         order: 1,
-        isRequired: true,
+        isRequired,
+        category: materialCategory,
+        examinationStage: materialCategory === "EXAMINATION" ? examinationStage : undefined,
+        thematicAreaId,
       };
 
       const result = await addContent(createdModuleId, payload);
@@ -737,15 +739,15 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                     </div>
                   </div>
 
-                  {/* Link Card */}
+                {/* Presentation Card */}
                   <div
                     onClick={() => {
-                      setMaterialType("link");
+                      setMaterialType("presentation");
                       setSelectedFile(null);
                     }}
                     className={cn(
                       "p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col items-start justify-between min-h-[120px] select-none",
-                      materialType === "link"
+                      materialType === "presentation"
                         ? "border-[#194611] bg-emerald-50/50 shadow-2xs"
                         : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/50"
                     )}
@@ -754,12 +756,12 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                       <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
                         <Globe className="w-5 h-5" />
                       </div>
-                      <RadioGroupItem value="link" />
+                      <RadioGroupItem value="presentation" />
                     </div>
                     <div className="mt-3">
-                      <h4 className="text-sm font-bold text-gray-900">External Link</h4>
+                      <h4 className="text-sm font-bold text-gray-900">PowerPoint</h4>
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        Web references & MoH repositories
+                        Slide decks for clinical teaching
                       </p>
                     </div>
                   </div>
@@ -809,6 +811,53 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                   className="text-sm bg-white border-gray-200 focus-visible:ring-[#194611]"
                 />
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-800">Material Category <span className="text-red-500">*</span></label>
+                  <select
+                    value={materialCategory}
+                    onChange={(e) => {
+                      const next = e.target.value as typeof materialCategory;
+                      setMaterialCategory(next);
+                      if (next === "POWERPOINT_PRESENTATION") setMaterialType("presentation");
+                      if (next === "FACILITATOR_GUIDE" || next === "ANSWER_KEY") setIsRequired(false);
+                      else setIsRequired(true);
+                    }}
+                    className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm"
+                  >
+                    <option value="PARTICIPANT_MANUAL">Participant Manual</option>
+                    <option value="POWERPOINT_PRESENTATION">PowerPoint Presentation</option>
+                    <option value="FACILITATOR_GUIDE">Facilitator Guide (mentor only)</option>
+                    <option value="EXAMINATION">Examination</option>
+                    <option value="ANSWER_KEY">Answer Key (mentor only)</option>
+                  </select>
+                </div>
+
+                {materialCategory === "EXAMINATION" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-800">Examination Stage <span className="text-red-500">*</span></label>
+                    <select
+                      value={examinationStage}
+                      onChange={(e) => setExaminationStage(e.target.value as "PRETEST" | "POST_TEST")}
+                      className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm"
+                    >
+                      <option value="PRETEST">Pre-test</option>
+                      <option value="POST_TEST">Post-test</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={isRequired}
+                  disabled={materialCategory === "FACILITATOR_GUIDE" || materialCategory === "ANSWER_KEY"}
+                  onChange={(e) => setIsRequired(e.target.checked)}
+                />
+                Required for mentee module completion
+              </label>
 
               {/* Drag and Drop Upload Zone for PDF/Video/Audio OR Web Link Input */}
               {materialType === "link" ? (
