@@ -25,7 +25,7 @@ import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
-import { FACILITY_ID_MAP } from "@/services/users.service";
+import { FACILITY_ID_MAP, saveUserMeta } from "@/services/users.service";
 import {
   Dialog,
   DialogContent,
@@ -352,8 +352,29 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
         payload.facility_id = assignedFacilityId;
       }
 
-      await apiClient.post<any>("/api/v1/users", payload);
+      const res = await apiClient.post<any>("/api/v1/users", payload);
+      const rawUser = res?.data?.user || res?.data || res?.user || res;
+      const createdId = String(rawUser?.id || "");
+      const userEmail = formData.email.trim().toLowerCase();
+
+      // Persist the clinician's selected thematic area, department, and experience
+      const userMeta = {
+        thematicArea: formData.thematic_area,
+        department: formData.thematic_area,
+        yearsOfExperience: Number(formData.years_of_experience) || 0,
+      };
+
+      if (createdId) {
+        saveUserMeta(createdId, userMeta);
+      }
+      if (userEmail) {
+        saveUserMeta(userEmail, userMeta);
+      }
+
       const newUser = createNewUserFromForm(formData, role, assignedFacilityId);
+      if (createdId) {
+        newUser.id = createdId;
+      }
 
       onUserCreated?.(newUser);
       reset();

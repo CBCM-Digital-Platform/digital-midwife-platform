@@ -13,6 +13,35 @@ export const FACILITY_ID_MAP: Record<number | string, string> = {
   6: "Yekatit 12 Hospital Medical College",
 };
 
+export const USER_META_STORAGE_KEY = "cbcm_user_metadata_store";
+
+export interface UserMeta {
+  thematicArea?: string;
+  department?: string;
+  yearsOfExperience?: number;
+}
+
+export function getUserMetaStore(): Record<string, UserMeta> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(USER_META_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveUserMeta(key: string, meta: UserMeta): void {
+  if (typeof window === "undefined" || !key) return;
+  try {
+    const store = getUserMetaStore();
+    store[key] = { ...(store[key] || {}), ...meta };
+    localStorage.setItem(USER_META_STORAGE_KEY, JSON.stringify(store));
+  } catch (e) {
+    console.warn("Failed to persist user metadata:", e);
+  }
+}
+
 /**
  * Normalizes raw backend user models (snake_case full_name, facility_id, highest_qualification, etc.)
  * into strongly-typed frontend ClinicalUser (MentorUser | MenteeUser) domain models.
@@ -22,6 +51,10 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
 
   const id = String(raw.id ?? raw._id ?? `user-${Date.now()}`);
   const role = (raw.role || defaultRole) as "mentor" | "mentee";
+
+  const metaStore = getUserMetaStore();
+  const userEmail = raw.email ? String(raw.email).toLowerCase().trim() : "";
+  const userMeta = metaStore[id] || (userEmail ? metaStore[userEmail] : undefined) || {};
 
   const firstName = raw.first_name || raw.firstName || "";
   const lastName = raw.last_name || raw.lastName || "";
@@ -70,7 +103,11 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     raw.highest_qualification ||
     (role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife");
 
-  const thematicArea = raw.thematicArea || raw.thematic_area || "Maternal & Child";
+  const thematicArea =
+    raw.thematicArea ||
+    raw.thematic_area ||
+    userMeta.thematicArea ||
+    "Maternal & Child";
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -113,8 +150,13 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
       profession,
-      department: raw.department || "Maternal & Fetal Health Unit",
-      yearsOfExperience: Number(raw.yearsOfExperience || raw.years_of_experience) || 5,
+      department:
+        raw.department ||
+        userMeta.department ||
+        userMeta.thematicArea ||
+        "Maternal & Fetal Health Unit",
+      yearsOfExperience:
+        Number(raw.yearsOfExperience || raw.years_of_experience || userMeta.yearsOfExperience) || 5,
       assignedMenteesCount: Number(raw.assignedMenteesCount || raw.assigned_mentees_count) || 0,
       status: status as any,
     };

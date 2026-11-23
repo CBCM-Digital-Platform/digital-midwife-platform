@@ -17,7 +17,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
-import { changeUserStatus } from "@/services/users.service";
+import { changeUserStatus, getUserMetaStore } from "@/services/users.service";
 import { UserDetailDialog } from "@/components/User/UserDetailDialog";
 import { UsersTableToolbar } from "@/components/User/UsersTableToolbar";
 import { UsersTablePagination } from "@/components/User/UsersTablePagination";
@@ -74,9 +74,27 @@ export function UsersTable({
     targetStatus: "inactive" | "suspended";
   } | null>(null);
 
-  // Sync state if props change
+  // Sync state if props change and enrich with stored user metadata
   useEffect(() => {
-    setUsersData(data);
+    const metaStore = getUserMetaStore();
+    const enriched = data.map((user) => {
+      const meta =
+        metaStore[user.id] ||
+        (user.email ? metaStore[user.email.toLowerCase()] : undefined);
+      if (meta && meta.thematicArea) {
+        return {
+          ...user,
+          thematicArea: meta.thematicArea,
+          department: meta.department || meta.thematicArea,
+          yearsOfExperience:
+            user.role === "mentor" && meta.yearsOfExperience !== undefined
+              ? meta.yearsOfExperience
+              : (user as MentorUser).yearsOfExperience,
+        };
+      }
+      return user;
+    });
+    setUsersData(enriched);
   }, [data]);
 
   // Click outside to close action menu
