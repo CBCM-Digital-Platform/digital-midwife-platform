@@ -111,8 +111,14 @@ export function AssessmentsTable({
                         rows.map((a) => (
                             <tr
                                 key={a.id}
+                                onClick={(e) => {
+                                    const target = e.target as HTMLElement;
+                                    if (target.closest("button, a, input, select, textarea")) return;
+                                    onSelectAssessment?.(a);
+                                }}
                                 className={cn(
                                     "hover:bg-gray-50/80 transition-colors",
+                                    onSelectAssessment && "cursor-pointer",
                                     ["PENDING", "DRAFT", "IN_REVIEW"].includes(a.status) && "bg-yellow-50/60"
                                 )}
                             >

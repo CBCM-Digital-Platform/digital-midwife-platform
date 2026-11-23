@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
     Download,
@@ -32,6 +33,7 @@ export default function AssignmentsView({
     assignments: serverAssignments,
     stats,
 }: AssignmentsViewProps) {
+    const router = useRouter();
     const [tab, setTab] = useState<AssignmentTab>("all");
     const [filters, setFilters] = useState<AssignmentFiltersState>(DEFAULT_FILTERS);
     const [compact, setCompact] = useState(false);
@@ -266,7 +268,11 @@ export default function AssignmentsView({
                                     emptyDescription="Try clearing search filters or add a new assignment."
                                 />
                             ) : (
-                                <AssignmentTable data={filteredAll} compact={compact} />
+                                <AssignmentTable
+                                    data={filteredAll}
+                                    compact={compact}
+                                    onRowClick={(a) => router.push(`/assignments/${a.id}`)}
+                                />
                             )}
                         </div>
                     )}
@@ -282,7 +288,11 @@ export default function AssignmentsView({
                                     actionLabel="Create First Assignment"
                                 />
                             ) : (
-                                <AssignmentTable data={filteredNew} compact={compact} />
+                                <AssignmentTable
+                                    data={filteredNew}
+                                    compact={compact}
+                                    onRowClick={(a) => router.push(`/assignments/${a.id}`)}
+                                />
                             )}
                         </div>
                     )}
@@ -296,7 +306,11 @@ export default function AssignmentsView({
                                     emptyDescription="No prior mentor-mentee pairings match the chosen criteria."
                                 />
                             ) : (
-                                <AssignmentTable data={previousGrouped} compact={compact} />
+                                <AssignmentTable
+                                    data={previousGrouped}
+                                    compact={compact}
+                                    onRowClick={(a) => router.push(`/assignments/${a.id}`)}
+                                />
                             )}
                         </div>
                     )}

@@ -348,6 +348,7 @@ export function FacilityAdminResourcesTableClient({
       <DataTable
         columns={columns}
         data={filteredData}
+        onRowClick={(res) => openResource(res)}
         searchPlaceholder="Search master resources by title, description..."
         emptyMessage="No clinical resources found in the database."
         pageSize={10}

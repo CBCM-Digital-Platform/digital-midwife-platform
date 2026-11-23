@@ -376,6 +376,7 @@ export function FacilityAdminsTableClient({
       <DataTable
         columns={columns}
         data={filteredData}
+        onRowClick={(admin) => setSelectedAdminForDetail(admin)}
         searchPlaceholder="Search admins by name, email, or facility..."
         emptyMessage="No facility administrators found matching the criteria."
         filters={

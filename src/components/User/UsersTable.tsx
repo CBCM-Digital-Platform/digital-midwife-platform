@@ -557,7 +557,22 @@ export function UsersTable({
             <tbody className="divide-y divide-gray-100">
               {table.getRowModel().rows.length > 0 ? (
                 table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/80 transition-colors">
+                  <tr
+                    key={row.id}
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (
+                        target.closest(
+                          "button, a, input, select, textarea, [role='menu'], [role='menuitem'], [data-prevent-row-click]"
+                        )
+                      ) {
+                        return;
+                      }
+                      setSelectedUserForDetail(row.original);
+                      setIsDetailOpen(true);
+                    }}
+                    className="hover:bg-gray-50/80 transition-colors cursor-pointer"
+                  >
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id} className="px-4 py-3.5 whitespace-nowrap">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}

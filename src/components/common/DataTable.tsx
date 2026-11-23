@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -33,6 +34,7 @@ export interface DataTableProps<TData, TValue> {
   actions?: React.ReactNode;
   isLoading?: boolean;
   className?: string;
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData, TValue>({
@@ -46,6 +48,7 @@ export function DataTable<TData, TValue>({
   actions,
   isLoading = false,
   className,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState<string>("");
@@ -133,7 +136,22 @@ export function DataTable<TData, TValue>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
-                    className="hover:bg-gray-50/70 transition-colors"
+                    onClick={(e) => {
+                      if (!onRowClick) return;
+                      const target = e.target as HTMLElement;
+                      if (
+                        target.closest(
+                          "button, a, input, select, textarea, [role='menu'], [role='menuitem'], [data-prevent-row-click]"
+                        )
+                      ) {
+                        return;
+                      }
+                      onRowClick(row.original);
+                    }}
+                    className={cn(
+                      "hover:bg-gray-50/70 transition-colors",
+                      onRowClick && "cursor-pointer hover:bg-gray-50/90"
+                    )}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="px-4 py-3 text-sm text-gray-700">

@@ -190,6 +190,7 @@ export function FacilitiesTableClient({
       <DataTable
         columns={columns}
         data={filteredData}
+        onRowClick={(facility) => setSelectedFacilityForEdit(facility)}
         searchPlaceholder="Search facilities by name, code, or location..."
         emptyMessage="No clinical facilities found matching your search."
         filters={

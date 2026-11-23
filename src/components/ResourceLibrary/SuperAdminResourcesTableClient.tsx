@@ -385,6 +385,7 @@ export function SuperAdminResourcesTableClient({
       <DataTable
         columns={columns}
         data={filteredData}
+        onRowClick={(res) => setSelectedResourceForEdit(res)}
         searchPlaceholder="Search resources by title, description..."
         emptyMessage="No clinical resources found matching your search criteria."
         pageSize={10}

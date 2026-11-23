@@ -371,6 +371,7 @@ export function ThematicAreasTableClient({
       <DataTable
         columns={columns}
         data={filteredData}
+        onRowClick={(area) => setSelectedAreaForDetail(area)}
         searchPlaceholder="Search thematic areas by code, title, or clinical domain..."
         emptyMessage="No thematic areas found matching your filter criteria."
         actions={
