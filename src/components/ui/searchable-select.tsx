@@ -59,11 +59,18 @@ export function SearchableSelect({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
 
-  // Normalize options into { value, label, description? }
+  // Normalize options into { value, label, description? } and deduplicate by value
   const normalizedOptions = useMemo<SearchableSelectOption[]>(() => {
-    return options.map((opt) =>
-      typeof opt === "string" ? { value: opt, label: opt } : opt
-    );
+    const seen = new Set<string>();
+    const result: SearchableSelectOption[] = [];
+    for (const opt of options) {
+      const item = typeof opt === "string" ? { value: opt, label: opt } : opt;
+      if (!seen.has(item.value)) {
+        seen.add(item.value);
+        result.push(item);
+      }
+    }
+    return result;
   }, [options]);
 
   // Current selected option object
@@ -339,7 +346,7 @@ export function SearchableSelect({
 
                 return (
                   <li
-                    key={opt.value}
+                    key={`${opt.value}-${idx}`}
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => handleSelect(opt.value)}

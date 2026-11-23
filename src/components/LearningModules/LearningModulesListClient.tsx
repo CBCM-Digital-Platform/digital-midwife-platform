@@ -177,7 +177,7 @@ export function LearningModulesListClient({
             {isMentor &&
               "Access preceptor teaching guides, instructional clinical videos, and evaluate junior midwives on standardized competency packages."}
             {isFacilityAdmin &&
-              "Coordinate facility preceptors, authorize mentor access to modules, and review curriculum resources."}
+              "Coordinate facility preceptors, maintain thematic-area assignments, and review curriculum resources."}
             {isSuperAdmin &&
               "Manage national clinical learning modules, publish evidence-based materials, and govern competency standards."}
           </p>
@@ -275,7 +275,7 @@ export function LearningModulesListClient({
               {search
                 ? `No clinical learning modules matched "${search}". Try searching with different keywords.`
                 : isMentor
-                ? "No learning modules are currently authorized for your preceptor profile. Please contact your Facility Administrator to grant preceptor access from the module's Mentor Access tab."
+                ? "No published and authorized learning modules currently match your assigned thematic areas. Contact your administrator if your thematic-area assignment needs updating."
                 : "No learning modules are currently available in the database. Check back soon or contact your system administrator."}
             </p>
           </div>

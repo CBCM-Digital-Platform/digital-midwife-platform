@@ -134,6 +134,16 @@ export function ResourceFormDialog({
     setServerError(null);
 
     try {
+      if (!isEditing && !selectedFile) {
+        throw new Error("A file is required. The backend does not accept link-only resources.");
+      }
+      if (data.type === "link") {
+        throw new Error("External link resources are not supported by the backend.");
+      }
+      const linkedModule = availableModules.find((mod) => String(mod.id) === String(data.moduleId));
+      if (!linkedModule?.thematicAreaId) {
+        throw new Error("Select a learning module with a thematic area before saving this resource.");
+      }
       if (isEditing && resource) {
         const updated = await updateResource(resource.id, {
           title: data.title,
@@ -142,6 +152,9 @@ export function ResourceFormDialog({
           url: data.url || undefined,
           file: selectedFile || undefined,
           moduleId: data.moduleId ? Number(data.moduleId) : undefined,
+          thematicAreaId: linkedModule.thematicAreaId,
+          category: resource.category || "PARTICIPANT_MANUAL",
+          isRequired: resource.isRequired ?? true,
         });
         onSuccess(updated);
         onOpenChange(false);
@@ -153,6 +166,9 @@ export function ResourceFormDialog({
           url: data.url || undefined,
           file: selectedFile || undefined,
           moduleId: data.moduleId ? Number(data.moduleId) : undefined,
+          thematicAreaId: linkedModule.thematicAreaId,
+          category: "PARTICIPANT_MANUAL",
+          isRequired: true,
         });
         onSuccess(created);
         onOpenChange(false);

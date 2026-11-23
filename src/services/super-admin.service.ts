@@ -1,6 +1,11 @@
 import { apiClient } from "@/lib/api-client";
 import { ENDPOINTS } from "@/services/endpoints";
 import type { LearningModule, ModuleContent } from "@/types/learning";
+import type {
+  LearningExaminationStage,
+  LearningMaterialCategory,
+} from "@/types/resource";
+import { createResource } from "@/services/resources.service";
 import {
   normalizeLearningModule,
   normalizeModuleContent,
@@ -27,6 +32,9 @@ export interface AddContentPayload {
   isRequired?: boolean;
   isPublished?: boolean;
   isAuthorized?: boolean;
+  category?: LearningMaterialCategory;
+  examinationStage?: LearningExaminationStage;
+  thematicAreaId?: string | number;
 }
 
 export interface CreateModuleResult {
@@ -120,67 +128,30 @@ export async function addContent(
     throw new Error("Material title is required.");
   }
 
-  let fileId = payload.fileId;
-  let fileName = payload.file?.name;
-  let fileSizeMb = payload.file ? payload.file.size / (1024 * 1024) : undefined;
-
-  // 1. If a file was uploaded, try to upload to /api/v1/uploads first
-  if (payload.file && !fileId) {
-    try {
-      const formData = new FormData();
-      formData.append("file", payload.file);
-      formData.append("context", "learning_module_content");
-
-      const uploadRes = await apiClient.post<any>(ENDPOINTS.UPLOADS.BASE, formData);
-      const uploaded = uploadRes?.data ?? uploadRes;
-      if (uploaded?.id) {
-        fileId = uploaded.id;
-      }
-    } catch (uploadErr) {
-      console.warn("Upload service upload failed, proceeding with content creation:", uploadErr);
-    }
+  if (payload.type === "link") {
+    throw new Error("The backend accepts uploaded PDF, audio, video, or presentation resources; external links are not supported.");
+  }
+  if (!payload.category) {
+    throw new Error("A learning material category is required.");
   }
 
-  // Determine standard OpenAPI content type: "pdf", "video", "article", or "quiz"
-  const rawType = (payload.type || "document").toLowerCase();
-  const openApiType =
-    rawType.includes("vid") || rawType.includes("mp4")
-      ? "video"
-      : rawType.includes("aud") || rawType.includes("pod")
-      ? "audio"
-      : rawType.includes("link") || rawType.includes("url")
-      ? "article"
-      : "pdf";
-
-  // 2. Format content payload with isPublished and isAuthorized to ensure mentor visibility
-  const contentBody = {
-    title: payload.title.trim(),
-    type: openApiType,
-    description: payload.description?.trim() || null,
-    contentText: payload.description?.trim() || payload.title.trim(),
-    url: payload.url?.trim() || (payload.type === "link" ? "" : null),
-    contentUrl: payload.url?.trim() || null,
-    file_id: fileId || null,
-    fileId: fileId || null,
-    file_name: fileName,
-    fileSizeMb: fileSizeMb,
-    order: payload.order ?? 1,
-    orderNumber: payload.order ?? 1,
-    is_required: payload.isRequired ?? false,
-    isRequired: payload.isRequired ?? false,
-    isPublished: true,
-    is_published: true,
-    isAuthorized: true,
-    is_authorized: true,
-  };
-
   try {
-    const res = await apiClient.post<any>(
-      ENDPOINTS.LEARNING.CONTENTS(moduleId),
-      contentBody
-    );
-    const rawData = res?.data ?? res;
-    const contentId = rawData?.id ?? rawData?.contentId ?? Date.now();
+    const rawData = await createResource({
+      title: payload.title.trim(),
+      type: payload.type === "audio" || payload.type === "video" || payload.type === "presentation"
+        ? payload.type
+        : "document",
+      description: payload.description,
+      url: payload.url,
+      file: payload.file,
+      fileId: payload.fileId,
+      moduleId,
+      thematicAreaId: payload.thematicAreaId,
+      category: payload.category,
+      examinationStage: payload.examinationStage,
+      isRequired: payload.isRequired,
+    });
+    const contentId = rawData?.id ?? Date.now();
 
     const normalized = normalizeModuleContent(
       {
@@ -190,9 +161,9 @@ export async function addContent(
         title: payload.title.trim(),
         type: payload.type.toLowerCase(),
         description: payload.description?.trim(),
-        url: payload.url || (fileName ? `#file-${fileName}` : undefined),
-        fileName,
-        fileSizeMb,
+        url: payload.url,
+        fileName: payload.file?.name,
+        fileSizeMb: payload.file ? payload.file.size / (1024 * 1024) : undefined,
       },
       moduleId
     );
@@ -204,7 +175,7 @@ export async function addContent(
       message: "Learning material added successfully",
     };
   } catch (error: any) {
-    console.error("Live API addContent failed:", error?.message || error);
+    console.error("Live API resource creation failed:", error?.message || error);
     throw error;
   }
 }

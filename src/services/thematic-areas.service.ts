@@ -362,6 +362,22 @@ export async function createThematicArea(
   const trimmedCode = data.code.trim().toUpperCase();
   const trimmedName = data.name.trim();
 
+  // Validate unique name and code against existing thematic areas
+  const existingList = await getThematicAreas().catch(() => getStoredAreas());
+  const duplicateName = existingList.find(
+    (a) => a.name.trim().toLowerCase() === trimmedName.toLowerCase()
+  );
+  if (duplicateName) {
+    throw new Error(`A thematic area with the title "${trimmedName}" already exists (Code: ${duplicateName.code}).`);
+  }
+
+  const duplicateCode = existingList.find(
+    (a) => a.code.trim().toUpperCase() === trimmedCode
+  );
+  if (duplicateCode) {
+    throw new Error(`Thematic area code "${trimmedCode}" is already in use by "${duplicateCode.name}".`);
+  }
+
   // Check if current user is logged in with a local development mock token
   let isMockSession = false;
   if (typeof window !== "undefined") {
@@ -459,6 +475,33 @@ export async function updateThematicArea(
   id: string,
   data: UpdateThematicAreaInput
 ): Promise<ThematicArea> {
+  // Validate unique name and code against existing thematic areas
+  if (data.name !== undefined || data.code !== undefined) {
+    const existingList = await getThematicAreas().catch(() => getStoredAreas());
+    if (data.name !== undefined) {
+      const trimmedNewName = data.name.trim().toLowerCase();
+      const duplicateName = existingList.find(
+        (a) => a.id !== id && a.name.trim().toLowerCase() === trimmedNewName
+      );
+      if (duplicateName) {
+        throw new Error(
+          `A thematic area with the title "${data.name.trim()}" already exists (Code: ${duplicateName.code}).`
+        );
+      }
+    }
+    if (data.code !== undefined) {
+      const trimmedNewCode = data.code.trim().toUpperCase();
+      const duplicateCode = existingList.find(
+        (a) => a.id !== id && a.code.trim().toUpperCase() === trimmedNewCode
+      );
+      if (duplicateCode) {
+        throw new Error(
+          `Thematic area code "${data.code.trim().toUpperCase()}" is already in use by "${duplicateCode.name}".`
+        );
+      }
+    }
+  }
+
   const list = getStoredAreas();
   const existing = list.find((a) => a.id === id) || INITIAL_THEMATIC_AREAS[0];
 

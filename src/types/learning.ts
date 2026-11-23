@@ -1,3 +1,8 @@
+import type {
+  LearningExaminationStage,
+  LearningMaterialCategory,
+} from "@/types/resource";
+
 /**
  * Type definitions for the CBCM Hierarchical Learning Modules Architecture
  */
@@ -20,8 +25,11 @@ export interface ModuleContent {
   durationLabel?: string;
   order?: number;
   isRequired?: boolean;
+  category?: LearningMaterialCategory;
+  examinationStage?: LearningExaminationStage;
   isPublished?: boolean;
   isAuthorized?: boolean;
+  isCompleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -44,14 +52,3 @@ export interface LearningModule {
   updatedAt?: string;
 }
 
-export interface ModuleMentorAccess {
-  mentorId: string | number;
-  mentorName: string;
-  email: string;
-  phone?: string;
-  facility?: string;
-  facilityId?: string | number;
-  specialty?: string;
-  hasAccess: boolean;
-  grantedAt?: string;
-}

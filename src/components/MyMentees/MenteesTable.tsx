@@ -42,8 +42,16 @@ export function MenteesTable({ mentees, onSelectAssessment, highlightMenteeId }:
                                 <tr
                                     key={m.id}
                                     id={`mentee-row-${m.id}`}
+                                    onClick={(e) => {
+                                        const target = e.target as HTMLElement;
+                                        if (target.closest("button, a, input, select, textarea")) return;
+                                        if (assigned && onSelectAssessment) {
+                                            onSelectAssessment(assigned, m);
+                                        }
+                                    }}
                                     className={cn(
                                         "transition-colors duration-150 hover:bg-gray-50/80",
+                                        assigned && onSelectAssessment && "cursor-pointer",
                                         isHighlighted && "bg-emerald-50/80 ring-2 ring-emerald-500/30"
                                     )}
                                 >

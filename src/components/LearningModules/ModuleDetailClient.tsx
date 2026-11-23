@@ -19,7 +19,6 @@ import {
 import type {
   LearningModule,
   ModuleContent,
-  ModuleMentorAccess,
 } from "@/types/learning";
 import {
   addContent,
@@ -34,10 +33,14 @@ import {
   resolveThematicAreaTitle,
   getModuleContents,
 } from "@/services/learning.service";
-import { MentorAccessTab } from "@/components/LearningModules/MentorAccessTab";
 import { getMyMentees } from "@/services/my-mentees.service";
 import type { MyMentee } from "@/types/my-mentee";
-import { assignResourceToMentee } from "@/services/resources.service";
+import {
+  assignResourceToMentee,
+  completeAssignedResource,
+  downloadAssignedResource,
+  openResourceInNewTab,
+} from "@/services/resources.service";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ArrowLeft,
@@ -71,18 +74,17 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ENDPOINTS } from "@/services/endpoints";
 
 interface ModuleDetailClientProps {
   module: LearningModule;
   initialContents: ModuleContent[];
-  initialMentors?: ModuleMentorAccess[];
   userRole?: string;
 }
 
 export function ModuleDetailClient({
   module: initialModule,
   initialContents,
-  initialMentors = [],
   userRole: propUserRole = "mentor",
 }: ModuleDetailClientProps) {
   const router = useRouter();
@@ -175,19 +177,14 @@ export function ModuleDetailClient({
   }, [currentModule.thematicAreaId, currentModule.thematicAreaName]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = localStorage.getItem(`cbcm_mentee_progress_${currentModule.id}`);
-      if (stored) {
-        setCompletedContentIds(new Set(JSON.parse(stored)));
-      }
-    } catch {
-      // Ignore
-    }
-  }, [currentModule.id]);
+    setCompletedContentIds(new Set(contents.filter((content) => content.isCompleted).map((content) => String(content.id))));
+  }, [contents]);
 
-  const toggleMaterialCompletion = (contentId: string | number) => {
+  const toggleMaterialCompletion = async (contentId: string | number) => {
     const idStr = String(contentId);
+    if (isMentee && !completedContentIds.has(idStr)) {
+      await completeAssignedResource(contentId);
+    }
     setCompletedContentIds((prev) => {
       const next = new Set(prev);
       if (next.has(idStr)) {
@@ -195,16 +192,36 @@ export function ModuleDetailClient({
       } else {
         next.add(idStr);
       }
-      try {
-        localStorage.setItem(
-          `cbcm_mentee_progress_${currentModule.id}`,
-          JSON.stringify(Array.from(next))
-        );
-      } catch {
-        // Ignore
-      }
       return next;
     });
+  };
+
+  const openMaterial = async (item: ModuleContent, isExternalLink: boolean) => {
+    if (isExternalLink) {
+      if (item.url && item.url !== "#") window.open(item.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    try {
+      if (!isMentee) {
+        await openResourceInNewTab(item.id);
+        return;
+      }
+
+      const blob = await downloadAssignedResource(item.id);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error: any) {
+      setFeedbackMessage({
+        type: "error",
+        text: error?.message || "Unable to open this clinical material.",
+      });
+    }
   };
 
   const menteeCompletedCount = contents.filter((c) =>
@@ -352,7 +369,8 @@ export function ModuleDetailClient({
 
   // C. Add Learning Material Modal
   const [isAddMaterialOpen, setIsAddMaterialOpen] = useState(false);
-  const [newMaterialType, setNewMaterialType] = useState<"pdf" | "video" | "audio" | "link">("pdf");
+  const [newMaterialType, setNewMaterialType] = useState<"pdf" | "video" | "audio" | "presentation" | "link">("pdf");
+  const [newMaterialCategory, setNewMaterialCategory] = useState<"PARTICIPANT_MANUAL" | "POWERPOINT_PRESENTATION" | "FACILITATOR_GUIDE" | "EXAMINATION" | "ANSWER_KEY">("PARTICIPANT_MANUAL");
   const [newMaterialTitle, setNewMaterialTitle] = useState("");
   const [newMaterialDesc, setNewMaterialDesc] = useState("");
   const [newMaterialUrl, setNewMaterialUrl] = useState("");
@@ -486,8 +504,8 @@ export function ModuleDetailClient({
       setMaterialModalError("Material title is required.");
       return;
     }
-    if (newMaterialType === "link" && !newMaterialUrl.trim()) {
-      setMaterialModalError("A valid URL is required for Link resources.");
+    if (String(newMaterialType) === "link") {
+      setMaterialModalError("External links are not supported by the backend resource model. Upload a file instead.");
       return;
     }
     if (newMaterialType !== "link" && !newMaterialFile) {
@@ -503,10 +521,15 @@ export function ModuleDetailClient({
         title: newMaterialTitle.trim(),
         type: newMaterialType,
         description: newMaterialDesc.trim() || undefined,
-        url: newMaterialType === "link" ? newMaterialUrl.trim() : undefined,
+        url: undefined,
         file: newMaterialFile || undefined,
         order: contents.length + 1,
-        isRequired: true,
+        // Facilitator guides and answer keys are mentor-only materials and
+        // cannot be required for mentee completion by the backend rules.
+        isRequired: !["FACILITATOR_GUIDE", "ANSWER_KEY"].includes(newMaterialCategory),
+        category: newMaterialCategory,
+        examinationStage: newMaterialCategory === "EXAMINATION" ? "PRETEST" : undefined,
+        thematicAreaId: currentModule.thematicAreaId,
         isPublished: newMaterialIsPublished,
         isAuthorized: newMaterialIsAuthorized,
       };
@@ -804,13 +827,13 @@ export function ModuleDetailClient({
             </span>
           </TabsTrigger>
 
-          {/* Mentor Access Tab: Available EXCLUSIVELY to Facility Admin for preceptor authorization */}
+          {/* Mentor visibility is derived from active thematic-area assignments. */}
           {isFacilityAdmin && (
-            <TabsTrigger value="mentor-access" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
+            <TabsTrigger value="thematic-visibility" className="gap-2 px-5 text-xs font-semibold cursor-pointer">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Mentor Access</span>
+              <span>Mentor Visibility</span>
               <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-[#194611] font-bold">
-                {initialMentors.filter((m) => m.hasAccess).length} Active
+                Thematic Area
               </span>
             </TabsTrigger>
           )}
@@ -942,7 +965,7 @@ export function ModuleDetailClient({
                     Facility Content Distribution
                   </h3>
                   <p className="text-xs text-blue-900 leading-relaxed">
-                    You are in Content Distribution mode for your facility. Review the standardized curriculum materials in the <strong>Resources</strong> tab, and use the <strong>Mentor Access</strong> tab to authorize and dispatch this module to your local midwife mentors.
+                    You are in Content Distribution mode for your facility. Review the standardized curriculum materials in the <strong>Resources</strong> tab. Mentors assigned to this module's thematic area receive it automatically after authorization and publication.
                   </p>
                 </div>
               )}
@@ -1038,7 +1061,7 @@ export function ModuleDetailClient({
                     <div className="flex items-center justify-between py-2 border-b border-gray-100">
                       <span className="text-gray-500">Local Facility Preceptors</span>
                       <span className="font-bold text-[#194611]">
-                        {initialMentors.filter((m) => m.hasAccess).length} Authorized
+                        Automatic thematic-area access
                       </span>
                     </div>
                   )}
@@ -1125,6 +1148,10 @@ export function ModuleDetailClient({
                   const isAud = type.includes("audio") || type.includes("podcast");
                   const isUrl = type.includes("link") || type.includes("url");
                   const isCompleted = completedContentIds.has(String(item.id));
+                  const materialUrl =
+                    isMentee && !isUrl
+                      ? ENDPOINTS.LEARNING.MY_RESOURCE_CONTENT(item.id)
+                      : item.url;
 
                   return (
                     <div
@@ -1263,11 +1290,10 @@ export function ModuleDetailClient({
                         )}
 
                         {/* View/Download link (available to all roles) */}
-                        {item.url && item.url !== "#" ? (
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        {materialUrl && materialUrl !== "#" ? (
+                          <button
+                            type="button"
+                            onClick={() => openMaterial(item, isUrl)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
                           >
                             {isUrl ? (
@@ -1281,7 +1307,7 @@ export function ModuleDetailClient({
                                 <span>View Material</span>
                               </>
                             )}
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-xs text-gray-400 italic">Attached file</span>
                         )}
@@ -1319,35 +1345,18 @@ export function ModuleDetailClient({
           </div>
         </TabsContent>
 
-        {/* 3. MENTOR ACCESS TAB: Available EXCLUSIVELY to Facility Admin */}
+        {/* 3. MENTOR VISIBILITY TAB */}
         {isFacilityAdmin && (
-          <TabsContent value="mentor-access" className="space-y-6">
-            <MentorAccessTab
-              moduleId={currentModule.id}
-              initialMentors={initialMentors}
-              facilityName={user?.facility}
-              thematicAreaTitle={
-                typeof currentModule.thematicArea === "object"
-                  ? currentModule.thematicArea?.name
-                  : (currentModule.thematicAreaName || (typeof currentModule.thematicArea === "string" ? currentModule.thematicArea : undefined))
-              }
-              thematicAreaId={
-                typeof currentModule.thematicArea === "object"
-                  ? currentModule.thematicArea?.id
-                  : currentModule.thematicAreaId
-              }
-              moduleStatus={currentModule.status}
-              isPublished={currentModule.isPublished}
-              isAuthorized={currentModule.isAuthorized}
-              onModuleAuthorized={() => {
-                setCurrentModule((prev) => ({
-                  ...prev,
-                  status: "published",
-                  isPublished: true,
-                  isAuthorized: true,
-                }));
-              }}
-            />
+          <TabsContent value="thematic-visibility" className="space-y-6">
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-xs">
+              <h3 className="text-base font-bold text-blue-950">Mentor visibility is thematic-area based</h3>
+              <p className="mt-2 text-sm leading-relaxed text-blue-900">
+                Facility administrators do not grant module access to individual mentors. Active mentors assigned to this module&apos;s thematic area can see its resources once the module is published and authorized. Manage mentor assignments from the Assignments area.
+              </p>
+              <Link href="/assignments" className="mt-4 inline-flex text-sm font-semibold text-[#194611] underline underline-offset-2">
+                View thematic-area assignments
+              </Link>
+            </div>
           </TabsContent>
         )}
 
@@ -1724,7 +1733,7 @@ export function ModuleDetailClient({
                 Add Learning Material to Module
               </DialogTitle>
               <DialogDescription className="text-xs text-gray-500 mt-1">
-                Attach a PDF guide, procedural video, audio debrief, or web link to #{currentModule.id} - {currentModule.title}.
+                Attach a PDF guide, procedural video, audio debrief, or PowerPoint presentation to #{currentModule.id} - {currentModule.title}.
               </DialogDescription>
             </DialogHeader>
 
@@ -1746,7 +1755,7 @@ export function ModuleDetailClient({
                     { id: "pdf", label: "PDF", icon: FileText },
                     { id: "video", label: "Video", icon: Video },
                     { id: "audio", label: "Audio", icon: Headphones },
-                    { id: "link", label: "Link", icon: Globe },
+                    { id: "presentation", label: "PowerPoint", icon: FileText },
                   ].map((t) => {
                     const IconComp = t.icon;
                     const isSelected = newMaterialType === t.id;
@@ -1798,6 +1807,21 @@ export function ModuleDetailClient({
                   onChange={(e) => setNewMaterialDesc(e.target.value)}
                   className="text-xs bg-white"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-800">Material Category</label>
+                <select
+                  value={newMaterialCategory}
+                  onChange={(e) => setNewMaterialCategory(e.target.value as typeof newMaterialCategory)}
+                  className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs"
+                >
+                  <option value="PARTICIPANT_MANUAL">Participant Manual</option>
+                  <option value="POWERPOINT_PRESENTATION">PowerPoint Presentation</option>
+                  <option value="FACILITATOR_GUIDE">Facilitator Guide</option>
+                  <option value="EXAMINATION">Examination</option>
+                  <option value="ANSWER_KEY">Answer Key</option>
+                </select>
               </div>
 
               {/* File Upload or URL */}

@@ -51,6 +51,7 @@ import {
   addAssessmentEvidence,
   uploadAssessmentEvidenceFile,
 } from "@/services/mentor-assessments.service";
+import { downloadAssignedResource } from "@/services/resources.service";
 
 interface MenteeLearningHubClientProps {
   initialResources: MenteeResourceItem[];
@@ -71,6 +72,21 @@ export function MenteeLearningHubClient({
   const [resourceViewMode, setResourceViewMode] = useState<"table" | "grid">("table");
   const [resourceTypeFilter, setResourceTypeFilter] = useState<string>("all");
   const [assessments, setAssessments] = useState(initialAssessments);
+
+  const openAssignedResource = async (resourceId: string) => {
+    try {
+      const blob = await downloadAssignedResource(resourceId);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      showToast("Unable to open this clinical material.", "error");
+    }
+  };
 
   // Joining session state
   const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
@@ -309,15 +325,20 @@ export function MenteeLearningHubClient({
           return (
             <div>
               {hasLink ? (
-                <a
-                  href={res.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (res.type === "link" && res.url) {
+                      window.open(res.url, "_blank", "noopener,noreferrer");
+                    } else {
+                      openAssignedResource(res.id);
+                    }
+                  }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611]/10 text-[#194611] hover:bg-[#194611] hover:text-white transition"
                 >
                   <span>Open Resource</span>
                   <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                </button>
               ) : (
                 <Button
                   size="sm"
