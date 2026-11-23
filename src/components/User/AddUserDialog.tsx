@@ -268,7 +268,10 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
   useEffect(() => {
     getThematicAreas().then((list) => {
       if (list && list.length > 0) {
-        setDynamicThematicAreas(list.map((ta) => ta.name));
+        const uniqueNames = Array.from(
+          new Set(list.map((ta) => ta.name?.trim()).filter(Boolean))
+        ) as string[];
+        setDynamicThematicAreas(uniqueNames);
       }
     }).catch(() => {});
   }, []);
