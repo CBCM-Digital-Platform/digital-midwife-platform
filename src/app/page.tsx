@@ -539,62 +539,6 @@ export default function LandingPage() {
                         <div className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-[#194611]/15 bg-[#194611]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#194611]">
                           <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
                           {activeRoleContent.eyebrow}
-
-                      <div className="rounded-3xl bg-white border border-slate-200/80 shadow-lg overflow-hidden">
-                        <div className="grid grid-cols-1 lg:grid-cols-2">
-                          {/* Left: text */}
-                          <div className="p-8 sm:p-12 flex flex-col justify-center">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#194611]/10 text-[#194611] text-[11px] font-bold uppercase tracking-wider mb-5 border border-[#194611]/15 w-fit">
-                              <Building2 className="h-3.5 w-3.5" />
-                              Hospital Command Centre
-                            </div>
-                            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-4 leading-snug">
-                              Mentor-Mentee Pairing &amp; Content Distribution
-                            </h3>
-                            <p className="text-slate-500 text-sm sm:text-[15px] leading-relaxed mb-8">
-                              Facility Admins manage local hospital operations — mapping senior preceptors to
-                              junior midwives, dispatching learning modules, and monitoring compliance without
-                              curriculum interference.
-                            </p>
-                            <div className="space-y-4">
-                              {[
-                                { label: "Preceptor Pairing", desc: "Assign 1-on-1 pairs based on clinical specialty and ward rotations." },
-                                { label: "Thematic-Area Coverage", desc: "Maintain mentor assignments so published modules are available automatically by thematic area." },
-                                { label: "Cohort Rosters", desc: "Onboard hospital personnel and maintain active staff rosters." },
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-3.5">
-                                  <CheckCircle2 className="h-5 w-5 text-[#194611] shrink-0 mt-0.5" />
-                                  <div>
-                                    <span className="text-sm font-bold text-slate-800">{item.label}: </span>
-                                    <span className="text-sm text-slate-500">{item.desc}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          {/* Right: full-height image */}
-                          <div className="relative min-h-[380px] lg:min-h-0">
-                            <img
-                              src="/image3.jpg"
-                              alt="Facility administrator and hospital mentors coordinating mentorship pairs"
-                              className="absolute inset-0 w-full h-full object-cover object-[50%_20%]"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-                            <div className="absolute bottom-6 left-6 right-6">
-                              <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/70">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="h-8 w-8 rounded-lg bg-[#194611]/10 text-[#194611] flex items-center justify-center shrink-0">
-                                    <Building2 className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-900">Facility Oversight • Referral Hospital</p>
-                                    <p className="text-[11px] text-slate-500">100% Mentee-Preceptor Pairing Compliance</p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
                         </div>
                         <h3 className="mb-4 text-2xl font-extrabold leading-snug text-slate-900 sm:text-3xl">
                           {activeRoleContent.title}
