@@ -6,7 +6,6 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import {
   getModuleDetails,
   getModuleContents,
-  getModuleMentorAccessList,
 } from "@/services/learning.service";
 import { ModuleDetailClient } from "@/components/LearningModules/ModuleDetailClient";
 import { ShieldAlert, ArrowLeft } from "lucide-react";
@@ -34,10 +33,9 @@ export default async function LearningModuleDetailPage({ params }: ModuleDetailP
   const { id } = await params;
   const session = await getServerSession(authOptions);
 
-  const [module, contents, mentors] = await Promise.all([
+  const [module, contents] = await Promise.all([
     getModuleDetails(id),
     getModuleContents(id),
-    getModuleMentorAccessList(id),
   ]);
 
   if (!module) {
@@ -81,7 +79,6 @@ export default async function LearningModuleDetailPage({ params }: ModuleDetailP
     <ModuleDetailClient
       module={module}
       initialContents={finalContents}
-      initialMentors={mentors}
       userRole={userRole}
     />
   );

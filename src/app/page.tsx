@@ -692,7 +692,7 @@ export default function LandingPage() {
                             <div className="space-y-4">
                               {[
                                 { label: "Preceptor Pairing", desc: "Assign 1-on-1 pairs based on clinical specialty and ward rotations." },
-                                { label: "Module Dispatch", desc: "Grant mentors and cohorts access to required clinical thematic areas." },
+                                { label: "Thematic-Area Coverage", desc: "Maintain mentor assignments so published modules are available automatically by thematic area." },
                                 { label: "Cohort Rosters", desc: "Onboard hospital personnel and maintain active staff rosters." },
                               ].map((item, i) => (
                                 <div key={i} className="flex items-start gap-3.5">

@@ -5,6 +5,7 @@ import type {
   AdminResourceType,
   CreateResourceInput,
   UpdateResourceInput,
+  LearningMaterialCategory,
 } from "@/types/resource";
 
 const LOCAL_STORAGE_KEY = "cbcm_admin_resources_cache";
@@ -56,11 +57,15 @@ export function normalizeAdminResource(raw: any): AdminResource {
   const title = String(raw?.title || raw?.name || "Untitled Resource").trim();
   const description = String(raw?.description || raw?.summary || "").trim();
 
-  // Normalize type to "document" | "video" | "link"
+  // Keep the library's display types while preserving the backend classification fields.
   const rawType = String(raw?.type || raw?.kind || "").toLowerCase().trim();
   let type: AdminResourceType = "document";
   if (rawType.includes("video")) {
     type = "video";
+  } else if (rawType.includes("audio")) {
+    type = "audio";
+  } else if (rawType.includes("presentation") || rawType.includes("powerpoint")) {
+    type = "presentation";
   } else if (rawType.includes("link") || rawType.includes("url")) {
     type = "link";
   } else {
@@ -96,6 +101,10 @@ export function normalizeAdminResource(raw: any): AdminResource {
     fileSizeMb,
     thematicAreaId: raw?.thematic_area_id || raw?.thematicAreaId,
     thematicAreaName: raw?.thematicArea?.name || raw?.thematic_area_name,
+    moduleId: raw?.module_id ?? raw?.moduleId ?? raw?.module?.id,
+    category: raw?.category as LearningMaterialCategory | undefined,
+    examinationStage: raw?.examination_stage ?? raw?.examinationStage,
+    isRequired: raw?.is_required ?? raw?.isRequired,
     createdAt,
     updatedAt,
   };
@@ -192,10 +201,7 @@ async function isMockUserSession(): Promise<boolean> {
   }
 }
 
-/**
- * GET /api/v1/resources & /api/v1/hierarchical-resources
- * Fetches real clinical resources directly from the backend database.
- */
+/** GET /api/v1/resources. Visibility is enforced by the backend actor scope. */
 export async function getResources(): Promise<AdminResource[]> {
   const mergedList: AdminResource[] = [];
   const seenIds = new Set<string>();
@@ -225,40 +231,6 @@ export async function getResources(): Promise<AdminResource[]> {
     }
   } catch (err: any) {
     console.warn("Failed to fetch standard resources from backend API:", err?.message || err);
-  }
-
-  // 2. Fetch hierarchical resources
-  try {
-    const hierRes = await apiClient.get<any>(
-      `${ENDPOINTS.HIERARCHICAL_RESOURCES.BASE}?limit=100`
-    ).catch(() => null);
-
-    const hierList = Array.isArray(hierRes?.data)
-      ? hierRes.data
-      : Array.isArray(hierRes?.data?.resources)
-      ? hierRes.data.resources
-      : Array.isArray(hierRes)
-      ? hierRes
-      : [];
-
-    for (const r of hierList) {
-      const norm = normalizeHierarchicalResource(r);
-      if (norm.id && !seenIds.has(norm.id)) {
-        seenIds.add(norm.id);
-        mergedList.push(norm);
-      }
-    }
-  } catch (err: any) {
-    console.warn("Failed to fetch hierarchical resources from backend API:", err?.message || err);
-  }
-
-  // If in browser, merge with custom locally created items
-  if (typeof window !== "undefined") {
-    const stored = getStoredResources();
-    const localCustom = stored.filter(
-      (s: AdminResource) => !seenIds.has(s.id)
-    );
-    return [...localCustom, ...mergedList];
   }
 
   return mergedList;
@@ -296,13 +268,18 @@ export async function createResource(
   }
 
   const parsedModuleId = input.moduleId ? parsePositiveInt(input.moduleId) : null;
+  const backendType = input.type === "document" || input.type === "link" ? "pdf" : input.type;
+  const category = input.category || "PARTICIPANT_MANUAL";
   const payload: Record<string, any> = {
     title: input.title.trim(),
     description: input.description?.trim() || null,
-    type: input.type,
+    type: backendType,
     file_id: fileId || null,
     url: input.url?.trim() || null,
     thematic_area_id: input.thematicAreaId || null,
+    category,
+    examination_stage: input.examinationStage || null,
+    is_required: input.isRequired ?? !["FACILITATOR_GUIDE", "ANSWER_KEY"].includes(category),
   };
   if (parsedModuleId) {
     payload.module_id = parsedModuleId;
@@ -319,7 +296,7 @@ export async function createResource(
         return normalizeAdminResource(created);
       }
     } catch (err: any) {
-      console.warn("Live backend resource create failed, persisting locally:", err?.message || err);
+      throw err;
     }
   }
 
@@ -382,6 +359,9 @@ export async function updateResource(
   if (fileId !== undefined) payload.file_id = fileId;
   if (input.url !== undefined) payload.url = input.url?.trim() || null;
   if (input.thematicAreaId !== undefined) payload.thematic_area_id = input.thematicAreaId;
+  if (input.category !== undefined) payload.category = input.category;
+  if (input.examinationStage !== undefined) payload.examination_stage = input.examinationStage;
+  if (input.isRequired !== undefined) payload.is_required = input.isRequired;
   if (input.moduleId !== undefined) {
     const parsedMod = parsePositiveInt(input.moduleId);
     payload.module_id = parsedMod;
@@ -448,6 +428,29 @@ export async function deleteResource(
   return { success: true };
 }
 
+/** Marks an assigned learner resource complete using the backend progress workflow. */
+export async function completeAssignedResource(resourceId: string | number): Promise<any> {
+  const response = await apiClient.post<any>(ENDPOINTS.LEARNING.MY_RESOURCE_COMPLETE(resourceId));
+  return response?.data ?? response;
+}
+
+/** Downloads an assigned resource through the authenticated mentee endpoint. */
+export async function downloadAssignedResource(resourceId: string | number): Promise<Blob> {
+  return apiClient.getBlob(ENDPOINTS.LEARNING.MY_RESOURCE_CONTENT(resourceId));
+}
+
+/** Opens a protected resource file in a new tab using the current user's token. */
+export async function openResourceInNewTab(resourceId: string | number): Promise<void> {
+  const blob = await apiClient.getBlob(ENDPOINTS.RESOURCES.CONTENT(resourceId));
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
 /**
  * POST /api/v1/hierarchical-resources/{id}/grant-mentor
  * Grants/assigns a clinical resource to mentors (Facility Admin action).
@@ -478,26 +481,7 @@ export async function assignResourceToMentor(
     return { success: true, data: { granted: numericMentorIds.length, local: true } };
   }
 
-  // 1. If explicitly flagged as a learning module with a valid positive integer ID
-  if (isLearningModule && typeof numericResourceId === "number" && !isNaN(numericResourceId) && numericResourceId > 0) {
-    let lastData: any = null;
-    for (const mId of numericMentorIds) {
-      const grantRes = await grantMentorModuleAccess(numericResourceId, mId);
-      lastData = grantRes.data;
-    }
-
-    saveMentorResourceAssignment({
-      resourceId: String(resourceId),
-      mentorIds: mentorIds.map(String),
-      facilityId: String(facilityId || "1"),
-      instructions,
-      assignedAt: new Date().toISOString(),
-    });
-
-    return { success: true, data: lastData };
-  }
-
-  // 2. Call standard hierarchical resource grant
+  // Module visibility is thematic-area based; use only the resource assignment API.
   try {
     const res = await apiClient.post<any>(
       ENDPOINTS.HIERARCHICAL_RESOURCES.GRANT_MENTOR(numericResourceId),
@@ -516,39 +500,7 @@ export async function assignResourceToMentor(
   } catch (err: any) {
     console.warn("Hierarchical resource assignment failed:", err?.message || err);
 
-    // 3. Fallback: If numericResourceId is a positive integer, attempt learning module access
-    if (typeof numericResourceId === "number" && !isNaN(numericResourceId) && numericResourceId > 0) {
-      try {
-        let lastData: any = null;
-        for (const mId of numericMentorIds) {
-          const grantRes = await grantMentorModuleAccess(numericResourceId, mId);
-          lastData = grantRes.data;
-        }
-
-        saveMentorResourceAssignment({
-          resourceId: String(resourceId),
-          mentorIds: mentorIds.map(String),
-          facilityId: String(facilityId || "1"),
-          instructions,
-          assignedAt: new Date().toISOString(),
-        });
-
-        return { success: true, data: lastData };
-      } catch (fallbackErr: any) {
-        console.warn("Learning module fallback failed:", fallbackErr?.message || fallbackErr);
-      }
-    }
-
-    // 4. Save assignment locally to ensure preceptor workflow is not disrupted
-    saveMentorResourceAssignment({
-      resourceId: String(resourceId),
-      mentorIds: mentorIds.map(String),
-      facilityId: String(facilityId || "1"),
-      instructions,
-      assignedAt: new Date().toISOString(),
-    });
-
-    return { success: true, data: { local: true } };
+    throw err;
   }
 }
 
@@ -771,45 +723,3 @@ export async function grantResourceToFacilities(
   }
 }
 
-
-/**
- * POST /api/v1/learning/modules/{moduleId}/mentor-access
- * Grants a mentor access to a learning module.
- */
-export async function grantMentorModuleAccess(
-  moduleId: string | number,
-  mentorId: string | number
-): Promise<{ success: boolean; data?: any }> {
-  const numericModuleId = Number(moduleId);
-  const numericMentorId = Number(mentorId);
-
-  if (isNaN(numericModuleId) || numericModuleId <= 0) {
-    throw new Error(`Invalid moduleId "${moduleId}": moduleId must be a positive integer.`);
-  }
-  if (isNaN(numericMentorId) || numericMentorId <= 0) {
-    throw new Error(`Invalid mentorId "${mentorId}": mentorId must be a positive integer.`);
-  }
-
-  const res = await apiClient.post<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS(numericModuleId),
-    { mentorId: numericMentorId }
-  );
-  return { success: true, data: res?.data || res };
-}
-
-/**
- * DELETE /api/v1/learning/modules/{moduleId}/mentor-access/{mentorId}
- * Revokes a mentor's access to a learning module.
- */
-export async function revokeMentorModuleAccess(
-  moduleId: string | number,
-  mentorId: string | number
-): Promise<{ success: boolean; data?: any }> {
-  const numericModuleId = isNaN(Number(moduleId)) ? moduleId : Number(moduleId);
-  const numericMentorId = isNaN(Number(mentorId)) ? mentorId : Number(mentorId);
-
-  const res = await apiClient.delete<any>(
-    ENDPOINTS.LEARNING.MENTOR_ACCESS_REVOKE(numericModuleId, numericMentorId)
-  );
-  return { success: true, data: res?.data || res };
-}

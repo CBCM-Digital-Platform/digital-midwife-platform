@@ -110,14 +110,6 @@ export const ENDPOINTS = {
     CONTENTS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/contents`,
     CONTENT_DETAIL: (moduleId: string | number, contentId: string | number) =>
       `/api/v1/learning/modules/${moduleId}/contents/${contentId}`,
-    // Live Swagger endpoint: POST/GET /api/v1/learning/modules/{moduleId}/mentor-permissions
-    MENTOR_PERMISSIONS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/mentor-permissions`,
-    MENTOR_PERMISSIONS_REVOKE: (moduleId: string | number, mentorId: string | number) =>
-      `/api/v1/learning/modules/${moduleId}/mentor-permissions/${mentorId}`,
-    // Backward compatibility aliases pointing to the live mentor-permissions endpoint
-    MENTOR_ACCESS: (moduleId: string | number) => `/api/v1/learning/modules/${moduleId}/mentor-permissions`,
-    MENTOR_ACCESS_REVOKE: (moduleId: string | number, mentorId: string | number) =>
-      `/api/v1/learning/modules/${moduleId}/mentor-permissions/${mentorId}`,
     // Mentee module and resource endpoints
     MY_MODULES: "/api/v1/learning/my/modules",
     MY_MODULE_DETAIL: (moduleId: string | number) => `/api/v1/learning/my/modules/${moduleId}`,
