@@ -437,11 +437,11 @@ export function UsersTable({
       },
     };
 
-    // Composition based on role
+    // Composition based on role (facility column omitted as users belong to same facility context)
     if (role === "mentor") {
-      return [identityCol, professionCol, facilityCol, thematicAreaCol, experienceCol, loadCol, statusCol, actionsCol];
+      return [identityCol, professionCol, thematicAreaCol, experienceCol, loadCol, statusCol, actionsCol];
     } else {
-      return [identityCol, professionCol, facilityCol, assignedMentorCol, thematicAreaCol, knowledgeScoreCol, statusCol, actionsCol];
+      return [identityCol, professionCol, assignedMentorCol, knowledgeScoreCol, statusCol, actionsCol];
     }
   }, [role, activeMenuUserId, updatingStatusUserId]);
 

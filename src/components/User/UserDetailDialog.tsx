@@ -325,27 +325,34 @@ export function UserDetailDialog({
               <div>
                 <span className="text-gray-400 block text-[11px]">Profession / Qualification</span>
                 <span className="font-bold text-gray-900">
-                  {currentUser.profession || (currentUser as any).highest_qualification || "Midwife Practitioner"}
+                  {currentUser.profession || (currentUser as any).highest_qualification || "Clinician"}
                 </span>
               </div>
 
-              <div>
-                <span className="text-gray-400 block text-[11px]">Primary Thematic Area</span>
-                <span className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
-                  {currentUser.thematicArea ? (
-                    currentUser.thematicArea
-                  ) : (
-                    <span className="text-gray-400 italic font-normal">
-                      {isMentor ? "Unassigned" : "Assigned via Cycle"}
-                    </span>
-                  )}
-                  {currentUser.thematicAreaId && (
-                    <span className="text-[10px] text-gray-400 font-mono font-medium">
-                      (ID #{currentUser.thematicAreaId})
-                    </span>
-                  )}
-                </span>
-              </div>
+              {isMentor ? (
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Primary Thematic Area</span>
+                  <span className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                    {currentUser.thematicArea ? (
+                      currentUser.thematicArea
+                    ) : (
+                      <span className="text-gray-400 italic font-normal">Unassigned</span>
+                    )}
+                    {currentUser.thematicAreaId && (
+                      <span className="text-[10px] text-gray-400 font-mono font-medium">
+                        (ID #{currentUser.thematicAreaId})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Assigned Mentor</span>
+                  <span className="font-bold text-gray-900">
+                    {(currentUser as MenteeUser).assignedMentor?.name || "Unassigned"}
+                  </span>
+                </div>
+              )}
 
               {isMentor ? (
                 <>
