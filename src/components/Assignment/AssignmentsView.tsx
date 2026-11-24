@@ -2,153 +2,162 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import {
-    Download,
-    UserPlus,
-    Sparkles,
-    Users,
-    History,
-    LayoutList,
-    TableProperties,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { UserPlus, Users } from "lucide-react";
 import type {
     Assignment,
     AssignmentFiltersState,
     AssignmentStats,
-    AssignmentTab,
 } from "@/types/assignment";
 import { groupAssignmentsByMentor } from "@/services/assignments.service";
 import AssignmentFilters, { DEFAULT_FILTERS } from "./AssignmentFilters";
 import AssignmentStatsCards from "./AssignmentStatsCards";
 import AssignmentTable from "./AssignmentTable";
-import HorizontalMentorMenteeView from "./HorizontalMentorMenteeView";
 
 interface AssignmentsViewProps {
     assignments: Assignment[];
     stats: AssignmentStats;
 }
 
+type TabType = "all" | "active" | "pending";
+
 export default function AssignmentsView({
     assignments: serverAssignments,
     stats,
 }: AssignmentsViewProps) {
     const router = useRouter();
-    const [tab, setTab] = useState<AssignmentTab>("all");
+    const [tab, setTab] = useState<TabType>("all");
     const [filters, setFilters] = useState<AssignmentFiltersState>(DEFAULT_FILTERS);
-    const [compact, setCompact] = useState(false);
-    const [viewMode, setViewMode] = useState<"horizontal" | "table">("horizontal");
 
-    // Keep tab selection in sync with navigation query parameters.
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("tab") === "new") {
-            setTab("new");
-            setViewMode("horizontal");
-        } else if (params.get("tab") === "previous") {
-            setTab("previous");
-            setViewMode("horizontal");
-        }
-    }, []);
-
-    const allAssignments = serverAssignments;
+    // Group assignments by mentor so each mentor appears once with all her assigned mentees
+    const allAssignments = useMemo(
+        () => groupAssignmentsByMentor(serverAssignments),
+        [serverAssignments]
+    );
 
     // Filter options for dropdowns
     const options = useMemo(() => {
-        const mentors = new Map(allAssignments.map((a) => [a.mentor.id, a.mentor.name]));
-        const unique = (values: string[]) => [...new Set(values)].map((v) => ({ value: v, label: v }));
+        const mentorsMap = new Map<string, string>();
+        for (const a of allAssignments) {
+            if (a.mentor && a.mentor.id) {
+                mentorsMap.set(String(a.mentor.id), a.mentor.name);
+            }
+        }
+
+        const rawDomains = allAssignments
+            .map((a) => a.thematicDomain?.trim())
+            .filter((d): d is string => Boolean(d));
+        const uniqueDomains = [...new Set(rawDomains)].sort();
+
         return {
-            mentors: [...mentors].map(([value, label]) => ({ value, label })),
-            facilities: unique(allAssignments.map((a) => a.facility)),
-            domains: unique(allAssignments.map((a) => a.thematicDomain)),
+            mentors: [...mentorsMap.entries()].map(([value, label]) => ({ value, label })),
+            domains: uniqueDomains.map((v) => ({ value: v, label: v })),
         };
     }, [allAssignments]);
 
-    // Apply active filters across assignments
-    const filterAssignment = (a: Assignment) => {
-        const q = filters.search.trim().toLowerCase();
-        if (filters.status !== "all" && a.status !== filters.status) return false;
-        if (filters.mentorId !== "all" && a.mentor.id !== filters.mentorId) return false;
-        if (filters.facility !== "all" && a.facility !== filters.facility) return false;
-        if (filters.domain !== "all" && a.thematicDomain !== filters.domain) return false;
-        if (q) {
-            const menteeNames = a.mentees ? a.mentees.map((m) => m.name).join(" ") : a.mentee.name;
-            const haystack = `${a.mentor.name} ${a.mentor.code} ${menteeNames}`.toLowerCase();
-            if (!haystack.includes(q)) return false;
-        }
-        return true;
-    };
-
-    // 1. All assignments (with newly created at the very top)
-    const filteredAll = useMemo(() => {
-        return allAssignments.filter(filterAssignment);
-    }, [allAssignments, filters]);
-
-    // 2. New assignments (only newly created assignments)
-    const filteredNew = useMemo(() => {
-        return allAssignments.filter((a) => a.isNew).filter(filterAssignment);
-    }, [allAssignments, filters]);
-
-    // 3. Previous assignments (grouped by mentor with their respective assigned mentees)
-    const previousGrouped = useMemo(() => {
-        const previousOnly = allAssignments.filter((a) => !a.isNew);
-        const grouped = groupAssignmentsByMentor(previousOnly);
-        return grouped.filter(filterAssignment);
-    }, [allAssignments, filters]);
-
-    // Tab counts
-    const tabCounts = useMemo(
-        () => ({
-            all: allAssignments.length,
-            new: allAssignments.filter((a) => a.isNew).length,
-            previous: previousGrouped.length,
-        }),
-        [allAssignments, previousGrouped],
+    // Compute key facility mentorship metrics
+    const activeAssignments = useMemo(
+        () => allAssignments.filter((a) => a.status === "active").length,
+        [allAssignments],
+    );
+    const pendingAssignments = useMemo(
+        () => allAssignments.filter((a) => a.status !== "active").length,
+        [allAssignments],
+    );
+    const assignedMentorsCount = useMemo(
+        () => new Set(allAssignments.map((a) => a.mentor.id)).size,
+        [allAssignments],
+    );
+    const assignedMenteesCount = useMemo(
+        () =>
+            allAssignments.reduce(
+                (sum, a) => sum + (a.mentees && a.mentees.length > 0 ? a.mentees.length : 1),
+                0,
+            ),
+        [allAssignments],
+    );
+    const newAssignmentsCount = useMemo(
+        () => allAssignments.filter((a) => a.isNew).length,
+        [allAssignments],
     );
 
-    const tabs: { id: AssignmentTab; label: string; icon: React.ReactNode; count: number }[] = [
+    // Apply active filters across assignments
+    const filteredAssignments = useMemo(() => {
+        return allAssignments.filter((a) => {
+            // 1. Tab Status Filter
+            if (tab === "active" && a.status !== "active") return false;
+            if (tab === "pending" && a.status === "active") return false;
+
+            // 2. Mentor Filter
+            if (
+                filters.mentorId !== "all" &&
+                String(a.mentor.id).trim() !== String(filters.mentorId).trim()
+            ) {
+                return false;
+            }
+
+            // 3. Thematic Area Filter
+            if (filters.domain !== "all") {
+                const aDomain = (a.thematicDomain || "").toLowerCase().trim();
+                const fDomain = filters.domain.toLowerCase().trim();
+                if (aDomain !== fDomain && !aDomain.includes(fDomain)) {
+                    return false;
+                }
+            }
+
+            // 4. Search Filter
+            const q = filters.search.trim().toLowerCase();
+            if (q) {
+                const menteeNames =
+                    a.mentees && a.mentees.length > 0
+                        ? a.mentees.map((m) => m.name).join(" ")
+                        : a.mentee?.name || "";
+                const idStr = String(a.id || "");
+                const mentorCode = String(a.mentor?.code || "");
+                const mentorName = String(a.mentor?.name || "");
+                const thematicDomain = String(a.thematicDomain || "");
+                const facility = String(a.facility || "");
+
+                const haystack = `${idStr} #${idStr} ${mentorName} ${mentorCode} ${menteeNames} ${thematicDomain} ${facility}`.toLowerCase();
+                if (!haystack.includes(q)) return false;
+            }
+
+            return true;
+        });
+    }, [allAssignments, tab, filters]);
+
+    const tabs: { id: TabType; label: string; count: number }[] = [
         {
             id: "all",
             label: "All Assignments",
-            icon: <Users className="size-4" />,
-            count: tabCounts.all,
+            count: allAssignments.length,
         },
         {
-            id: "new",
-            label: "New Assignments",
-            icon: <Sparkles className="size-4 text-emerald-600" />,
-            count: tabCounts.new,
+            id: "active",
+            label: "Active Pairings",
+            count: activeAssignments,
         },
         {
-            id: "previous",
-            label: "Previous Assignments",
-            icon: <History className="size-4 text-gray-500" />,
-            count: tabCounts.previous,
+            id: "pending",
+            label: "Pending Start",
+            count: pendingAssignments,
         },
     ];
 
     return (
         <div className="space-y-6">
             {/* Header */}
-            <header className="flex flex-wrap items-start justify-between gap-4">
+            <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-[#194611]">Mentorship Assignments</h1>
-                    <p className="mt-1 max-w-xl text-sm text-gray-600">
-                        Pair certified clinical mentors with midwifery trainees, view horizontal mentor-mentee
-                        relationships, and manage cohort transitions.
+                    <h1 className="text-3xl font-bold tracking-tight text-[#194611]">Mentorship Assignments</h1>
+                    <p className="mt-1 text-sm text-gray-600">
+                        Pair certified clinical mentors with midwifery trainees, oversee clinical cohorts, and track thematic mentorship pathways.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button
-                        type="button"
-                        className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium hover:bg-gray-50 shadow-2xs"
-                    >
-                        <Download className="size-4" />
-                        Export Data
-                    </button>
                     <Link
                         href="/assignments/new"
-                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#194611] px-4 text-sm font-medium text-white hover:bg-[#194611]/90 shadow-xs"
+                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#194611] px-4 text-sm font-semibold text-white transition hover:bg-[#194611]/90 shadow-xs"
                     >
                         <UserPlus className="size-4" />
                         Add New Assignment
@@ -157,12 +166,19 @@ export default function AssignmentsView({
             </header>
 
             {/* Stats Cards */}
-            <AssignmentStatsCards stats={stats} />
+            <AssignmentStatsCards
+                stats={stats}
+                totalAssignments={allAssignments.length}
+                activeAssignments={activeAssignments}
+                assignedMentorsCount={assignedMentorsCount}
+                assignedMenteesCount={assignedMenteesCount}
+                newAssignmentsCount={newAssignmentsCount}
+            />
 
-            {/* Main Tabs and Content Section */}
+            {/* Main Table and Filters Card */}
             <section className="rounded-xl border border-gray-200 bg-white shadow-2xs">
-                {/* Tabs & View Controls */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 pt-3">
+                {/* Tabs */}
+                <div className="border-b border-gray-200 px-4 pt-3">
                     <div role="tablist" className="flex flex-wrap gap-6">
                         {tabs.map((t) => (
                             <button
@@ -176,7 +192,6 @@ export default function AssignmentsView({
                                         : "border-transparent text-gray-500 hover:text-gray-800"
                                 }`}
                             >
-                                {t.icon}
                                 {t.label}
                                 <span
                                     className={`ml-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -190,130 +205,24 @@ export default function AssignmentsView({
                             </button>
                         ))}
                     </div>
-
-                    {/* View Switchers */}
-                    <div className="mb-2 flex items-center gap-3">
-                        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50/70 p-0.5 text-xs">
-                            <button
-                                type="button"
-                                onClick={() => setViewMode("horizontal")}
-                                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition cursor-pointer ${
-                                    viewMode === "horizontal"
-                                        ? "bg-white text-gray-900 shadow-2xs"
-                                        : "text-gray-500 hover:text-gray-900"
-                                }`}
-                                title="Horizontal mentor with list of mentees view"
-                            >
-                                <LayoutList className="size-3.5 text-[#194611]" />
-                                Horizontal View
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setViewMode("table")}
-                                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition cursor-pointer ${
-                                    viewMode === "table"
-                                        ? "bg-white text-gray-900 shadow-2xs"
-                                        : "text-gray-500 hover:text-gray-900"
-                                }`}
-                                title="Standard table view"
-                            >
-                                <TableProperties className="size-3.5 text-[#194611]" />
-                                Table View
-                            </button>
-                        </div>
-
-                        {viewMode === "table" && (
-                            <div className="inline-flex rounded-lg border border-gray-200 p-0.5 text-xs">
-                                {[
-                                    { id: false, label: "Detailed" },
-                                    { id: true, label: "Compact" },
-                                ].map((m) => (
-                                    <button
-                                        key={m.label}
-                                        type="button"
-                                        onClick={() => setCompact(m.id)}
-                                        className={`rounded-md px-2.5 py-1 ${
-                                            compact === m.id
-                                                ? "bg-gray-100 font-medium text-gray-900"
-                                                : "text-gray-500"
-                                        }`}
-                                    >
-                                        {m.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
                 </div>
 
                 {/* Filters */}
-                <div className="p-4 border-b border-gray-100">
+                <div className="border-b border-gray-100 p-4">
                     <AssignmentFilters
                         filters={filters}
                         onChange={setFilters}
                         mentorOptions={options.mentors}
-                        facilityOptions={options.facilities}
                         domainOptions={options.domains}
                     />
                 </div>
 
-                {/* Content based on Active Tab */}
+                {/* Assignments Table */}
                 <div className="p-4">
-                    {tab === "all" && (
-                        <div>
-                            {viewMode === "horizontal" ? (
-                                <HorizontalMentorMenteeView
-                                    data={filteredAll}
-                                    emptyTitle="No assignments found"
-                                    emptyDescription="Try clearing search filters or add a new assignment."
-                                />
-                            ) : (
-                                <AssignmentTable
-                                    data={filteredAll}
-                                    compact={compact}
-                                    onRowClick={(a) => router.push(`/assignments/${a.id}`)}
-                                />
-                            )}
-                        </div>
-                    )}
-
-                    {tab === "new" && (
-                        <div>
-                            {viewMode === "horizontal" ? (
-                                <HorizontalMentorMenteeView
-                                    data={filteredNew}
-                                    emptyTitle="No New Assignments Created Yet"
-                                    emptyDescription="When you create an assignment, the mentor and their list of assigned mentees will appear here horizontally and at the top of the All Assignments list."
-                                    actionHref="/assignments/new"
-                                    actionLabel="Create First Assignment"
-                                />
-                            ) : (
-                                <AssignmentTable
-                                    data={filteredNew}
-                                    compact={compact}
-                                    onRowClick={(a) => router.push(`/assignments/${a.id}`)}
-                                />
-                            )}
-                        </div>
-                    )}
-
-                    {tab === "previous" && (
-                        <div>
-                            {viewMode === "horizontal" ? (
-                                <HorizontalMentorMenteeView
-                                    data={previousGrouped}
-                                    emptyTitle="No previous assignments found"
-                                    emptyDescription="No prior mentor-mentee pairings match the chosen criteria."
-                                />
-                            ) : (
-                                <AssignmentTable
-                                    data={previousGrouped}
-                                    compact={compact}
-                                    onRowClick={(a) => router.push(`/assignments/${a.id}`)}
-                                />
-                            )}
-                        </div>
-                    )}
+                    <AssignmentTable
+                        data={filteredAssignments}
+                        onRowClick={(a) => router.push(`/assignments/${a.id}`)}
+                    />
                 </div>
             </section>
         </div>

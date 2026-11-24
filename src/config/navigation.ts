@@ -17,7 +17,6 @@ export const adminNavLinks: NavItem[] = [
   { name: "Assignments", href: "/assignments", icon: "assignments" },
   { name: "Cycles", href: "/cycles", icon: "cycles" },
   { name: "Reports", href: "/reports", icon: "reports" },
-  { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -72,6 +72,9 @@ import {
   Pencil,
   Trash2,
   Lock,
+  Unlock,
+  KeyRound,
+  PlayCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENDPOINTS } from "@/services/endpoints";
@@ -99,9 +102,9 @@ export function ModuleDetailClient({
     rawRole === "superadmin" ||
     rawRole === "admin";
 
-  const isFacilityAdmin = rawRole === "facilityadmin";
+  const isFacilityAdmin = false;
   const isMentor = rawRole === "mentor";
-  const isMentee = rawRole === "mentee" || (!isSuperAdmin && !isFacilityAdmin && !isMentor);
+  const isMentee = rawRole === "mentee" || (!isSuperAdmin && !isMentor);
 
   // Module & Contents State
   const [currentModule, setCurrentModule] = useState<LearningModule>(initialModule);
@@ -224,11 +227,279 @@ export function ModuleDetailClient({
     }
   };
 
-  const menteeCompletedCount = contents.filter((c) =>
+  // ----------------------------------------------------
+  // Mentee Sequential Gating & Visibility Helpers
+  // ----------------------------------------------------
+  type MenteeProgressStage = 1 | 2 | 3 | 4;
+
+  const [menteeStage, setMenteeStage] = useState<MenteeProgressStage>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`cbcm_mentee_stage_${currentModule.id}`);
+        if (stored && ["1", "2", "3", "4"].includes(stored)) {
+          return Number(stored) as MenteeProgressStage;
+        }
+      } catch {}
+    }
+    return 1;
+  });
+
+  const [pretestScore, setPretestScore] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`cbcm_mentee_pretest_score_${currentModule.id}`);
+        if (stored !== null && stored !== "") return Number(stored);
+      } catch {}
+    }
+    return null;
+  });
+
+  const [postTestScore, setPostTestScore] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`cbcm_mentee_posttest_score_${currentModule.id}`);
+        if (stored !== null && stored !== "") return Number(stored);
+      } catch {}
+    }
+    return null;
+  });
+
+  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
+  const [activeExamType, setActiveExamType] = useState<"PRETEST" | "POST_TEST">("PRETEST");
+  const [isSubmittingExam, setIsSubmittingExam] = useState(false);
+  const [examAnswers, setExamAnswers] = useState<{ q1: string; q2: string; q3: string }>({
+    q1: "A",
+    q2: "A",
+    q3: "A",
+  });
+
+  // Calculate dynamic quiz score based on current user answer selections
+  const calculateDynamicExamScore = () => {
+    let correct = 0;
+    if (examAnswers.q1 === "A") correct++;
+    if (examAnswers.q2 === "A") correct++;
+    if (examAnswers.q3 === "A") correct++;
+    return Math.round((correct / 3) * 100);
+  };
+
+  const handleSetStage = (s: MenteeProgressStage) => {
+    setMenteeStage(s);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(`cbcm_mentee_stage_${currentModule.id}`, String(s));
+      } catch {}
+    }
+    if (s === 1) {
+      setFeedbackMessage({
+        type: "success",
+        text: "Stage 1 Active: Pre-Exam is ready. Training materials, Post-Exam, and Answer Key are locked.",
+      });
+    } else if (s === 2) {
+      setFeedbackMessage({
+        type: "success",
+        text: `Stage 2 Active: Pre-Exam completed${pretestScore !== null ? ` (Score: ${pretestScore}%)` : ""}. Participant Manual and training materials unlocked! Answer Key hidden.`,
+      });
+    } else if (s === 3) {
+      setFeedbackMessage({
+        type: "success",
+        text: "Stage 3 Active: Clinical Preceptor has unlocked Post-Exam! Ready for examination.",
+      });
+    } else if (s === 4) {
+      setFeedbackMessage({
+        type: "success",
+        text: `Stage 4 Active: Post-Exam submitted${postTestScore !== null ? ` (Score: ${postTestScore}%)` : ""}. Course Theory Completed & Locked! Official Answer Key revealed.`,
+      });
+    }
+  };
+
+  const handleStartExam = (type: "PRETEST" | "POST_TEST") => {
+    setActiveExamType(type);
+    setIsExamModalOpen(true);
+  };
+
+  const handleConfirmSubmitExam = () => {
+    setIsSubmittingExam(true);
+    const dynamicScore = calculateDynamicExamScore();
+
+    setTimeout(() => {
+      setIsSubmittingExam(false);
+      setIsExamModalOpen(false);
+      if (activeExamType === "PRETEST") {
+        setPretestScore(dynamicScore);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(`cbcm_mentee_pretest_score_${currentModule.id}`, String(dynamicScore));
+          } catch {}
+        }
+        handleSetStage(2);
+      } else {
+        setPostTestScore(dynamicScore);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(`cbcm_mentee_posttest_score_${currentModule.id}`, String(dynamicScore));
+          } catch {}
+        }
+        handleSetStage(4);
+      }
+    }, 600);
+  };
+
+  // 1. Facilitator Guide Guard: strictly hide from mentees
+  const isFacilitatorGuide = (item: ModuleContent) => {
+    const cat = String(item.category || "").toUpperCase();
+    const title = String(item.title || "").toLowerCase();
+    return cat === "FACILITATOR_GUIDE" || title.includes("facilitator guide");
+  };
+
+  // 2. Classify content type for sequential gating
+  const getItemStageType = (item: ModuleContent): "PRETEST" | "POST_TEST" | "ANSWER_KEY" | "TRAINING" => {
+    const cat = String(item.category || "").toUpperCase();
+    const stage = String(item.examinationStage || "").toUpperCase();
+    const title = String(item.title || "").toLowerCase();
+
+    if (cat === "ANSWER_KEY" || title.includes("answer key")) {
+      return "ANSWER_KEY";
+    }
+    if (
+      cat === "EXAMINATION" ||
+      stage === "POST_TEST" ||
+      title.includes("post-test") ||
+      title.includes("post-exam") ||
+      title.includes("posttest")
+    ) {
+      if (stage === "PRETEST" || title.includes("pre-test") || title.includes("pre-exam") || title.includes("pretest")) {
+        return "PRETEST";
+      }
+      return "POST_TEST";
+    }
+    if (stage === "PRETEST" || title.includes("pre-test") || title.includes("pre-exam") || title.includes("pretest")) {
+      return "PRETEST";
+    }
+    return "TRAINING";
+  };
+
+  // 3. Mentee Visible Contents:
+  // - Strictly filters out any FACILITATOR_GUIDE for mentees
+  // - Hides ANSWER_KEY until Stage 4
+  const visibleContents = useMemo<ModuleContent[]>(() => {
+    if (!isMentee) return contents;
+    return contents.filter((item: ModuleContent) => {
+      if (isFacilitatorGuide(item)) return false;
+      const stageType = getItemStageType(item);
+      if (stageType === "ANSWER_KEY" && menteeStage < 4) {
+        return false;
+      }
+      return true;
+    });
+  }, [contents, isMentee, menteeStage]);
+
+  // 4. Sequential Gating Logic per item
+  const isItemGated = (item: ModuleContent) => {
+    if (!isMentee) return { isLocked: false, badgeText: null, reason: null };
+    const stageType = getItemStageType(item);
+
+    // Stage 1: Pre-Exam active. Training, Post-Exam, and Answer Key are locked!
+    if (menteeStage === 1) {
+      if (stageType === "PRETEST") {
+        return { isLocked: false, badgeText: "Pre-Exam Active", reason: "Ready to take" };
+      }
+      return {
+        isLocked: true,
+        badgeText: "Complete Pre-Exam to Unlock",
+        reason: "Locked until baseline pre-examination is submitted.",
+      };
+    }
+
+    // Stage 2: Pre-Exam Done. Training materials unlocked. Post-Exam waiting for mentor.
+    if (menteeStage === 2) {
+      if (stageType === "PRETEST") {
+        return {
+          isLocked: true,
+          badgeText: pretestScore !== null ? `Pre-Exam: ${pretestScore}% (Completed)` : "Pre-Exam (Completed)",
+          reason: "Baseline established",
+        };
+      }
+      if (stageType === "TRAINING") {
+        return { isLocked: false, badgeText: null, reason: "Unlocked for self-study" };
+      }
+      if (stageType === "POST_TEST") {
+        return {
+          isLocked: true,
+          badgeText: "Waiting for Mentor to Unlock",
+          reason: "Your clinical preceptor will unlock this exam after verifying clinical preparation.",
+        };
+      }
+      if (stageType === "ANSWER_KEY") {
+        return { isLocked: true, badgeText: "Hidden until Post-Exam", reason: "Hidden" };
+      }
+    }
+
+    // Stage 3: Mentor Unlocked Post-Exam!
+    if (menteeStage === 3) {
+      if (stageType === "PRETEST") {
+        return {
+          isLocked: true,
+          badgeText: pretestScore !== null ? `Pre-Exam: ${pretestScore}% (Completed)` : "Pre-Exam (Completed)",
+          reason: "Baseline established",
+        };
+      }
+      if (stageType === "TRAINING") {
+        return { isLocked: false, badgeText: null, reason: "Unlocked for self-study" };
+      }
+      if (stageType === "POST_TEST") {
+        return { isLocked: false, badgeText: "Post-Exam Ready", reason: "Unlocked by mentor - ready to take" };
+      }
+      if (stageType === "ANSWER_KEY") {
+        return { isLocked: true, badgeText: "Hidden until Post-Exam", reason: "Hidden" };
+      }
+    }
+
+    // Stage 4: Post-Exam submitted! Answer Key revealed. Course Theory Completed & Locked.
+    if (menteeStage === 4) {
+      if (stageType === "PRETEST") {
+        return {
+          isLocked: true,
+          badgeText: pretestScore !== null ? `Pre-Exam: ${pretestScore}% (Completed)` : "Pre-Exam (Completed)",
+          reason: "Baseline established",
+        };
+      }
+      if (stageType === "TRAINING") {
+        return { isLocked: false, badgeText: "Curriculum Completed", reason: "Available for reference" };
+      }
+      if (stageType === "POST_TEST") {
+        return {
+          isLocked: true,
+          badgeText: postTestScore !== null
+            ? `Course Theory Completed & Locked (${postTestScore}%)`
+            : "Course Theory Completed & Locked",
+          reason: "Exam finalized. Retakes disabled.",
+        };
+      }
+      if (stageType === "ANSWER_KEY") {
+        return { isLocked: false, badgeText: "Official Answer Key Revealed", reason: "Unlocked for review" };
+      }
+    }
+
+    return { isLocked: false, badgeText: null, reason: null };
+  };
+
+  const hasPreTestInContents = useMemo(() => {
+    return contents.some((item: ModuleContent) => getItemStageType(item) === "PRETEST");
+  }, [contents]);
+
+  const hasPostTestInContents = useMemo(() => {
+    return contents.some((item: ModuleContent) => getItemStageType(item) === "POST_TEST");
+  }, [contents]);
+
+  const hasAnswerKeyInContents = useMemo(() => {
+    return contents.some((item: ModuleContent) => getItemStageType(item) === "ANSWER_KEY");
+  }, [contents]);
+
+  const menteeCompletedCount = visibleContents.filter((c: ModuleContent) =>
     completedContentIds.has(String(c.id))
   ).length;
   const menteeProgressPercent =
-    contents.length > 0 ? Math.round((menteeCompletedCount / contents.length) * 100) : 0;
+    visibleContents.length > 0 ? Math.round((menteeCompletedCount / visibleContents.length) * 100) : 0;
 
   // ----------------------------------------------------
   // Mentor Resource Assignment State & Handlers
@@ -770,7 +1041,7 @@ export function ModuleDetailClient({
                 Your Study Completion Progress
               </span>
               <span className="font-bold text-[#194611]">
-                {menteeCompletedCount} of {contents.length} Materials Reviewed ({menteeProgressPercent}%)
+                {menteeCompletedCount} of {visibleContents.length} Materials Reviewed ({menteeProgressPercent}%)
               </span>
             </div>
             <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
@@ -782,6 +1053,258 @@ export function ModuleDetailClient({
           </div>
         )}
       </div>
+
+      {/* Dev / QA Simulator Toolbar & Sequential Gating Stepper (Mentee View) */}
+      {isMentee && (
+        <div className="space-y-4">
+          {/* Dev/QA State Simulator Toolbar */}
+          <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-4 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-200 text-amber-900 font-bold text-[11px]">
+                  QA
+                </span>
+                <div>
+                  <h4 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    Mentee Gating Flow Simulator
+                    <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-900 border-amber-300 px-1.5 py-0 font-semibold">
+                      Mock State
+                    </Badge>
+                  </h4>
+                  <p className="text-[11px] text-amber-800">
+                    Switch between the 4 sequential gating stages to test role-based access, lockouts, and answer key visibility.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleSetStage(1)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer border",
+                    menteeStage === 1
+                      ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
+                      : "bg-white text-gray-700 border-amber-200 hover:bg-amber-100/50"
+                  )}
+                >
+                  Stage 1: Pre-Exam
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetStage(2)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer border",
+                    menteeStage === 2
+                      ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
+                      : "bg-white text-gray-700 border-amber-200 hover:bg-amber-100/50"
+                  )}
+                >
+                  Stage 2: Training
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetStage(3)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer border",
+                    menteeStage === 3
+                      ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
+                      : "bg-white text-gray-700 border-amber-200 hover:bg-amber-100/50"
+                  )}
+                >
+                  Stage 3: Post-Exam Ready
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetStage(4)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer border",
+                    menteeStage === 4
+                      ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
+                      : "bg-white text-gray-700 border-amber-200 hover:bg-amber-100/50"
+                  )}
+                >
+                  Stage 4: Completed & Locked
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Visual 4-Stage Pathway Stepper */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
+            <h4 className="text-xs font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-[#194611]" />
+              Sequential Clinical Learning Pathway
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Step 1 */}
+              <div
+                className={cn(
+                  "p-3 rounded-xl border transition flex flex-col justify-between",
+                  menteeStage === 1
+                    ? "bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20"
+                    : menteeStage > 1
+                    ? "bg-emerald-50/60 border-emerald-200"
+                    : "bg-gray-50 border-gray-200 opacity-60"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Step 1: Baseline
+                  </span>
+                  {menteeStage > 1 ? (
+                    <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold px-1.5 py-0 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> {pretestScore !== null ? `${pretestScore}%` : "Passed"}
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-bold px-1.5 py-0 animate-pulse">
+                      Active Now
+                    </Badge>
+                  )}
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-gray-900">Theoretical Pre-Exam</h5>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {menteeStage === 1
+                      ? "Mandatory baseline evaluation. Complete to unlock training materials."
+                      : pretestScore !== null
+                      ? `Passed with baseline score of ${pretestScore}%. Materials unlocked.`
+                      : "Baseline pre-exam completed. Materials unlocked."}
+                  </p>
+                </div>
+                {menteeStage === 1 && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleStartExam("PRETEST")}
+                    className="mt-3 w-full bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold h-7 cursor-pointer"
+                  >
+                    Take Pre-Exam
+                  </Button>
+                )}
+              </div>
+
+              {/* Step 2 */}
+              <div
+                className={cn(
+                  "p-3 rounded-xl border transition flex flex-col justify-between",
+                  menteeStage === 2
+                    ? "bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20"
+                    : menteeStage > 2
+                    ? "bg-emerald-50/60 border-emerald-200"
+                    : "bg-gray-50 border-gray-200 opacity-60"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Step 2: Training
+                  </span>
+                  {menteeStage < 2 ? (
+                    <Badge variant="outline" className="text-[10px] text-gray-500 border-gray-300 px-1.5 py-0 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Locked
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold px-1.5 py-0">
+                      Unlocked
+                    </Badge>
+                  )}
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-gray-900">Training Materials</h5>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {menteeStage < 2
+                      ? "Manuals & presentations unlocked upon completing baseline Pre-Exam."
+                      : "Participant manuals & presentations unlocked for clinical study."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div
+                className={cn(
+                  "p-3 rounded-xl border transition flex flex-col justify-between",
+                  menteeStage === 3
+                    ? "bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20"
+                    : menteeStage > 3
+                    ? "bg-emerald-50/60 border-emerald-200"
+                    : "bg-gray-50 border-gray-200 opacity-60"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Step 3: Verification
+                  </span>
+                  {menteeStage < 3 ? (
+                    <Badge variant="outline" className="text-[10px] text-amber-800 bg-amber-50 border-amber-200 px-1.5 py-0 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Waiting Mentor
+                    </Badge>
+                  ) : menteeStage === 3 ? (
+                    <Badge className="bg-[#194611] text-white text-[10px] font-bold px-1.5 py-0">
+                      Ready to Take
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold px-1.5 py-0 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> {postTestScore !== null ? `${postTestScore}%` : "Passed"}
+                    </Badge>
+                  )}
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-gray-900">Theoretical Post-Exam</h5>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {menteeStage < 3
+                      ? "Preceptor must unlock post-exam after clinical preparation."
+                      : menteeStage === 3
+                      ? "Preceptor unlocked! Complete post-exam to finalize theory."
+                      : postTestScore !== null
+                      ? `Submitted & scored ${postTestScore}%. Exam finalized.`
+                      : "Submitted & evaluated. Exam finalized."}
+                  </p>
+                </div>
+                {menteeStage === 3 && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleStartExam("POST_TEST")}
+                    className="mt-3 w-full bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold h-7 cursor-pointer"
+                  >
+                    Take Post-Exam
+                  </Button>
+                )}
+              </div>
+
+              {/* Step 4 */}
+              <div
+                className={cn(
+                  "p-3 rounded-xl border transition flex flex-col justify-between",
+                  menteeStage === 4
+                    ? "bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/20"
+                    : "bg-gray-50 border-gray-200 opacity-60"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Step 4: Lockout
+                  </span>
+                  {menteeStage < 4 ? (
+                    <Badge variant="outline" className="text-[10px] text-gray-400 border-gray-200 px-1.5 py-0">
+                      Hidden
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-[#194611] text-white text-[10px] font-bold px-1.5 py-0 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Locked
+                    </Badge>
+                  )}
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-gray-900">Theory Sign-Off & Key</h5>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {menteeStage < 4
+                      ? "Official Answer Key revealed and exam retakes disabled upon post-test submission."
+                      : "Course Theory Completed & Locked. Retakes disabled. Official Answer Key unlocked."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Feedback Notification */}
       {feedbackMessage && (
@@ -823,7 +1346,7 @@ export function ModuleDetailClient({
             <BookOpen className="w-3.5 h-3.5" />
             <span>Resources</span>
             <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-gray-200 text-gray-800">
-              {contents.length}
+              {isMentee ? visibleContents.length : contents.length}
             </span>
           </TabsTrigger>
 
@@ -896,54 +1419,304 @@ export function ModuleDetailClient({
                 </div>
               )}
 
-              {/* Mentee Quick-Access Assigned Materials */}
+              {/* Mentee Sequential Clinical Learning Track */}
               {isMentee && (
-                contents.length > 0 ? (
-                  <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                    <div>
                       <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-[#194611]" />
-                        Assigned Learning Materials ({contents.length})
+                        <Layers className="w-4 h-4 text-[#194611]" />
+                        Sequential Clinical Learning Track
                       </h3>
-                      <Badge className="bg-emerald-50 text-[#194611] border-emerald-200 text-[10px] font-semibold">
-                        Study Materials Ready
-                      </Badge>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Follow the 4-stage progression from baseline pre-exam to supervised theoretical sign-off.
+                      </p>
                     </div>
-                    <div className="divide-y divide-gray-100">
-                      {contents.map((item, idx) => (
-                        <div key={item.id || idx} className="py-3 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-gray-900 truncate">{item.title}</p>
-                            <p className="text-[11px] text-gray-500 capitalize">
-                              {item.type} {item.durationLabel ? `• ${item.durationLabel}` : item.fileSizeMb ? `• ${item.fileSizeMb} MB` : ""}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {item.url && item.url !== "#" ? (
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Study</span>
-                              </a>
-                            ) : null}
-                          </div>
+                    <Badge
+                      className={cn(
+                        "text-[10px] font-bold px-2 py-0.5",
+                        menteeStage === 1 && "bg-amber-100 text-amber-900 border-amber-300",
+                        menteeStage === 2 && "bg-blue-100 text-blue-900 border-blue-300",
+                        menteeStage === 3 && "bg-purple-100 text-purple-900 border-purple-300",
+                        menteeStage === 4 && "bg-emerald-100 text-[#194611] border-emerald-300"
+                      )}
+                    >
+                      Stage {menteeStage} of 4 Active
+                    </Badge>
+                  </div>
+
+                  {/* 1. Pre-Exam Quick Status Card */}
+                  <div
+                    className={cn(
+                      "p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition",
+                      menteeStage === 1
+                        ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/20"
+                        : "bg-emerald-50/50 border-emerald-200"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                          menteeStage === 1 ? "bg-amber-200 text-amber-900" : "bg-emerald-100 text-[#194611]"
+                        )}
+                      >
+                        <ClipboardCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-gray-900">Baseline Theoretical Pre-Exam</h4>
+                          {menteeStage > 1 ? (
+                            <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold">
+                              {pretestScore !== null ? `Completed (${pretestScore}%)` : "Completed"}
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-amber-200 text-amber-900 border-amber-400 text-[10px] font-bold animate-pulse">
+                              Active / Required
+                            </Badge>
+                          )}
                         </div>
-                      ))}
+                        <p className="text-[11px] text-gray-600 mt-0.5">
+                          {menteeStage === 1
+                            ? "Complete this baseline assessment to unlock all study manuals and presentations."
+                            : pretestScore !== null
+                            ? `Baseline score: ${pretestScore}%. Clinical materials successfully unlocked.`
+                            : "Baseline assessment completed. Clinical materials successfully unlocked."}
+                        </p>
+                      </div>
+                    </div>
+                    {menteeStage === 1 ? (
+                      <Button
+                        size="sm"
+                        onClick={() => handleStartExam("PRETEST")}
+                        className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold shrink-0 cursor-pointer shadow-2xs"
+                      >
+                        Take Pre-Exam
+                      </Button>
+                    ) : (
+                      <span className="text-xs font-semibold text-emerald-800 flex items-center gap-1 shrink-0">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Passed
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 2. Assigned Materials with Sequential Locking */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <BookOpen className="w-4 h-4 text-[#194611]" />
+                        Assigned Study Materials ({visibleContents.length})
+                      </h4>
+                      {menteeStage === 1 && (
+                        <Badge variant="outline" className="text-[10px] text-amber-800 bg-amber-50 border-amber-200 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Complete Pre-Exam to Unlock
+                        </Badge>
+                      )}
+                    </div>
+
+                    {visibleContents.length > 0 ? (
+                      <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+                        {visibleContents.map((item: ModuleContent, idx: number) => {
+                          const gating = isItemGated(item);
+                          const isCompleted = completedContentIds.has(String(item.id));
+
+                          return (
+                            <div
+                              key={item.id || idx}
+                              className={cn(
+                                "p-3.5 flex items-center justify-between gap-3 transition",
+                                gating.isLocked
+                                  ? "bg-gray-50/70 opacity-70"
+                                  : "hover:bg-gray-50/50 bg-white"
+                              )}
+                            >
+                              <div className="min-w-0 space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <p
+                                    className={cn(
+                                      "text-xs font-bold truncate",
+                                      gating.isLocked ? "text-gray-500 filter blur-[0.5px]" : "text-gray-900"
+                                    )}
+                                  >
+                                    {item.title}
+                                  </p>
+                                  {gating.badgeText && (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "text-[9px] font-semibold px-1.5 py-0",
+                                        gating.isLocked
+                                          ? "text-amber-800 bg-amber-50 border-amber-200"
+                                          : "text-[#194611] bg-emerald-50 border-emerald-200"
+                                      )}
+                                    >
+                                      {gating.badgeText}
+                                    </Badge>
+                                  )}
+                                  {isCompleted && (
+                                    <Badge className="bg-emerald-100 text-[#194611] text-[9px] border-emerald-200">
+                                      Reviewed
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-gray-500 capitalize">
+                                  {item.type} {item.durationLabel ? `• ${item.durationLabel}` : item.fileSizeMb ? `• ${item.fileSizeMb} MB` : ""}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {gating.isLocked ? (
+                                  <span
+                                    title={gating.reason || "Complete previous step to unlock"}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 rounded-lg border border-gray-200 cursor-not-allowed"
+                                  >
+                                    <Lock className="w-3 h-3 text-gray-400" />
+                                    <span>Locked</span>
+                                  </span>
+                                ) : (
+                                  item.url && item.url !== "#" ? (
+                                    <a
+                                      href={item.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
+                                    >
+                                      <Download className="w-3.5 h-3.5" />
+                                      <span>Study</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">Attached file</span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-gray-200 rounded-xl p-4 text-center">
+                        <p className="text-xs text-gray-500">No training materials attached yet.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Post-Exam Quick Status Card */}
+                  <div
+                    className={cn(
+                      "p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition",
+                      menteeStage === 3
+                        ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/20"
+                        : menteeStage === 4
+                        ? "bg-emerald-50/50 border-emerald-200"
+                        : "bg-gray-50 border-gray-200 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                          menteeStage === 3
+                            ? "bg-amber-200 text-amber-900"
+                            : menteeStage === 4
+                            ? "bg-emerald-100 text-[#194611]"
+                            : "bg-gray-200 text-gray-500"
+                        )}
+                      >
+                        <Award className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-gray-900">Comprehensive Theoretical Post-Exam</h4>
+                          {menteeStage === 1 && (
+                            <Badge variant="outline" className="text-[10px] text-gray-500 border-gray-300">
+                              Locked (Pre-Exam Required)
+                            </Badge>
+                          )}
+                          {menteeStage === 2 && (
+                            <Badge variant="outline" className="text-[10px] text-amber-800 bg-amber-50 border-amber-200">
+                              Waiting for Mentor to Unlock
+                            </Badge>
+                          )}
+                          {menteeStage === 3 && (
+                            <Badge className="bg-[#194611] text-white text-[10px] font-bold">
+                              Ready to Take
+                            </Badge>
+                          )}
+                          {menteeStage === 4 && (
+                            <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold">
+                              {postTestScore !== null
+                                ? `Course Theory Completed & Locked (${postTestScore}%)`
+                                : "Course Theory Completed & Locked"}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-600 mt-0.5">
+                          {menteeStage < 3
+                            ? "Your clinical preceptor will unlock this exam after observing your bedside preparation."
+                            : menteeStage === 3
+                            ? "Your preceptor has unlocked this exam. Submit now to finalize course theoretical requirements."
+                            : "Examination finalized and submitted. Retakes disabled. Official Answer Key unlocked."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {menteeStage === 3 ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleStartExam("POST_TEST")}
+                          className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold cursor-pointer shadow-2xs"
+                        >
+                          Take Post-Exam
+                        </Button>
+                      ) : menteeStage === 4 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-500 bg-gray-100 rounded-lg border border-gray-200">
+                          <Lock className="w-3.5 h-3.5" /> Retakes Disabled
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-400 bg-gray-100 rounded-lg border border-gray-200">
+                          <Lock className="w-3.5 h-3.5" /> Locked
+                        </span>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-center space-y-2">
-                    <BookOpen className="w-6 h-6 text-gray-300 mx-auto" />
-                    <h4 className="text-xs font-bold text-gray-800">No Learning Materials Assigned Yet</h4>
-                    <p className="text-[11px] text-gray-500 max-w-sm mx-auto leading-relaxed">
-                      Mentees receive access to specific learning resources assigned by their clinical mentor rather than the entire module curriculum. Once your mentor assigns a clinical guide or checklist to you, it will appear here.
-                    </p>
-                  </div>
-                )
+
+                  {/* 4. Official Answer Key Reveal Card (Stage 4 Only) */}
+                  {menteeStage === 4 && (
+                    <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in-50">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-200 text-[#194611] flex items-center justify-center shrink-0">
+                          <KeyRound className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-[#194611]">Official Theoretical Answer Key</h4>
+                            <Badge className="bg-emerald-100 text-[#194611] border-emerald-300 text-[10px] font-bold">
+                              Revealed
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-emerald-900 mt-0.5">
+                            Unlocked following successful Post-Exam completion. Review correct rationales and clinical guidance.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setFeedbackMessage({
+                            type: "success",
+                            text: "Official Answer Key opened for post-exam review and clinical self-reflection.",
+                          });
+                        }}
+                        className="border-[#194611] text-[#194611] hover:bg-emerald-100 text-xs font-semibold shrink-0 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 mr-1" />
+                        Review Answer Key
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {isMentor && (
@@ -1114,7 +1887,7 @@ export function ModuleDetailClient({
                   Only resources linked to an authorized learning module are available to mentors. Once this module is authorized by the national quality assurance team, its attached clinical guides, videos, and protocols will be accessible for preceptors to review and assign to junior midwives.
                 </p>
               </div>
-            ) : contents.length === 0 ? (
+            ) : (isMentee ? visibleContents.length === 0 : contents.length === 0) ? (
               <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl space-y-3">
                 <BookOpen className="w-8 h-8 text-gray-300 mx-auto" />
                 <h4 className="text-sm font-semibold text-gray-700">
@@ -1140,206 +1913,478 @@ export function ModuleDetailClient({
                 )}
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
-                {contents.map((item, index) => {
-                  const type = String(item.type || "document").toLowerCase();
-                  const isPdf = type.includes("doc") || type.includes("pdf") || type.includes("file");
-                  const isVid = type.includes("video") || type.includes("mp4");
-                  const isAud = type.includes("audio") || type.includes("podcast");
-                  const isUrl = type.includes("link") || type.includes("url");
-                  const isCompleted = completedContentIds.has(String(item.id));
-                  const materialUrl =
-                    isMentee && !isUrl
-                      ? ENDPOINTS.LEARNING.MY_RESOURCE_CONTENT(item.id)
-                      : item.url;
-
-                  return (
-                    <div
-                      key={item.id || index}
-                      className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/60 p-3 rounded-xl transition"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        {/* Type Icon */}
-                        <div
-                          className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs",
-                            isPdf && "bg-red-100 text-red-700",
-                            isVid && "bg-blue-100 text-blue-700",
-                            isAud && "bg-amber-100 text-amber-800",
-                            isUrl && "bg-purple-100 text-purple-700"
-                          )}
-                        >
-                          {isPdf && <FileText className="w-5 h-5" />}
-                          {isVid && <Video className="w-5 h-5" />}
-                          {isAud && <Headphones className="w-5 h-5" />}
-                          {isUrl && <Globe className="w-5 h-5" />}
-                        </div>
-
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-gray-900 truncate">
-                              {item.title}
-                            </h4>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] uppercase font-bold px-1.5 py-0 rounded text-gray-600 bg-gray-50 border-gray-200"
-                            >
-                              {item.type}
+              <div className="space-y-4">
+                {/* Mentee Stage 1 Milestone: Theoretical Pre-Exam Card */}
+                {isMentee && !visibleContents.some((item: ModuleContent) => getItemStageType(item) === "PRETEST") && (
+                  <div
+                    className={cn(
+                      "p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition shadow-2xs",
+                      menteeStage === 1
+                        ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/20"
+                        : "bg-emerald-50/50 border-emerald-200"
+                    )}
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs",
+                          menteeStage === 1 ? "bg-amber-200 text-amber-900" : "bg-emerald-100 text-[#194611]"
+                        )}
+                      >
+                        <ClipboardCheck className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-gray-900">Baseline Theoretical Pre-Exam</h4>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase font-bold px-1.5 py-0 rounded text-gray-600 bg-gray-50 border-gray-200"
+                          >
+                            Examination
+                          </Badge>
+                          {menteeStage > 1 ? (
+                            <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold flex items-center gap-1">
+                              <Check className="w-3 h-3" /> {pretestScore !== null ? `Baseline: ${pretestScore}% (Completed)` : "Pre-Exam Completed"}
                             </Badge>
+                          ) : (
+                            <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-bold animate-pulse">
+                              Active / Mandatory
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {menteeStage === 1
+                            ? "Mandatory theoretical pre-assessment. Complete to establish baseline and unlock curriculum materials."
+                            : pretestScore !== null
+                            ? `Baseline established with a passing score of ${pretestScore}%. Study manuals unlocked.`
+                            : "Baseline established. Study manuals unlocked."}
+                        </p>
+                      </div>
+                    </div>
 
-                            {/* Super Admin Publication & Authorization Badges */}
-                            {isSuperAdmin && (
-                              <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      {menteeStage === 1 ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleStartExam("PRETEST")}
+                          className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold h-8 px-3.5 cursor-pointer shadow-2xs"
+                        >
+                          <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                          Take Pre-Exam
+                        </Button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-[#194611] border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Pre-Exam Passed {pretestScore !== null ? `(${pretestScore}%)` : ""}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Primary Resource Content Items */}
+                <div className="divide-y divide-gray-100">
+                  {(isMentee ? visibleContents : contents).map((item: ModuleContent, index: number) => {
+                    const type = String(item.type || "document").toLowerCase();
+                    const isPdf = type.includes("doc") || type.includes("pdf") || type.includes("file");
+                    const isVid = type.includes("video") || type.includes("mp4");
+                    const isAud = type.includes("audio") || type.includes("podcast");
+                    const isUrl = type.includes("link") || type.includes("url");
+                    const isCompleted = completedContentIds.has(String(item.id));
+                    const gating = isItemGated(item);
+                    const stageType = getItemStageType(item);
+                    const materialUrl =
+                      isMentee && !isUrl
+                        ? ENDPOINTS.LEARNING.MY_RESOURCE_CONTENT(item.id)
+                        : item.url;
+
+                    return (
+                      <div
+                        key={item.id || index}
+                        className={cn(
+                          "py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 rounded-xl transition",
+                          gating.isLocked
+                            ? "bg-gray-50/70 border border-dashed border-gray-200/80 opacity-70"
+                            : "hover:bg-gray-50/60"
+                        )}
+                      >
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          {/* Type Icon */}
+                          <div
+                            className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs",
+                              gating.isLocked
+                                ? "bg-gray-100 text-gray-400"
+                                : isPdf && "bg-red-100 text-red-700",
+                              !gating.isLocked && isVid && "bg-blue-100 text-blue-700",
+                              !gating.isLocked && isAud && "bg-amber-100 text-amber-800",
+                              !gating.isLocked && isUrl && "bg-purple-100 text-purple-700"
+                            )}
+                          >
+                            {gating.isLocked ? (
+                              <Lock className="w-5 h-5 text-gray-400" />
+                            ) : isPdf ? (
+                              <FileText className="w-5 h-5" />
+                            ) : isVid ? (
+                              <Video className="w-5 h-5" />
+                            ) : isAud ? (
+                              <Headphones className="w-5 h-5" />
+                            ) : (
+                              <Globe className="w-5 h-5" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4
+                                className={cn(
+                                  "text-sm font-bold truncate",
+                                  gating.isLocked ? "text-gray-500 filter blur-[0.4px]" : "text-gray-900"
+                                )}
+                              >
+                                {item.title}
+                              </h4>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] uppercase font-bold px-1.5 py-0 rounded text-gray-600 bg-gray-50 border-gray-200"
+                              >
+                                {item.type}
+                              </Badge>
+
+                              {/* Gating Status Badge for Mentees */}
+                              {isMentee && gating.badgeText && (
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
-                                    item.isPublished !== false
-                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                      : "bg-gray-100 text-gray-600 border-gray-200"
+                                    "text-[10px] font-bold px-1.5 py-0 rounded flex items-center gap-1",
+                                    gating.isLocked
+                                      ? "text-amber-800 bg-amber-50 border-amber-200"
+                                      : "text-[#194611] bg-emerald-50 border-emerald-200"
                                   )}
                                 >
-                                  {item.isPublished !== false ? "Published" : "Draft"}
+                                  {gating.isLocked ? <Lock className="w-2.5 h-2.5" /> : null}
+                                  {gating.badgeText}
                                 </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
-                                    item.isAuthorized !== false
-                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                      : "bg-amber-50 text-amber-800 border-amber-200"
-                                  )}
-                                >
-                                  {item.isAuthorized !== false ? "Authorized" : "Pending QA"}
+                              )}
+
+                              {/* Super Admin Publication & Authorization Badges */}
+                              {isSuperAdmin && (
+                                <div className="flex items-center gap-1.5">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
+                                      item.isPublished !== false
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                        : "bg-gray-100 text-gray-600 border-gray-200"
+                                    )}
+                                  >
+                                    {item.isPublished !== false ? "Published" : "Draft"}
+                                  </Badge>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "text-[9px] uppercase px-1.5 py-0 rounded font-semibold",
+                                      item.isAuthorized !== false
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                        : "bg-amber-50 text-amber-800 border-amber-200"
+                                    )}
+                                  >
+                                    {item.isAuthorized !== false ? "Authorized" : "Pending QA"}
+                                  </Badge>
+                                </div>
+                              )}
+                              {isCompleted && (
+                                <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
+                                  <Check className="w-3 h-3" /> Reviewed
                                 </Badge>
+                              )}
+                              {isMentee && (assignedResourceIds.has(String(item.id)) || Boolean((item as any).assignedBy)) && (
+                                <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
+                                  <Sparkles className="w-3 h-3 text-[#194611]" /> Assigned by Preceptor
+                                </Badge>
+                              )}
+                            </div>
+
+                            {item.description && (
+                              <p className="text-xs text-gray-500 line-clamp-1">{item.description}</p>
+                            )}
+
+                            <div className="flex items-center gap-3 text-[11px] text-gray-400">
+                              {item.fileSizeMb && <span>{item.fileSizeMb} MB</span>}
+                              {item.durationLabel && <span>{item.durationLabel}</span>}
+                              <span>Material #{item.order || index + 1}</span>
+                            </div>
+
+                            {resourceAssignments[String(item.id)] && resourceAssignments[String(item.id)].length > 0 && (
+                              <div className="pt-1">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-[#194611] border border-emerald-200">
+                                  <Users className="w-3 h-3 text-[#194611]" />
+                                  Assigned to: {resourceAssignments[String(item.id)].join(", ")}
+                                </span>
                               </div>
                             )}
-                            {isCompleted && (
-                              <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
-                                <Check className="w-3 h-3" /> Reviewed
-                              </Badge>
-                            )}
-                            {isMentee && (assignedResourceIds.has(String(item.id)) || Boolean((item as any).assignedBy)) && (
-                              <Badge className="bg-emerald-100 text-[#194611] text-[10px] border-emerald-200 flex items-center gap-1 font-semibold">
-                                <Sparkles className="w-3 h-3 text-[#194611]" /> Assigned by Preceptor
-                              </Badge>
-                            )}
                           </div>
+                        </div>
 
-                          {item.description && (
-                            <p className="text-xs text-gray-500 line-clamp-1">{item.description}</p>
+                        {/* Action Links & Conditional Edit/Trash for Super Admin */}
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          {/* Mentee Mark Completed Toggle (only active if unlocked) */}
+                          {isMentee && !gating.isLocked && (
+                            <button
+                              type="button"
+                              onClick={() => toggleMaterialCompletion(item.id)}
+                              className={cn(
+                                "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border",
+                                isCompleted
+                                  ? "bg-emerald-50 text-[#194611] border-emerald-300 hover:bg-emerald-100"
+                                  : "bg-white text-gray-600 border-gray-200 hover:bg-gray-100"
+                              )}
+                            >
+                              <Check className={cn("w-3.5 h-3.5", isCompleted ? "text-[#194611]" : "text-gray-400")} />
+                              <span>{isCompleted ? "Completed" : "Mark as Done"}</span>
+                            </button>
                           )}
 
-                          <div className="flex items-center gap-3 text-[11px] text-gray-400">
-                            {item.fileSizeMb && <span>{item.fileSizeMb} MB</span>}
-                            {item.durationLabel && <span>{item.durationLabel}</span>}
-                            <span>Material #{item.order || index + 1}</span>
-                          </div>
-
-                          {resourceAssignments[String(item.id)] && resourceAssignments[String(item.id)].length > 0 && (
-                            <div className="pt-1">
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-[#194611] border border-emerald-200">
-                                <Users className="w-3 h-3 text-[#194611]" />
-                                Assigned to: {resourceAssignments[String(item.id)].join(", ")}
+                          {/* Mentor Action: Assign Resource to Mentee (Only available on authorized modules and resources) */}
+                          {isMentor && (
+                            item.isAuthorized !== false && isModuleAuthorized ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleOpenAssignResource(item)}
+                                className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3 font-semibold shadow-2xs cursor-pointer flex items-center gap-1.5"
+                              >
+                                <UserPlus className="w-3.5 h-3.5" />
+                                <span>Assign to Mentee</span>
+                              </Button>
+                            ) : (
+                              <span
+                                title="Only resources linked to an authorized learning module are available to mentors."
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-amber-800 bg-amber-50 rounded-lg border border-amber-200"
+                              >
+                                <Lock className="w-3 h-3 text-amber-700" />
+                                <span>Requires QA Approval</span>
                               </span>
+                            )
+                          )}
+
+                          {/* Gated Mentee Action vs Standard View/Download */}
+                          {isMentee && gating.isLocked ? (
+                            <span
+                              title={gating.reason || "Locked"}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>Locked</span>
+                            </span>
+                          ) : isMentee && stageType === "PRETEST" && menteeStage === 1 ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleStartExam("PRETEST")}
+                              className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold h-8 px-3 cursor-pointer shadow-2xs"
+                            >
+                              Take Pre-Exam
+                            </Button>
+                          ) : isMentee && stageType === "POST_TEST" && menteeStage === 3 ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleStartExam("POST_TEST")}
+                              className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold h-8 px-3 cursor-pointer shadow-2xs"
+                            >
+                              Take Post-Exam
+                            </Button>
+                          ) : isMentee && stageType === "POST_TEST" && menteeStage === 4 ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>Retakes Disabled</span>
+                            </span>
+                          ) : materialUrl && materialUrl !== "#" ? (
+                            <button
+                              type="button"
+                              onClick={() => openMaterial(item, isUrl)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
+                            >
+                              {isUrl ? (
+                                <>
+                                  <span>Open Link</span>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </>
+                              ) : (
+                                <>
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>View Material</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Attached file</span>
+                          )}
+
+                          {/* Super Admin Individual Resource CRUD: Edit & Trash */}
+                          {isSuperAdmin && (
+                            <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-200">
+                              <Button
+                                onClick={() => handleOpenEditContent(item)}
+                                variant="ghost"
+                                size="icon"
+                                title="Edit Resource"
+                                className="h-8 w-8 text-gray-500 hover:text-gray-900 hover:bg-gray-100 cursor-pointer"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+
+                              <Button
+                                onClick={() => setDeletingContent(item)}
+                                variant="ghost"
+                                size="icon"
+                                title="Delete Resource"
+                                className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
                             </div>
                           )}
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      {/* Action Links & Conditional Edit/Trash for Super Admin */}
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        {/* Mentee Mark Completed Toggle */}
-                        {isMentee && (
-                          <button
-                            type="button"
-                            onClick={() => toggleMaterialCompletion(item.id)}
-                            className={cn(
-                              "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border",
-                              isCompleted
-                                ? "bg-emerald-50 text-[#194611] border-emerald-300 hover:bg-emerald-100"
-                                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-100"
-                            )}
+                {/* Mentee Stage 3 & 4 Milestone: Theoretical Post-Exam Card */}
+                {isMentee && !visibleContents.some((item: ModuleContent) => getItemStageType(item) === "POST_TEST") && (
+                  <div
+                    className={cn(
+                      "p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition shadow-2xs",
+                      menteeStage === 3
+                        ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/20"
+                        : menteeStage === 4
+                        ? "bg-emerald-50/50 border-emerald-200"
+                        : "bg-gray-50 border-gray-200 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs",
+                          menteeStage === 3
+                            ? "bg-amber-200 text-amber-900"
+                            : menteeStage === 4
+                            ? "bg-emerald-100 text-[#194611]"
+                            : "bg-gray-200 text-gray-400"
+                        )}
+                      >
+                        <Award className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-gray-900">Comprehensive Theoretical Post-Exam</h4>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase font-bold px-1.5 py-0 rounded text-gray-600 bg-gray-50 border-gray-200"
                           >
-                            <Check className={cn("w-3.5 h-3.5", isCompleted ? "text-[#194611]" : "text-gray-400")} />
-                            <span>{isCompleted ? "Completed" : "Mark as Done"}</span>
-                          </button>
-                        )}
-
-                        {/* Mentor Action: Assign Resource to Mentee (Only available on authorized modules and resources) */}
-                        {isMentor && (
-                          item.isAuthorized !== false && isModuleAuthorized ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleOpenAssignResource(item)}
-                              className="bg-[#194611] hover:bg-[#13360d] text-white text-xs h-8 px-3 font-semibold shadow-2xs cursor-pointer flex items-center gap-1.5"
-                            >
-                              <UserPlus className="w-3.5 h-3.5" />
-                              <span>Assign to Mentee</span>
-                            </Button>
-                          ) : (
-                            <span
-                              title="Only resources linked to an authorized learning module are available to mentors."
-                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-amber-800 bg-amber-50 rounded-lg border border-amber-200"
-                            >
-                              <Lock className="w-3 h-3 text-amber-700" />
-                              <span>Requires QA Approval</span>
-                            </span>
-                          )
-                        )}
-
-                        {/* View/Download link (available to all roles) */}
-                        {materialUrl && materialUrl !== "#" ? (
-                          <button
-                            type="button"
-                            onClick={() => openMaterial(item, isUrl)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#194611] text-white hover:bg-[#13360d] transition shadow-2xs"
-                          >
-                            {isUrl ? (
-                              <>
-                                <span>Open Link</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </>
-                            ) : (
-                              <>
-                                <Download className="w-3.5 h-3.5" />
-                                <span>View Material</span>
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400 italic">Attached file</span>
-                        )}
-
-                        {/* Super Admin Individual Resource CRUD: Edit & Trash */}
-                        {isSuperAdmin && (
-                          <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-200">
-                            <Button
-                              onClick={() => handleOpenEditContent(item)}
-                              variant="ghost"
-                              size="icon"
-                              title="Edit Resource"
-                              className="h-8 w-8 text-gray-500 hover:text-gray-900 hover:bg-gray-100 cursor-pointer"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-
-                            <Button
-                              onClick={() => setDeletingContent(item)}
-                              variant="ghost"
-                              size="icon"
-                              title="Delete Resource"
-                              className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        )}
+                            Examination
+                          </Badge>
+                          {menteeStage === 1 && (
+                            <Badge variant="outline" className="text-[10px] text-gray-500 border-gray-300">
+                              Locked (Pre-Exam Required)
+                            </Badge>
+                          )}
+                          {menteeStage === 2 && (
+                            <Badge variant="outline" className="text-[10px] text-amber-800 bg-amber-50 border-amber-200 flex items-center gap-1 font-semibold">
+                              <Lock className="w-2.5 h-2.5" /> Waiting for Mentor to Unlock
+                            </Badge>
+                          )}
+                          {menteeStage === 3 && (
+                            <Badge className="bg-[#194611] text-white text-[10px] font-bold">
+                              Ready to Take
+                            </Badge>
+                          )}
+                          {menteeStage === 4 && (
+                            <Badge className="bg-emerald-100 text-[#194611] border-emerald-200 text-[10px] font-bold">
+                              {postTestScore !== null
+                                ? `Course Theory Completed & Locked (${postTestScore}%)`
+                                : "Course Theory Completed & Locked"}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {menteeStage < 3
+                            ? "Supervised post-training assessment. Your clinical preceptor will unlock this exam after observing your clinical readiness."
+                            : menteeStage === 3
+                            ? "Your preceptor has unlocked this exam. Submit now to finalize theoretical requirements."
+                            : "Course theory finalized and submitted. Retakes disabled. Official Answer Key unlocked."}
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      {menteeStage === 3 ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleStartExam("POST_TEST")}
+                          className="bg-[#194611] hover:bg-[#13360d] text-white text-xs font-semibold h-8 px-3.5 cursor-pointer shadow-2xs"
+                        >
+                          <Award className="w-3.5 h-3.5 mr-1" />
+                          Take Post-Exam
+                        </Button>
+                      ) : menteeStage === 4 ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Retakes Disabled</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-400 border border-gray-200">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Locked</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mentee Stage 4 Milestone: Official Answer Key Card */}
+                {isMentee && menteeStage === 4 && !visibleContents.some((item: ModuleContent) => getItemStageType(item) === "ANSWER_KEY") && (
+                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in-50 shadow-2xs">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-200 text-[#194611] flex items-center justify-center shrink-0 shadow-2xs">
+                        <KeyRound className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-[#194611]">Official Theoretical Answer Key</h4>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase font-bold px-1.5 py-0 rounded text-[#194611] bg-white border-emerald-300"
+                          >
+                            Answer Key
+                          </Badge>
+                          <Badge className="bg-emerald-100 text-[#194611] border-emerald-300 text-[10px] font-bold">
+                            Revealed
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-emerald-900">
+                          Unlocked following post-exam submission. Review clinical rationales and procedural principles for bedside practice.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setFeedbackMessage({
+                          type: "success",
+                          text: "Official Answer Key opened for post-exam review and clinical self-reflection.",
+                        });
+                      }}
+                      className="border-[#194611] text-[#194611] hover:bg-emerald-100 text-xs font-semibold shrink-0 cursor-pointer h-8 px-3.5"
+                    >
+                      <FileText className="w-3.5 h-3.5 mr-1" />
+                      Review Answer Key
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2047,6 +3092,252 @@ export function ModuleDetailClient({
                 {isDeletingContent ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
                 Yes, Remove
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal 6: Mentee Clinical Examination Simulation Modal */}
+      {isMentee && (
+        <Dialog open={isExamModalOpen} onOpenChange={setIsExamModalOpen}>
+          <DialogContent className="max-w-xl bg-white p-6 rounded-2xl shadow-xl">
+            <DialogHeader className="pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#194611] flex items-center justify-center shrink-0">
+                  <ClipboardCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold text-gray-900">
+                    {activeExamType === "PRETEST"
+                      ? "Theoretical Pre-Exam (Baseline Assessment)"
+                      : "Comprehensive Theoretical Post-Exam"}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-gray-500 mt-0.5">
+                    {activeExamType === "PRETEST"
+                      ? "Establish baseline clinical knowledge before unlocking training manuals. Single attempt."
+                      : "Clinical preceptor authorized post-examination. Passing establishes course theory sign-off."}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="py-4 space-y-5 max-h-[60vh] overflow-y-auto pr-1 text-xs">
+              {/* Question 1 */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-3">
+                <p className="font-bold text-gray-900">
+                  1. What is the recommended first-line uterotonic for Active Management of the Third Stage of Labor (AMTSL)?
+                </p>
+                <div className="space-y-2">
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q1: "A" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q1 === "A" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q1"
+                      checked={examAnswers.q1 === "A"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q1: "A" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q1 === "A" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      A) Oxytocin 10 IU IM immediately after delivery of the anterior shoulder or neonate
+                    </span>
+                  </label>
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q1: "B" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q1 === "B" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q1"
+                      checked={examAnswers.q1 === "B"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q1: "B" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q1 === "B" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      B) Methylergometrine 0.2 mg IV push regardless of maternal blood pressure
+                    </span>
+                  </label>
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q1: "C" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q1 === "C" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q1"
+                      checked={examAnswers.q1 === "C"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q1: "C" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q1 === "C" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      C) Misoprostol 800 mcg rectal suppository as routine prophylaxis
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Question 2 */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-3">
+                <p className="font-bold text-gray-900">
+                  2. In the immediate postpartum period, how frequently should uterine tone and vital signs be monitored during the first 2 hours?
+                </p>
+                <div className="space-y-2">
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q2: "A" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q2 === "A" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q2"
+                      checked={examAnswers.q2 === "A"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q2: "A" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q2 === "A" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      A) Every 15 minutes for the first hour, then every 30 minutes for the second hour
+                    </span>
+                  </label>
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q2: "B" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q2 === "B" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q2"
+                      checked={examAnswers.q2 === "B"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q2: "B" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q2 === "B" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      B) Once at 60 minutes and once at discharge
+                    </span>
+                  </label>
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q2: "C" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q2 === "C" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q2"
+                      checked={examAnswers.q2 === "C"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q2: "C" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q2 === "C" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      C) Every 4 hours if the patient is resting comfortably
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Question 3 */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-3">
+                <p className="font-bold text-gray-900">
+                  3. When assessing neonatal resuscitation within the golden first minute, which indicator dictates immediate bag-mask ventilation?
+                </p>
+                <div className="space-y-2">
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q3: "A" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q3 === "A" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q3"
+                      checked={examAnswers.q3 === "A"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q3: "A" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q3 === "A" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      A) Apnea/gasping or heart rate &lt; 100 bpm despite thorough drying and stimulation
+                    </span>
+                  </label>
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q3: "B" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q3 === "B" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q3"
+                      checked={examAnswers.q3 === "B"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q3: "B" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q3 === "B" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      B) Mild acrocyanosis with vigorous crying
+                    </span>
+                  </label>
+                  <label
+                    onClick={() => setExamAnswers((prev) => ({ ...prev, q3: "C" }))}
+                    className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition",
+                      examAnswers.q3 === "C" ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="q3"
+                      checked={examAnswers.q3 === "C"}
+                      onChange={() => setExamAnswers((prev) => ({ ...prev, q3: "C" }))}
+                      className="accent-[#194611]"
+                    />
+                    <span className={cn(examAnswers.q3 === "C" ? "font-semibold text-emerald-950" : "text-gray-700")}>
+                      C) Heart rate 130 bpm with regular spontaneous respirations
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-[11px] text-gray-500 font-medium">
+                Calculated Score: {calculateDynamicExamScore()}%
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSubmittingExam}
+                  onClick={() => setIsExamModalOpen(false)}
+                  className="h-8 text-xs border-gray-200"
+                >
+                  Exit Exam
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isSubmittingExam}
+                  onClick={handleConfirmSubmitExam}
+                  className="bg-[#194611] hover:bg-[#13360d] text-white h-8 px-4 text-xs font-semibold shadow-2xs cursor-pointer"
+                >
+                  {isSubmittingExam ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                  Submit {activeExamType === "PRETEST" ? "Pre-Exam" : "Post-Exam"} ({calculateDynamicExamScore()}%)
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>

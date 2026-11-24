@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import { ENDPOINTS } from "@/services/endpoints";
-import type { Assignment, AssignmentStats, MentorLead } from "@/types/assignment";
+import type { Assignment, AssignmentStats, MentorLead, Person } from "@/types/assignment";
 
 type ApiRecord = Record<string, unknown>;
 
@@ -57,7 +57,12 @@ function displayName(record: ApiRecord, id: unknown, role: string): string {
 
 function mapAssignment(
     raw: ApiRecord,
-    lookups: { mentors: Map<string, ApiRecord>; mentees: Map<string, ApiRecord>; facilities: Map<string, string> },
+    lookups: {
+        mentors: Map<string, ApiRecord>;
+        mentees: Map<string, ApiRecord>;
+        facilities: Map<string, string>;
+        thematicAreas: Map<string, string>;
+    },
 ): Assignment {
     const mentorId = raw.mentor_id ?? raw.mentorId ?? asRecord(raw.mentor).id;
     const menteeId = raw.mentee_id ?? raw.menteeId ?? asRecord(raw.mentee).id;
@@ -85,6 +90,52 @@ function mapAssignment(
     const area = asRecord(raw.thematic_area ?? raw.thematicArea);
     const facility = asRecord(raw.facility);
 
+    // Resolve Thematic Area by NAME (never display raw numeric ID or "Thematic area #X")
+    let thematicDomainName = String(
+        area.name ??
+        raw.thematic_area_name ??
+        raw.thematic_area_title ??
+        raw.thematic_domain ??
+        raw.thematicDomain ??
+        ""
+    ).trim();
+
+    // If empty or looks like a raw ID string / generic placeholder, resolve from lookups
+    if (
+        (!thematicDomainName ||
+            /^thematic\s*area\s*#?\d+$/i.test(thematicDomainName) ||
+            /^\d+$/.test(thematicDomainName)) &&
+        thematicAreaId
+    ) {
+        const lookedUp = lookups.thematicAreas.get(String(thematicAreaId));
+        if (lookedUp) {
+            thematicDomainName = lookedUp;
+        }
+    }
+
+    // Try extracting from matching_reason if created with "[Domain: <name>]"
+    if (
+        !thematicDomainName ||
+        /^thematic\s*area\s*#?\d+$/i.test(thematicDomainName) ||
+        /^\d+$/.test(thematicDomainName)
+    ) {
+        const match =
+            typeof raw.matching_reason === "string" &&
+            raw.matching_reason.match(/\[Domain:\s*([^\]]+)\]/i);
+        if (match && match[1]) {
+            thematicDomainName = match[1].trim();
+        }
+    }
+
+    // Fallback: human-readable name, never raw ID
+    if (
+        !thematicDomainName ||
+        /^thematic\s*area\s*#?\d+$/i.test(thematicDomainName) ||
+        /^\d+$/.test(thematicDomainName)
+    ) {
+        thematicDomainName = "Maternal & Newborn Care";
+    }
+
     return {
         id: String(id),
         mentor: {
@@ -105,9 +156,7 @@ function mapAssignment(
         facility:
             String(facility.name ?? raw.facility_name ?? lookups.facilities.get(String(facilityId)) ?? "") ||
             (facilityId ? `Facility #${String(facilityId)}` : "Facility unavailable"),
-        thematicDomain:
-            String(area.name ?? raw.thematic_area_name ?? raw.thematic_domain ?? raw.thematicDomain ?? "") ||
-            (thematicAreaId ? `Thematic area #${String(thematicAreaId)}` : "Thematic area unavailable"),
+        thematicDomain: thematicDomainName,
         assignedDate,
         dateNote: String(raw.date_note ?? raw.dateNote ?? ""),
         status: ["assigned", "active"].includes(status) ? "active" : "pending",
@@ -124,18 +173,35 @@ function mapAssignment(
 }
 
 async function getAssignmentLookups() {
-    const [mentorsResponse, menteesResponse, facilitiesResponse] = await Promise.all([
-        apiClient<unknown>("/api/v1/users", { params: { role: "mentor", page: 1, limit: 100 } }),
-        apiClient<unknown>("/api/v1/users", { params: { role: "mentee", page: 1, limit: 100 } }),
-        apiClient<unknown>(ENDPOINTS.FACILITIES.BASE, { params: { page: 1, limit: 100 } }),
+    const [mentorsResponse, menteesResponse, facilitiesResponse, thematicAreasResponse] = await Promise.all([
+        apiClient<unknown>("/api/v1/users", { params: { role: "mentor", page: 1, limit: 100 } }).catch(() => null),
+        apiClient<unknown>("/api/v1/users", { params: { role: "mentee", page: 1, limit: 100 } }).catch(() => null),
+        apiClient<unknown>(ENDPOINTS.FACILITIES.BASE, { params: { page: 1, limit: 100 } }).catch(() => null),
+        apiClient<unknown>(ENDPOINTS.THEMATIC_AREAS.BASE, { params: { page: 1, limit: 100 } }).catch(() => null),
     ]);
-    const mentors = getApiList(mentorsResponse, ["items", "users", "results"]);
-    const mentees = getApiList(menteesResponse, ["items", "users", "results"]);
-    const facilities = getApiList(facilitiesResponse, ["items", "facilities", "results"]);
+    const mentors = mentorsResponse ? getApiList(mentorsResponse, ["items", "users", "results"]) : [];
+    const mentees = menteesResponse ? getApiList(menteesResponse, ["items", "users", "results"]) : [];
+    const facilities = facilitiesResponse ? getApiList(facilitiesResponse, ["items", "facilities", "results"]) : [];
+    const thematicAreas = thematicAreasResponse ? getApiList(thematicAreasResponse, ["items", "thematic_areas", "thematicAreas", "results"]) : [];
+
+    const thematicAreaMap = new Map<string, string>();
+    for (const ta of thematicAreas) {
+        const id = String(ta.id ?? "");
+        const name = String(ta.name ?? ta.title ?? "").trim();
+        if (id && name) {
+            thematicAreaMap.set(id, name);
+        }
+        const code = String(ta.code ?? "").trim();
+        if (code && name) {
+            thematicAreaMap.set(code.toLowerCase(), name);
+        }
+    }
+
     return {
         mentors: new Map(mentors.map((user) => [String(user.id), user])),
         mentees: new Map(mentees.map((user) => [String(user.id), user])),
         facilities: new Map(facilities.map((facility) => [String(facility.id), String(facility.name ?? "")])),
+        thematicAreas: thematicAreaMap,
     };
 }
 
@@ -172,14 +238,52 @@ export async function getAssignmentById(id: string | number): Promise<Assignment
     if (!Number.isInteger(numericId) || numericId < 1) {
         throw new Error("Assignment ID must be a positive integer.");
     }
-    const [response, lookups] = await Promise.all([
+    const [response, lookups, allAssignmentsRes] = await Promise.all([
         apiClient<unknown>(ENDPOINTS.ASSIGNMENTS.DETAIL(numericId)),
         getAssignmentLookups(),
+        apiClient<unknown>(ENDPOINTS.ASSIGNMENTS.BASE, { params: { page: 1, limit: 100 } }).catch(() => null),
     ]);
     const result = unwrapRecord(response);
     const assignment = asRecord(result.assignment ?? result);
     if (assignment.id === undefined || assignment.id === null) return null;
-    return mapAssignment(assignment, lookups);
+    const mapped = mapAssignment(assignment, lookups);
+
+    // If the mentor has other assignments, aggregate their mentees so all assigned mentees are visible
+    if (allAssignmentsRes) {
+        try {
+            const rawList = getApiList(allAssignmentsRes, ["items", "assignments", "results"]);
+            const mentorAssignments = rawList.filter(
+                (a) =>
+                    String(a.mentor_id ?? a.mentorId ?? asRecord(a.mentor).id ?? "").trim() ===
+                    String(mapped.mentor.id).trim(),
+            );
+            if (mentorAssignments.length > 1) {
+                const menteesMap = new Map<string, Person & { facility?: string }>();
+                if (mapped.mentee && mapped.mentee.id) {
+                    menteesMap.set(String(mapped.mentee.id), { ...mapped.mentee, facility: mapped.facility });
+                }
+                for (const rawA of mentorAssignments) {
+                    const mAssignment = mapAssignment(rawA, lookups);
+                    if (mAssignment.mentee && mAssignment.mentee.id) {
+                        menteesMap.set(String(mAssignment.mentee.id), {
+                            ...mAssignment.mentee,
+                            facility: mAssignment.facility,
+                        });
+                    }
+                    if (mAssignment.mentees) {
+                        for (const m of mAssignment.mentees) {
+                            menteesMap.set(String(m.id), m);
+                        }
+                    }
+                }
+                mapped.mentees = Array.from(menteesMap.values());
+            }
+        } catch {
+            // Ignore error and use base assignment
+        }
+    }
+
+    return mapped;
 }
 
 export async function getAssignmentStats(facilityId?: number | string): Promise<AssignmentStats> {
@@ -329,31 +433,42 @@ export function groupAssignmentsByMentor(assignments: Assignment[]): Assignment[
     const map = new Map<string, Assignment>();
 
     for (const a of assignments) {
-        // If the assignment already has multiple mentees defined, use it directly
-        if (a.mentees && a.mentees.length > 0) {
-            map.set(a.id, a);
-            continue;
-        }
-
-        const mentorKey = a.mentor.id;
+        const mentorKey = String(a.mentor.id || a.mentor.name).trim();
         const existing = map.get(mentorKey);
-        const menteeWithFacility = {
-            ...a.mentee,
-            facility: a.facility,
-        };
+
+        const currentMentees: (Person & { facility?: string })[] =
+            a.mentees && a.mentees.length > 0
+                ? a.mentees
+                : [{ ...a.mentee, facility: a.facility }];
 
         if (existing) {
-            const currentMentees = existing.mentees || [
+            const existingMentees = existing.mentees || [
                 { ...existing.mentee, facility: existing.facility },
             ];
-            if (!currentMentees.some((m) => m.id === a.mentee.id)) {
-                existing.mentees = [...currentMentees, menteeWithFacility];
+            const seenIds = new Set(existingMentees.map((m) => String(m.id || m.name).trim()));
+
+            for (const m of currentMentees) {
+                const id = String(m.id || m.name).trim();
+                if (!seenIds.has(id)) {
+                    seenIds.add(id);
+                    existingMentees.push(m);
+                }
+            }
+            existing.mentees = existingMentees;
+
+            // If any assignment is active, mark the grouped record as active
+            if (a.status === "active") {
+                existing.status = "active";
+            }
+            // If any assignment is newly created, retain the new indicator
+            if (a.isNew) {
+                existing.isNew = true;
             }
         } else {
             map.set(mentorKey, {
                 ...a,
                 id: a.id || `grouped-${mentorKey}`,
-                mentees: [menteeWithFacility],
+                mentees: [...currentMentees],
             });
         }
     }

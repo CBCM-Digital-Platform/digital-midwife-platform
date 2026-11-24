@@ -70,7 +70,24 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     raw.highest_qualification ||
     (role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife");
 
-  const thematicArea = raw.thematicArea || raw.thematic_area || "Maternal & Child";
+  const thematicAreaId =
+    raw.thematic_area_id !== undefined && raw.thematic_area_id !== null
+      ? Number(raw.thematic_area_id)
+      : raw.thematicAreaId !== undefined && raw.thematicAreaId !== null
+      ? Number(raw.thematicAreaId)
+      : raw.thematic_area?.id !== undefined && raw.thematic_area?.id !== null
+      ? Number(raw.thematic_area.id)
+      : raw.thematicArea?.id !== undefined && raw.thematicArea?.id !== null
+      ? Number(raw.thematicArea.id)
+      : undefined;
+
+  const rawThematicAreaName =
+    (typeof raw.thematic_area === "object" ? raw.thematic_area?.name : raw.thematic_area) ||
+    (typeof raw.thematicArea === "object" ? raw.thematicArea?.name : raw.thematicArea) ||
+    raw.thematicAreaName ||
+    raw.thematic_area_name;
+
+  const thematicArea = rawThematicAreaName || "Maternal & Child";
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -110,16 +127,27 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       facility,
       facilityId,
       thematicArea,
+      thematicAreaId,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
       profession,
       department: raw.department || "Maternal & Fetal Health Unit",
-      yearsOfExperience: Number(raw.yearsOfExperience || raw.years_of_experience) || 5,
+      yearsOfExperience: Number(raw.yearsOfExperience || raw.years_of_experience) || 0,
       assignedMenteesCount: Number(raw.assignedMenteesCount || raw.assigned_mentees_count) || 0,
       status: status as any,
     };
     return mentor;
   } else {
+    const rawScore = raw.knowledgeScore ?? raw.knowledge_score;
+    const menteeScore =
+      rawScore !== undefined && rawScore !== null && !isNaN(Number(rawScore))
+        ? Number(rawScore)
+        : undefined;
+
+    const menteeTier =
+      raw.scoreTier ||
+      (menteeScore !== undefined ? (menteeScore >= 80 ? "Tier 1" : "Tier 2") : undefined);
+
     const mentee: MenteeUser = {
       id,
       systemId,
@@ -129,17 +157,18 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       role: "mentee",
       facility,
       facilityId,
-      thematicArea,
+      thematicArea: thematicArea || undefined,
+      thematicAreaId,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-blue-100 text-blue-800",
       profession,
       cadreLevel: raw.cadreLevel || raw.cadre_level || "Junior Midwife Resident",
       assignedMentor: raw.assignedMentor || {
         name: raw.mentor_name || undefined,
-        status: raw.mentor_id || raw.mentor_name ? "assigned" : "pending_review",
+        status: raw.mentor_id || raw.mentor_name ? "assigned" : "unassigned",
       },
-      knowledgeScore: Number(raw.knowledgeScore || raw.knowledge_score) || 84,
-      scoreTier: (raw.scoreTier || (Number(raw.knowledgeScore || raw.knowledge_score) >= 80 ? "Tier 1" : "Tier 2")) as any,
+      knowledgeScore: menteeScore,
+      scoreTier: menteeTier as any,
       status: status as any,
     };
     return mentee;

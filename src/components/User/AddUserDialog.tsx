@@ -25,6 +25,7 @@ import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
+import type { ThematicArea } from "@/types/thematic-area";
 import { FACILITY_ID_MAP } from "@/services/users.service";
 import {
   Dialog,
@@ -128,7 +129,8 @@ export function generateUsername(
 function createNewUserFromForm(
   formData: UserFormData,
   role: "mentor" | "mentee",
-  activeFacilityId?: number | string
+  activeFacilityId?: number | string,
+  thematicAreaId?: number | string
 ): ClinicalUser {
   const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
   const initials =
@@ -155,10 +157,11 @@ function createNewUserFromForm(
       avatarInitials: initials,
       avatarBgColor: "bg-emerald-100 text-emerald-800",
       profession: formData.profession,
-      department: formData.thematic_area,
+      department: formData.thematic_area || "Clinical Unit",
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
-      thematicArea: formData.thematic_area,
+      thematicArea: formData.thematic_area || "General Practice",
+      thematicAreaId,
       yearsOfExperience: Number(formData.years_of_experience) || 0,
       assignedMenteesCount: 0,
       status: "active",
@@ -178,12 +181,13 @@ function createNewUserFromForm(
       cadreLevel: formData.highest_qualification,
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
-      thematicArea: formData.thematic_area,
+      thematicArea: undefined,
+      thematicAreaId: undefined,
       assignedMentor: {
-        status: "pending_review",
+        status: "unassigned",
       },
-      knowledgeScore: 0,
-      scoreTier: "Tier 2",
+      knowledgeScore: undefined,
+      scoreTier: undefined,
       status: "pending_start",
     };
     return newMentee;
@@ -264,10 +268,12 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
   const [dynamicThematicAreas, setDynamicThematicAreas] = useState<string[]>(() => {
     return Array.from(thematicAreasList);
   });
+  const [thematicAreaObjects, setThematicAreaObjects] = useState<ThematicArea[]>([]);
 
   useEffect(() => {
     getThematicAreas().then((list) => {
       if (list && list.length > 0) {
+        setThematicAreaObjects(list);
         const uniqueNames = Array.from(
           new Set(list.map((ta) => ta.name?.trim()).filter(Boolean))
         ) as string[];
@@ -333,8 +339,41 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
   const onSubmit = async (formData: UserFormData) => {
     setSubmitError(null);
     try {
+      if (role === "mentor") {
+        if (!formData.thematic_area || !formData.thematic_area.trim()) {
+          setSubmitError("Primary Thematic Area is required for Mentor registration.");
+          return;
+        }
+        if (
+          formData.years_of_experience === "" ||
+          formData.years_of_experience === undefined ||
+          formData.years_of_experience === null
+        ) {
+          setSubmitError("Years of Experience is required for Mentor registration.");
+          return;
+        }
+      }
+
       const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
       const assignedFacilityId = effectiveFacilityId;
+
+      // Case-insensitive resolution of thematic area to find its canonical ID and name (mentor only)
+      const selectedAreaInput = (formData.thematic_area || "").trim().toLowerCase();
+      const matchedArea = thematicAreaObjects.find(
+        (ta) =>
+          ta.name?.trim().toLowerCase() === selectedAreaInput ||
+          ta.code?.trim().toLowerCase() === selectedAreaInput ||
+          String(ta.id) === String(formData.thematic_area)
+      );
+
+      const numericThematicAreaId =
+        role === "mentor"
+          ? matchedArea?.id
+            ? Number(matchedArea.id)
+            : !isNaN(Number(formData.thematic_area))
+            ? Number(formData.thematic_area)
+            : undefined
+          : undefined;
 
       // Construct clean payload strictly adhering to the backend's allowed fields
       const payload: Record<string, any> = {
@@ -352,8 +391,27 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
         payload.facility_id = assignedFacilityId;
       }
 
-      await apiClient.post<any>("/api/v1/users", payload);
-      const newUser = createNewUserFromForm(formData, role, assignedFacilityId);
+      // Backend provides thematic_area_id and years_of_experience for mentor role only
+      if (role === "mentor") {
+        if (numericThematicAreaId !== undefined) {
+          payload.thematic_area_id = numericThematicAreaId;
+        }
+        if (formData.thematic_area) {
+          payload.thematic_area = matchedArea?.name || formData.thematic_area;
+        }
+        if (formData.years_of_experience) {
+          payload.years_of_experience = Number(formData.years_of_experience);
+        }
+      }
+
+      const res = await apiClient.post<any>("/api/v1/users", payload);
+      const rawUser = res?.data?.user || res?.data || res?.user || res;
+      const createdThematicAreaId =
+        rawUser?.thematic_area_id !== undefined && rawUser?.thematic_area_id !== null
+          ? Number(rawUser.thematic_area_id)
+          : numericThematicAreaId;
+
+      const newUser = createNewUserFromForm(formData, role, assignedFacilityId, createdThematicAreaId);
 
       onUserCreated?.(newUser);
       reset();
@@ -551,42 +609,46 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
                   )}
                 </div>
 
-                {/* Years of Experience */}
-                <div>
-                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Years of Experience <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    {...register("years_of_experience")}
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 5"
-                  />
-                  {errors.years_of_experience && (
-                    <p className="text-red-500 text-xs mt-1">{errors.years_of_experience.message}</p>
-                  )}
-                </div>
+                {/* Years of Experience (Mentor only) */}
+                {role === "mentor" && (
+                  <div>
+                    <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Years of Experience <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      {...register("years_of_experience")}
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 5"
+                    />
+                    {errors.years_of_experience && (
+                      <p className="text-red-500 text-xs mt-1">{errors.years_of_experience.message}</p>
+                    )}
+                  </div>
+                )}
 
-                {/* Thematic Area */}
-                <div>
-                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Primary Thematic Area <span className="text-red-500">*</span>
-                  </Label>
-                  <SearchableSelect
-                    options={dynamicThematicAreas}
-                    value={watchedThematicArea}
-                    onChange={(val) =>
-                      setValue("thematic_area", val, { shouldValidate: true })
-                    }
-                    placeholder="Select primary thematic area"
-                    searchPlaceholder="Search thematic area..."
-                    size="sm"
-                    error={errors.thematic_area?.message}
-                  />
-                  {errors.thematic_area && (
-                    <p className="text-red-500 text-xs mt-1">{errors.thematic_area.message}</p>
-                  )}
-                </div>
+                {/* Thematic Area (Mentor only) */}
+                {role === "mentor" && (
+                  <div>
+                    <Label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Primary Thematic Area <span className="text-red-500">*</span>
+                    </Label>
+                    <SearchableSelect
+                      options={dynamicThematicAreas}
+                      value={watchedThematicArea}
+                      onChange={(val) =>
+                        setValue("thematic_area", val, { shouldValidate: true })
+                      }
+                      placeholder="Select primary thematic area"
+                      searchPlaceholder="Search thematic area..."
+                      size="sm"
+                      error={errors.thematic_area?.message}
+                    />
+                    {errors.thematic_area && (
+                      <p className="text-red-500 text-xs mt-1">{errors.thematic_area.message}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Primary Facility (Autofill, read-only) */}
                 <div className="sm:col-span-2">

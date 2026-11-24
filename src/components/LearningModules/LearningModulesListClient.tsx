@@ -43,12 +43,14 @@ interface LearningModulesListClientProps {
   currentUserId?: string | number;
   currentUserEmail?: string;
   currentUserName?: string;
+  mentorThematicAreaId?: number | string;
 }
 
 export function LearningModulesListClient({
   initialModules = [],
   initialThematicAreas = [],
   userRole,
+  mentorThematicAreaId,
 }: LearningModulesListClientProps) {
   const [thematicAreasList, setThematicAreasList] = useState<string[]>(initialThematicAreas);
   const [modules, setModules] = useState<LearningModule[]>(initialModules);
@@ -61,9 +63,8 @@ export function LearningModulesListClient({
     .toLowerCase()
     .replace(/[-_\s]/g, "");
   const isSuperAdmin = rawRole === "superadmin" || rawRole === "admin";
-  const isFacilityAdmin = rawRole === "facilityadmin";
   const isMentor = rawRole === "mentor";
-  const isMentee = rawRole === "mentee" || (!isSuperAdmin && !isFacilityAdmin && !isMentor);
+  const isMentee = rawRole === "mentee" || (!isSuperAdmin && !isMentor);
 
   // Fetch / refresh modules from live backend API
   const refreshModules = async () => {
@@ -143,7 +144,8 @@ export function LearningModulesListClient({
 
       const matchesArea =
         selectedThematicArea === "ALL" ||
-        m.thematicAreaName === selectedThematicArea;
+        (m.thematicAreaName && m.thematicAreaName.toLowerCase().trim() === selectedThematicArea.toLowerCase().trim()) ||
+        (m.thematicAreaId !== undefined && String(m.thematicAreaId) === selectedThematicArea);
 
       return matchesSearch && matchesArea;
     });
@@ -161,7 +163,6 @@ export function LearningModulesListClient({
             </span>
             <span className="text-xs text-gray-400">
               {isSuperAdmin && "• Master Curriculum Authority"}
-              {isFacilityAdmin && "• Facility Preceptor Coordination"}
               {isMentor && "• Clinical Mentorship & Verification"}
               {isMentee && "• Mentee Learning & Procedural Competencies"}
             </span>
@@ -176,8 +177,6 @@ export function LearningModulesListClient({
               "Explore your standardized clinical modules, download procedural guidelines, and prepare for bedside assessments."}
             {isMentor &&
               "Access preceptor teaching guides, instructional clinical videos, and evaluate junior midwives on standardized competency packages."}
-            {isFacilityAdmin &&
-              "Coordinate facility preceptors, maintain thematic-area assignments, and review curriculum resources."}
             {isSuperAdmin &&
               "Manage national clinical learning modules, publish evidence-based materials, and govern competency standards."}
           </p>
@@ -359,7 +358,6 @@ export function LearningModulesListClient({
                       <span>
                         {isMentee && "Continue Learning & View Materials"}
                         {isMentor && "Review Curriculum & Evaluate"}
-                        {isFacilityAdmin && "Manage Preceptors & Resources"}
                         {isSuperAdmin && "Manage Module & Content"}
                       </span>
                     </span>

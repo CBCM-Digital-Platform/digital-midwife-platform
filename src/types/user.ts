@@ -31,7 +31,8 @@ export interface BaseUser {
   facility: string;
   facilityId?: number;
   facilityType?: string;
-  thematicArea: ThematicArea;
+  thematicArea?: ThematicArea;
+  thematicAreaId?: number | string;
   avatarInitials: string;
   avatarBgColor?: string;
   avatarUrl?: string;
@@ -58,8 +59,8 @@ export interface MenteeUser extends BaseUser {
   profession: string;
   cadreLevel: string;
   assignedMentor: AssignedMentorInfo;
-  knowledgeScore: number;
-  scoreTier: "Tier 1" | "Tier 2" | "Remediation";
+  knowledgeScore?: number;
+  scoreTier?: "Tier 1" | "Tier 2" | "Remediation";
   status: MenteeStatus;
 }
 

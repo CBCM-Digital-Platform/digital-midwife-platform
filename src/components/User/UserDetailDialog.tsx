@@ -331,7 +331,20 @@ export function UserDetailDialog({
 
               <div>
                 <span className="text-gray-400 block text-[11px]">Primary Thematic Area</span>
-                <span className="font-bold text-gray-900">{currentUser.thematicArea || "Maternal & Child"}</span>
+                <span className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                  {currentUser.thematicArea ? (
+                    currentUser.thematicArea
+                  ) : (
+                    <span className="text-gray-400 italic font-normal">
+                      {isMentor ? "Unassigned" : "Assigned via Cycle"}
+                    </span>
+                  )}
+                  {currentUser.thematicAreaId && (
+                    <span className="text-[10px] text-gray-400 font-mono font-medium">
+                      (ID #{currentUser.thematicAreaId})
+                    </span>
+                  )}
+                </span>
               </div>
 
               {isMentor ? (
@@ -345,7 +358,7 @@ export function UserDetailDialog({
                   <div>
                     <span className="text-gray-400 block text-[11px]">Years of Experience</span>
                     <span className="font-bold text-gray-900">
-                      {(currentUser as MentorUser).yearsOfExperience ?? 5} Years
+                      {(currentUser as MentorUser).yearsOfExperience ?? 0} Years
                     </span>
                   </div>
                 </>
@@ -360,7 +373,7 @@ export function UserDetailDialog({
                   <div>
                     <span className="text-gray-400 block text-[11px]">Knowledge Score Tier</span>
                     <span className="font-bold text-gray-900">
-                      {(currentUser as MenteeUser).scoreTier || "Tier 1"}
+                      {(currentUser as MenteeUser).scoreTier || "Pending Evaluation"}
                     </span>
                   </div>
                 </>
@@ -392,15 +405,25 @@ export function UserDetailDialog({
                   <span className="text-xs font-bold text-gray-900">Knowledge Mastery Score</span>
                 </div>
                 <span className="text-xs font-extrabold text-emerald-800">
-                  {(currentUser as MenteeUser).knowledgeScore ?? 84}%
+                  {(currentUser as MenteeUser).knowledgeScore !== undefined &&
+                  (currentUser as MenteeUser).knowledgeScore !== null
+                    ? `${(currentUser as MenteeUser).knowledgeScore}%`
+                    : "Pending Assessment"}
                 </span>
               </div>
-              <div className="w-full bg-emerald-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-[#194611] h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(currentUser as MenteeUser).knowledgeScore ?? 84}%` }}
-                />
-              </div>
+              {(currentUser as MenteeUser).knowledgeScore !== undefined &&
+              (currentUser as MenteeUser).knowledgeScore !== null ? (
+                <div className="w-full bg-emerald-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-[#194611] h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(currentUser as MenteeUser).knowledgeScore}%` }}
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-500 italic">
+                  No theoretical or practical assessments completed yet.
+                </p>
+              )}
             </div>
           )}
         </div>

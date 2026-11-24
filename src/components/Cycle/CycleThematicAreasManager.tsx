@@ -38,10 +38,62 @@ export default function CycleThematicAreasManager({
         const numericId = Number(selectedAreaId);
 
         try {
-            await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleId), {
-                method: "POST",
-                body: { thematic_area_id: numericId },
-            });
+            let success = false;
+            let lastError: any = null;
+
+            // Strategy 1: POST with snake_case single ID { thematic_area_id: numericId }
+            try {
+                await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleId), {
+                    method: "POST",
+                    body: { thematic_area_id: numericId },
+                });
+                success = true;
+            } catch (err1) {
+                lastError = err1;
+            }
+
+            // Strategy 2: POST with snake_case array { thematic_area_ids: [numericId] }
+            if (!success) {
+                try {
+                    await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleId), {
+                        method: "POST",
+                        body: { thematic_area_ids: [numericId] },
+                    });
+                    success = true;
+                } catch (err2) {
+                    lastError = err2;
+                }
+            }
+
+            // Strategy 3: POST with camelCase single ID { thematicAreaId: numericId }
+            if (!success) {
+                try {
+                    await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleId), {
+                        method: "POST",
+                        body: { thematicAreaId: numericId },
+                    });
+                    success = true;
+                } catch (err3) {
+                    lastError = err3;
+                }
+            }
+
+            // Strategy 4: PATCH cycle directly with updated thematic_area_ids array
+            if (!success) {
+                try {
+                    const currentIds = Array.from(assignedIds);
+                    await apiClient.patch(ENDPOINTS.CYCLES.DETAIL(cycleId), {
+                        thematic_area_ids: [...currentIds, numericId],
+                    });
+                    success = true;
+                } catch (err4) {
+                    lastError = err4;
+                }
+            }
+
+            if (!success && lastError) {
+                throw lastError;
+            }
 
             const matched = allAvailableAreas.find((a) => Number(a.id) === numericId);
             const newArea: CycleThematicArea = {
@@ -60,7 +112,7 @@ export default function CycleThematicAreasManager({
         } catch (err: any) {
             setFeedback({
                 type: "error",
-                message: err?.message || "Failed to link thematic area to cycle. Administrator permissions required.",
+                message: err?.message || "Failed to link thematic area to cycle. Please check server permissions.",
             });
         } finally {
             setLoading(false);

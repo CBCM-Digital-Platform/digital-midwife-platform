@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import {
@@ -32,6 +32,13 @@ export async function generateMetadata({ params }: ModuleDetailPageProps) {
 export default async function LearningModuleDetailPage({ params }: ModuleDetailPageProps) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
+  const user = session?.user as any;
+  const rawRole = String(user?.role || "mentee").toLowerCase().replace(/[-_\s]/g, "");
+
+  // Route guard: Facility Admin cannot access Learning Modules
+  if (rawRole.includes("facilityadmin") || user?.role === "facility_admin") {
+    redirect("/dashboard");
+  }
 
   const [module, contents] = await Promise.all([
     getModuleDetails(id),

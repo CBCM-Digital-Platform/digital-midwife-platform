@@ -46,13 +46,14 @@ export const userFormSchema = z.object({
   highest_qualification: z.string().min(1, "Please select highest qualification"),
   years_of_experience: z
     .union([z.string(), z.number()])
-    .refine((val) => val !== "" && val !== undefined && val !== null, {
-      message: "Years of experience is required",
-    })
-    .refine((val) => !isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 60, {
-      message: "Years of experience must be between 0 and 60",
-    }),
-  thematic_area: z.string().min(1, "Please select primary thematic area"),
+    .optional()
+    .refine(
+      (val) => val === undefined || val === "" || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 60),
+      {
+        message: "Years of experience must be between 0 and 60",
+      }
+    ),
+  thematic_area: z.string().optional(),
   primary_facility: z.string().optional(),
 
   // Account Creation

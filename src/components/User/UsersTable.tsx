@@ -46,6 +46,19 @@ const thematicBadgeStyles: Record<string, string> = {
   "Critical Care": "bg-purple-50 text-purple-800 border-purple-200",
 };
 
+function getThematicBadgeStyle(areaName?: string): string {
+  if (!areaName) return "bg-gray-100 text-gray-700 border-gray-200";
+  const direct = thematicBadgeStyles[areaName];
+  if (direct) return direct;
+  const lower = areaName.toLowerCase();
+  for (const [key, val] of Object.entries(thematicBadgeStyles)) {
+    if (key.toLowerCase() === lower || lower.includes(key.toLowerCase())) {
+      return val;
+    }
+  }
+  return "bg-gray-100 text-gray-700 border-gray-200";
+}
+
 export function UsersTable({
   role,
   data,
@@ -265,11 +278,28 @@ export function UsersTable({
       header: "THEMATIC AREA",
       cell: ({ row }) => {
         const area = row.original.thematicArea;
-        const badgeClass = thematicBadgeStyles[area] || "bg-gray-100 text-gray-700 border-gray-200";
+        const areaId = row.original.thematicAreaId;
+        if (!area && !areaId) {
+          return (
+            <span className="text-xs text-gray-400 italic">
+              {role === "mentee" ? "Assigned via Cycle" : "Unassigned"}
+            </span>
+          );
+        }
+        const badgeClass = getThematicBadgeStyle(area);
         return (
-          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
-            {area}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {area && (
+              <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
+                {area}
+              </span>
+            )}
+            {areaId && (
+              <span className="text-[10px] text-gray-400 font-mono font-medium">
+                #{areaId}
+              </span>
+            )}
+          </div>
         );
       },
     };
@@ -281,6 +311,13 @@ export function UsersTable({
       cell: ({ row }) => {
         const mentee = row.original as MenteeUser;
         const score = mentee.knowledgeScore;
+
+        if (score === undefined || score === null) {
+          return (
+            <span className="text-xs text-gray-400 italic">Pending Assessment</span>
+          );
+        }
+
         const isRemediation = mentee.scoreTier === "Remediation" || score < 60;
         const isTier1 = mentee.scoreTier === "Tier 1" || score >= 80;
 
@@ -291,7 +328,7 @@ export function UsersTable({
                 {score}%
               </span>
               <span className={`text-[11px] font-medium ${isRemediation ? "text-red-600 font-semibold" : "text-gray-500"}`}>
-                {mentee.scoreTier}
+                {mentee.scoreTier || (score >= 80 ? "Tier 1" : "Tier 2")}
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
@@ -419,18 +456,25 @@ export function UsersTable({
         }
       }
 
-      // Thematic area filter
-      if (selectedThematicArea !== "all" && item.thematicArea !== selectedThematicArea) {
+      // Thematic area filter (case-insensitive + ID support)
+      if (selectedThematicArea !== "all") {
+        const itemArea = (item.thematicArea || "").toLowerCase().trim();
+        const selectedArea = selectedThematicArea.toLowerCase().trim();
+        const matchesThematic =
+          itemArea === selectedArea ||
+          (item.thematicAreaId !== undefined && String(item.thematicAreaId) === selectedThematicArea);
+        if (!matchesThematic) {
+          return false;
+        }
+      }
+
+      // Facility filter (case-insensitive)
+      if (selectedFacility !== "all" && item.facility?.toLowerCase().trim() !== selectedFacility.toLowerCase().trim()) {
         return false;
       }
 
-      // Facility filter
-      if (selectedFacility !== "all" && item.facility !== selectedFacility) {
-        return false;
-      }
-
-      // Status filter
-      if (selectedStatus !== "all" && item.status !== selectedStatus) {
+      // Status filter (case-insensitive)
+      if (selectedStatus !== "all" && String(item.status).toLowerCase().trim() !== selectedStatus.toLowerCase().trim()) {
         return false;
       }
 
