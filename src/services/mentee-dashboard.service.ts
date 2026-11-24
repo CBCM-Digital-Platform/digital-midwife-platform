@@ -115,12 +115,12 @@ function findResume(chapters: Chapter[]): ResumeTarget | null {
 
 export async function getMenteeDashboard(): Promise<MenteeDashboardData> {
     let assignedMentor: AssignedMentor = {
-        id: 1,
-        name: "Sister Almaz",
-        credentials: "CNM",
-        role: "Lead Midwifery Preceptor",
-        openSlots: 3,
-        active: true,
+        id: 0,
+        name: "Awaiting Assignment",
+        credentials: "N/A",
+        role: "Clinical Preceptor",
+        openSlots: 0,
+        active: false,
     };
 
     try {

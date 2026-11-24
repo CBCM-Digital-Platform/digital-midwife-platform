@@ -204,16 +204,20 @@ export function UsersTable({
           const mentor = user as MentorUser;
           return (
             <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
-              <span className="text-xs text-gray-500 truncate mt-0.5">{mentor.department || "Clinical Unit"}</span>
+              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession || "Mentor"}</span>
+              {mentor.department && (
+                <span className="text-xs text-gray-500 truncate mt-0.5">{mentor.department}</span>
+              )}
             </div>
           );
         } else {
           const mentee = user as MenteeUser;
           return (
             <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
-              <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel || "Clinical Midwifery"}</span>
+              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession || "Mentee"}</span>
+              {mentee.cadreLevel && (
+                <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel}</span>
+              )}
             </div>
           );
         }

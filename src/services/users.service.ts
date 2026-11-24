@@ -68,7 +68,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
   const profession =
     raw.profession ||
     raw.highest_qualification ||
-    (role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife");
+    "";
 
   const thematicAreaId =
     raw.thematic_area_id !== undefined && raw.thematic_area_id !== null
@@ -87,7 +87,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     raw.thematicAreaName ||
     raw.thematic_area_name;
 
-  const thematicArea = rawThematicAreaName || "Maternal & Child";
+  const thematicArea = rawThematicAreaName || undefined;
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -122,7 +122,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       systemId,
       name,
       email: raw.email || "",
-      phone: raw.phone || "+251911234567",
+      phone: raw.phone || "",
       role: "mentor",
       facility,
       facilityId,
@@ -131,7 +131,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
       profession,
-      department: raw.department || "Maternal & Fetal Health Unit",
+      department: raw.department || "",
       yearsOfExperience: Number(raw.yearsOfExperience || raw.years_of_experience) || 0,
       assignedMenteesCount: Number(raw.assignedMenteesCount || raw.assigned_mentees_count) || 0,
       status: status as any,
@@ -153,7 +153,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       systemId,
       name,
       email: raw.email || "",
-      phone: raw.phone || "+251911234567",
+      phone: raw.phone || "",
       role: "mentee",
       facility,
       facilityId,
@@ -162,7 +162,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-blue-100 text-blue-800",
       profession,
-      cadreLevel: raw.cadreLevel || raw.cadre_level || "Junior Midwife Resident",
+      cadreLevel: raw.cadreLevel || raw.cadre_level || raw.highest_qualification || "",
       assignedMentor: raw.assignedMentor || {
         name: raw.mentor_name || undefined,
         status: raw.mentor_id || raw.mentor_name ? "assigned" : "unassigned",

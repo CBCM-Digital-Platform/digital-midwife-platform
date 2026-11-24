@@ -294,7 +294,7 @@ export function UserDetailDialog({
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-700">
                 <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                <span>{currentUser.phone || "+251 91 123 4567"}</span>
+                <span>{currentUser.phone || "Not provided"}</span>
               </div>
             </div>
 
@@ -310,7 +310,7 @@ export function UserDetailDialog({
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                <span>Regional Medical Center</span>
+                <span>Affiliated Health Center</span>
               </div>
             </div>
           </div>
@@ -352,7 +352,7 @@ export function UserDetailDialog({
                   <div>
                     <span className="text-gray-400 block text-[11px]">Clinical Department</span>
                     <span className="font-bold text-gray-900">
-                      {(currentUser as MentorUser).department || "Maternal & Fetal Unit"}
+                      {(currentUser as MentorUser).department || "Not specified"}
                     </span>
                   </div>
                   <div>
@@ -367,7 +367,7 @@ export function UserDetailDialog({
                   <div>
                     <span className="text-gray-400 block text-[11px]">Cadre Level</span>
                     <span className="font-bold text-gray-900">
-                      {(currentUser as MenteeUser).cadreLevel || "Junior Midwife Resident"}
+                      {(currentUser as MenteeUser).cadreLevel || (currentUser as any).highest_qualification || "Mentee"}
                     </span>
                   </div>
                   <div>
