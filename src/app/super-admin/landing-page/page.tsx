@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { LandingPageManagement } from "@/components/SuperAdmin/LandingPageManagement";
+import { NewsManagement } from "@/components/News/NewsManagement";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import newsManagement from "@/lib/news-management";
 
 export const metadata = {
@@ -21,11 +23,21 @@ export default async function LandingPageManagementScreen() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Landing Page</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Update the public landing page content, images, feature cards, roles, and impact statistics.
-          Removed items disappear after you save.
+          Manage the content and news shown on the public landing page.
         </p>
       </header>
-      <LandingPageManagement />
+      <Tabs defaultValue="content" className="space-y-5">
+        <TabsList>
+          <TabsTrigger value="content">Page Content</TabsTrigger>
+          <TabsTrigger value="news">News</TabsTrigger>
+        </TabsList>
+        <TabsContent value="content">
+          <LandingPageManagement />
+        </TabsContent>
+        <TabsContent value="news">
+          <NewsManagement />
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }

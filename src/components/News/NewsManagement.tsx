@@ -57,8 +57,6 @@ export function NewsManagement() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setLoadError(null);
 
     getAdminNews({
       page,
@@ -67,7 +65,10 @@ export function NewsManagement() {
       search: appliedSearch,
     })
       .then((result) => {
-        if (active) setNews(result);
+        if (active) {
+          setNews(result);
+          setLoadError(null);
+        }
       })
       .catch((error: unknown) => {
         if (active) setLoadError(errorText(error));
@@ -83,9 +84,12 @@ export function NewsManagement() {
 
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setLoading(true);
+    setLoadError(null);
     setPage(1);
     setAppliedStatus(filterStatus);
     setAppliedSearch(searchInput.trim());
+    setReloadKey((current) => current + 1);
   };
 
   const openCreateForm = () => {
@@ -108,6 +112,8 @@ export function NewsManagement() {
     }
     setIsEditorOpen(false);
     setEditorArticle(null);
+    setLoading(true);
+    setLoadError(null);
     setReloadKey((current) => current + 1);
   };
 
@@ -129,6 +135,8 @@ export function NewsManagement() {
             ? "Article published or scheduled."
             : "Article archived.";
       setNotice({ type: "success", message });
+      setLoading(true);
+      setLoadError(null);
       setReloadKey((current) => current + 1);
     } catch (error) {
       setActionError(errorText(error));
@@ -146,6 +154,8 @@ export function NewsManagement() {
     try {
       await deleteNews(article.id);
       setNotice({ type: "success", message: "News article deleted." });
+      setLoading(true);
+      setLoadError(null);
       setReloadKey((current) => current + 1);
     } catch (error) {
       setActionError(errorText(error));
@@ -167,7 +177,7 @@ export function NewsManagement() {
         </div>
         <Button type="button" onClick={openCreateForm}>
           <Plus aria-hidden="true" />
-          Create article
+          Add News
         </Button>
       </header>
 
@@ -233,7 +243,15 @@ export function NewsManagement() {
         ) : loadError ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
             <p className="text-sm text-red-700" role="alert">{loadError}</p>
-            <Button type="button" variant="outline" onClick={() => setReloadKey((current) => current + 1)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setLoading(true);
+                setLoadError(null);
+                setReloadKey((current) => current + 1);
+              }}
+            >
               Try again
             </Button>
           </div>

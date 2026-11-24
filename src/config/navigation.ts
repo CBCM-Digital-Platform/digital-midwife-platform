@@ -7,7 +7,6 @@ export const superAdminNavLinks: NavItem[] = [
   { name: "Facility Admins", href: "/facility-admins", icon: "users" },
   { name: "Thematic Areas", href: "/thematic-areas", icon: "thematic" },
   { name: "Reports", href: "/reports", icon: "reports" },
-  { name: "News", href: "/news", icon: "news" },
   { name: "Landing Page", href: "/super-admin/landing-page", icon: "landing-page" },
   { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },

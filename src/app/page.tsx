@@ -31,6 +31,7 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DEFAULT_LANDING_PAGE_CONTENT } from "@/config/landing-page-defaults";
 import { cn } from "@/lib/utils";
 import { getPublicNews, type PublicNewsArticle } from "@/services/news.service";
 import { getPublicLandingPageContent } from "@/services/landing-page.service";
@@ -112,10 +113,9 @@ const springTransition: Transition = {
 
 export default function LandingPage() {
   const [activeRole, setActiveRole] = useState<string>("mentor");
-  const [landingPageContent, setLandingPageContent] = useState<LandingPageContent | null>(null);
-  const [landingPageLoading, setLandingPageLoading] = useState(true);
-  const [landingPageError, setLandingPageError] = useState<string | null>(null);
-  const [landingPageRetry, setLandingPageRetry] = useState(0);
+  const [landingPageContent, setLandingPageContent] = useState<LandingPageContent>(
+    DEFAULT_LANDING_PAGE_CONTENT
+  );
   const [news, setNews] = useState<PublicNewsArticle[]>([]);
   const [newsLoading, setNewsLoading] = useState(true);
   const [newsError, setNewsError] = useState<string | null>(null);
@@ -130,17 +130,14 @@ export default function LandingPage() {
       })
       .catch((error: unknown) => {
         if (active) {
-          setLandingPageError(error instanceof Error ? error.message : "Unable to load landing page content.");
+          console.error("Unable to load managed landing page content; showing the default content.", error);
         }
-      })
-      .finally(() => {
-        if (active) setLandingPageLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [landingPageRetry]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -162,35 +159,6 @@ export default function LandingPage() {
       active = false;
     };
   }, [newsRetry]);
-
-  if (landingPageLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FDFDFE] text-sm text-slate-600" role="status">
-        Loading CBCM...
-      </div>
-    );
-  }
-
-  if (!landingPageContent) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#FDFDFE] px-4 text-center">
-        <p className="text-sm text-red-800" role="alert">
-          {landingPageError || "Landing page content is unavailable."}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setLandingPageLoading(true);
-            setLandingPageError(null);
-            setLandingPageRetry((current) => current + 1);
-          }}
-          className="rounded-lg bg-[#194611] px-4 py-2 text-sm font-semibold text-white hover:bg-[#13380d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#194611]"
-        >
-          Try again
-        </button>
-      </div>
-    );
-  }
 
   const content = landingPageContent;
   const activeRoleContent = content.roles.cards.find((role) => role.id === activeRole)
