@@ -48,6 +48,13 @@ export const ENDPOINTS = {
     READ: (id: string | number) => `/api/v1/messages/conversations/${id}/read`,
     CONTACTS: "/api/v1/messages/contacts",
   },
+  NOTIFICATIONS: {
+    BASE: "/api/v1/notifications",
+    UNREAD_COUNT: "/api/v1/notifications/unread-count",
+    READ_ALL: "/api/v1/notifications/read-all",
+    READ: (id: string | number) => `/api/v1/notifications/${id}/read`,
+    DETAIL: (id: string | number) => `/api/v1/notifications/${id}`,
+  },
   RESOURCES: {
     BASE: "/api/v1/resources",
     DETAIL: (id: string | number) => `/api/v1/resources/${id}`,

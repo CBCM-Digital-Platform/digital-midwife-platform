@@ -8,18 +8,18 @@ import type {
 import { FACILITY_ID_MAP } from "@/services/users.service";
 
 const MOCK_PROFILE: AdminProfile = {
-    id: "u1",
-    fullName: "Facility Administrator",
-    position: "Mentoring Facility Administrator",
-    email: "admin@facility.org",
-    phone: "+251 911 234 567",
+    id: "",
+    fullName: "Administrator",
+    position: "Facility Administrator",
+    email: "",
+    phone: "",
     facilityName: "Assigned Facility",
-    region: "Addis Ababa",
-    zone: "Central",
-    woreda: "01",
-    username: "facility_admin",
+    region: "",
+    zone: "",
+    woreda: "",
+    username: "admin",
     status: "ACTIVE",
-    memberSince: "2024-01-01",
+    memberSince: "",
     avatarUrl: null,
 };
 

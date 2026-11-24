@@ -205,35 +205,38 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
   const query = new URLSearchParams({ role: "mentor", page: "1", limit: "100" });
 
   try {
-    const [res, assignmentsRes] = await Promise.all([
+    const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
+    const [res, assignmentsList] = await Promise.all([
       apiClient<any>(`/api/v1/users?${query.toString()}`),
-      apiClient<any>("/api/v1/assignments?limit=100").catch(() => null),
+      getAssignments(activeFacilityId).catch(() => []),
     ]);
+
+    const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+    const allAssignments = [...assignmentsList, ...storedAssignments];
 
     // Count real assigned mentees per mentor from live assignments
     const mentorMenteesCountMap = new Map<string, number>();
-    const rawAssignments = Array.isArray(assignmentsRes?.data?.items)
-      ? assignmentsRes.data.items
-      : Array.isArray(assignmentsRes?.data)
-      ? assignmentsRes.data
-      : Array.isArray(assignmentsRes?.items)
-      ? assignmentsRes.items
-      : Array.isArray(assignmentsRes)
-      ? assignmentsRes
-      : [];
 
-    for (const a of rawAssignments) {
-      const mentorId = String(a.mentor_id ?? a.mentorId ?? a.mentor?.id ?? "").trim();
+    for (const a of allAssignments) {
+      const mentorId = String(a.mentor?.id ?? "").trim();
+      const mentorName = String(a.mentor?.name ?? "").trim().toLowerCase();
+      const count = Array.isArray(a.mentees) && a.mentees.length > 0 ? a.mentees.length : (a.mentee?.id ? 1 : 0);
+
       if (mentorId) {
-        mentorMenteesCountMap.set(mentorId, (mentorMenteesCountMap.get(mentorId) || 0) + 1);
+        mentorMenteesCountMap.set(mentorId, (mentorMenteesCountMap.get(mentorId) || 0) + count);
+      }
+      if (mentorName) {
+        mentorMenteesCountMap.set(mentorName, (mentorMenteesCountMap.get(mentorName) || 0) + count);
       }
     }
 
     const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
     let list = (rawList || []).map((u: any) => {
       const mentor = normalizeUser(u, "mentor") as MentorUser;
-      const count = mentorMenteesCountMap.get(String(mentor.id));
-      if (count !== undefined && count > 0) {
+      const countById = mentorMenteesCountMap.get(String(mentor.id).trim());
+      const countByName = mentorMenteesCountMap.get(String(mentor.name).trim().toLowerCase());
+      const count = countById !== undefined ? countById : countByName;
+      if (count !== undefined) {
         mentor.assignedMenteesCount = count;
       }
       return mentor;
@@ -272,103 +275,57 @@ export async function getMentees(facilityId?: number | string): Promise<MenteeUs
   const query = new URLSearchParams({ role: "mentee", page: "1", limit: "100" });
 
   try {
-    const [res, assignmentsRes] = await Promise.all([
+    const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
+    const [res, assignmentsList] = await Promise.all([
       apiClient<any>(`/api/v1/users?${query.toString()}`),
-      apiClient<any>("/api/v1/assignments?limit=100").catch(() => null),
+      getAssignments(activeFacilityId).catch(() => []),
     ]);
 
-    // Build assignment lookup map: menteeId -> AssignedMentorInfo
+    const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+    const allAssignments = [...assignmentsList, ...storedAssignments];
+
+    // Build assignment lookup map: menteeId / menteeName -> AssignedMentorInfo
     const assignmentMap = new Map<string, { name: string; title: string; avatarInitials: string; status: "assigned" }>();
 
-    const rawAssignments = Array.isArray(assignmentsRes?.data?.items)
-      ? assignmentsRes.data.items
-      : Array.isArray(assignmentsRes?.data)
-      ? assignmentsRes.data
-      : Array.isArray(assignmentsRes?.items)
-      ? assignmentsRes.items
-      : Array.isArray(assignmentsRes)
-      ? assignmentsRes
-      : [];
+    for (const a of allAssignments) {
+      const mentorName = a.mentor?.name;
+      const mentorTitle = a.mentor?.subtitle || "Clinical Mentor";
+      const mentorInitials = a.mentor?.initials || "CM";
 
-    for (const a of rawAssignments) {
-      const menteeId = String(a.mentee_id ?? a.menteeId ?? a.mentee?.id ?? "").trim();
-      const mentorObj = a.mentor || {};
-      const mentorName =
-        mentorObj.full_name ||
-        mentorObj.name ||
-        a.mentor_name ||
-        a.mentorName ||
-        "";
-
-      if (menteeId && mentorName) {
-        assignmentMap.set(menteeId, {
+      if (mentorName) {
+        const info = {
           name: mentorName,
-          title: mentorObj.highest_qualification || mentorObj.profession || mentorObj.subtitle || "Clinical Mentor",
-          avatarInitials:
-            mentorName
-              .split(" ")
-              .filter(Boolean)
-              .map((p: string) => p[0])
-              .slice(0, 2)
-              .join("")
-              .toUpperCase() || "CM",
-          status: "assigned",
-        });
-      }
+          title: mentorTitle,
+          avatarInitials: mentorInitials,
+          status: "assigned" as const,
+        };
 
-      // Check if multiple mentees are grouped in this assignment
-      if (Array.isArray(a.mentees)) {
-        for (const m of a.mentees) {
-          const mId = String(m.id ?? m._id ?? "").trim();
-          if (mId && mentorName) {
-            assignmentMap.set(mId, {
-              name: mentorName,
-              title: mentorObj.highest_qualification || mentorObj.profession || mentorObj.subtitle || "Clinical Mentor",
-              avatarInitials:
-                mentorName
-                  .split(" ")
-                  .filter(Boolean)
-                  .map((p: string) => p[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase() || "CM",
-              status: "assigned",
-            });
-          }
+        if (a.mentee?.id) {
+          assignmentMap.set(String(a.mentee.id).trim(), info);
         }
-      }
-    }
+        if (a.mentee?.name) {
+          assignmentMap.set(String(a.mentee.name).trim().toLowerCase(), info);
+        }
 
-    // Also check newly created assignments stored in browser localStorage
-    if (typeof window !== "undefined") {
-      try {
-        const rawLocal = localStorage.getItem("cbcm_created_assignments");
-        if (rawLocal) {
-          const localList = JSON.parse(rawLocal);
-          if (Array.isArray(localList)) {
-            for (const a of localList) {
-              const menteeId = String(a.mentee?.id ?? a.mentee_id ?? "").trim();
-              const mentorName = a.mentor?.name || a.mentor?.full_name;
-              if (menteeId && mentorName) {
-                assignmentMap.set(menteeId, {
-                  name: mentorName,
-                  title: a.mentor?.subtitle || "Clinical Mentor",
-                  avatarInitials: a.mentor?.initials || "CM",
-                  status: "assigned",
-                });
-              }
+        if (Array.isArray(a.mentees)) {
+          for (const m of a.mentees) {
+            if (m?.id) {
+              assignmentMap.set(String(m.id).trim(), info);
+            }
+            if (m?.name) {
+              assignmentMap.set(String(m.name).trim().toLowerCase(), info);
             }
           }
         }
-      } catch {
-        // Ignore local storage errors
       }
     }
 
     const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
     let list = (rawList || []).map((u: any) => {
       const mentee = normalizeUser(u, "mentee") as MenteeUser;
-      const assigned = assignmentMap.get(String(mentee.id));
+      const assignedById = assignmentMap.get(String(mentee.id).trim());
+      const assignedByName = assignmentMap.get(String(mentee.name).trim().toLowerCase());
+      const assigned = assignedById || assignedByName;
       if (assigned) {
         mentee.assignedMentor = assigned;
       }
@@ -394,9 +351,32 @@ export async function getMentorStats(facilityId?: number | string): Promise<Ment
   }
   try {
     const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
-    return (res?.data || res?.stats || res) as MentorSummaryStats;
+    if (res?.data || res?.stats) {
+      return (res?.data || res?.stats) as MentorSummaryStats;
+    }
   } catch (error: any) {
-    console.warn("Failed to fetch mentor stats:", error?.message || error);
+    console.warn("Could not fetch mentor stats from /api/v1/users/stats, deriving from mentors list:", error?.message || error);
+  }
+
+  // Derive real statistics from mentors list
+  try {
+    const mentors = await getMentors(facilityId);
+    const totalMentors = mentors.length;
+    const activeCount = mentors.filter((m) => m.status === "active").length;
+    const pendingCount = mentors.filter((m) => m.status === "pending").length;
+    const inactiveCount = mentors.filter((m) => m.status === "inactive" || m.status === "suspended").length;
+
+    return {
+      totalMentors,
+      activeCount,
+      pendingCount,
+      inactiveCount,
+      quarterTrend: "+0%",
+      completionPercentage: totalMentors > 0 ? Math.round((activeCount / totalMentors) * 100) : 0,
+      completionTrend: "+0%",
+      completionTarget: totalMentors,
+    };
+  } catch {
     return {
       totalMentors: 0,
       activeCount: 0,
@@ -417,9 +397,32 @@ export async function getMenteeStats(facilityId?: number | string): Promise<Ment
   }
   try {
     const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
-    return (res?.data || res?.stats || res) as MenteeSummaryStats;
+    if (res?.data || res?.stats) {
+      return (res?.data || res?.stats) as MenteeSummaryStats;
+    }
   } catch (error: any) {
-    console.warn("Failed to fetch mentee stats:", error?.message || error);
+    console.warn("Could not fetch mentee stats from /api/v1/users/stats, deriving from mentees list:", error?.message || error);
+  }
+
+  // Derive real statistics from mentees list
+  try {
+    const mentees = await getMentees(facilityId);
+    const totalMentees = mentees.length;
+    const activeInRotation = mentees.filter((m) => m.status === "active").length;
+    const pendingOrientation = mentees.filter((m) => m.status === "pending").length;
+    const operationalPercentage = totalMentees > 0 ? `${Math.round((activeInRotation / totalMentees) * 100)}%` : "0%";
+
+    return {
+      totalMentees,
+      termTrend: "+0%",
+      activeInRotation,
+      operationalPercentage,
+      pendingOrientation,
+      pendingStage: pendingOrientation > 0 ? "Orientation Pending" : "None",
+      avgKnowledgeMastery: 0,
+      cohortTrend: "+0%",
+    };
+  } catch {
     return {
       totalMentees: 0,
       termTrend: "+0%",
@@ -441,50 +444,55 @@ export async function createUser(data: Partial<ClinicalUser>): Promise<ClinicalU
  * Fetches a single user by ID and normalizes into a strongly typed ClinicalUser model.
  */
 export async function getUserById(id: string): Promise<ClinicalUser> {
-  const [res, assignmentsRes] = await Promise.all([
+  const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
+  const [res, assignmentsList] = await Promise.all([
     apiClient.get<any>(`/api/v1/users/${id}`),
-    apiClient.get<any>("/api/v1/assignments?limit=100").catch(() => null),
+    getAssignments().catch(() => []),
   ]);
   const raw = res?.data?.user || res?.data || res?.user || res;
   const user = normalizeUser(raw, raw?.role || "mentee");
 
+  const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+  const allAssignments = [...assignmentsList, ...storedAssignments];
+
   if (user.role === "mentee") {
-    const rawAssignments = Array.isArray(assignmentsRes?.data?.items)
-      ? assignmentsRes.data.items
-      : Array.isArray(assignmentsRes?.data)
-      ? assignmentsRes.data
-      : Array.isArray(assignmentsRes?.items)
-      ? assignmentsRes.items
-      : Array.isArray(assignmentsRes)
-      ? assignmentsRes
-      : [];
-    const matched = rawAssignments.find(
-      (a: any) =>
-        String(a.mentee_id ?? a.menteeId ?? a.mentee?.id ?? "").trim() === String(id).trim()
-    );
-    if (matched) {
-      const mentorObj = matched.mentor || {};
-      const mentorName =
-        mentorObj.full_name ||
-        mentorObj.name ||
-        matched.mentor_name ||
-        matched.mentorName;
-      if (mentorName) {
-        (user as MenteeUser).assignedMentor = {
-          name: mentorName,
-          title: mentorObj.highest_qualification || mentorObj.profession || mentorObj.subtitle || "Clinical Mentor",
-          avatarInitials:
-            mentorName
-              .split(" ")
-              .filter(Boolean)
-              .map((p: string) => p[0])
-              .slice(0, 2)
-              .join("")
-              .toUpperCase() || "CM",
-          status: "assigned",
-        };
+    const matched = allAssignments.find((a) => {
+      const mId = String(a.mentee?.id ?? "").trim();
+      const mName = String(a.mentee?.name ?? "").trim().toLowerCase();
+      const targetId = String(id).trim();
+      const targetName = String(user.name).trim().toLowerCase();
+      if (mId === targetId || (mName && mName === targetName)) return true;
+      if (Array.isArray(a.mentees)) {
+        return a.mentees.some(
+          (m) =>
+            String(m?.id ?? "").trim() === targetId ||
+            (m?.name && String(m.name).trim().toLowerCase() === targetName)
+        );
+      }
+      return false;
+    });
+
+    if (matched && matched.mentor?.name) {
+      (user as MenteeUser).assignedMentor = {
+        name: matched.mentor.name,
+        title: matched.mentor.subtitle || "Clinical Mentor",
+        avatarInitials: matched.mentor.initials || "CM",
+        status: "assigned",
+      };
+    }
+  } else if (user.role === "mentor") {
+    let count = 0;
+    const mentorId = String(id).trim();
+    const mentorName = String(user.name).trim().toLowerCase();
+    for (const a of allAssignments) {
+      if (
+        String(a.mentor?.id ?? "").trim() === mentorId ||
+        (a.mentor?.name && String(a.mentor.name).trim().toLowerCase() === mentorName)
+      ) {
+        count += Array.isArray(a.mentees) && a.mentees.length > 0 ? a.mentees.length : (a.mentee?.id ? 1 : 0);
       }
     }
+    (user as MentorUser).assignedMenteesCount = count;
   }
 
   return user;

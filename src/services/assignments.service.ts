@@ -300,10 +300,14 @@ export async function getAssignmentStats(facilityId?: number | string): Promise<
     }
 
     try {
-        const [mentorsRes, menteesRes] = await Promise.all([
+        const [mentorsRes, menteesRes, assignmentsList] = await Promise.all([
             apiClient<any>("/api/v1/users?role=mentor").catch(() => null),
             apiClient<any>("/api/v1/users?role=mentee").catch(() => null),
+            getAssignments(activeFacilityId).catch(() => []),
         ]);
+
+        const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+        const allAssignments = [...assignmentsList, ...storedAssignments];
 
         const rawMentors = Array.isArray(mentorsRes?.data) ? mentorsRes.data : Array.isArray(mentorsRes) ? mentorsRes : [];
         const rawMentees = Array.isArray(menteesRes?.data) ? menteesRes.data : Array.isArray(menteesRes) ? menteesRes : [];
@@ -317,42 +321,91 @@ export async function getAssignmentStats(facilityId?: number | string): Promise<
             ? rawMentees.filter((m: any) => String(m.facility_id ?? m.facilityId ?? m.facility?.id ?? "") === String(activeFacilityId))
             : rawMentees;
 
-        const activeMentors = mentors.filter((m: any) => m.status === "active");
-        const activeMentees = mentees.filter((m: any) => m.status === "active");
+        // Map assigned mentee IDs and mentor loads from live assignments
+        const assignedMenteeIds = new Set<string>();
+        const mentorLoadMap = new Map<string, number>();
 
-        const leads: MentorLead[] = mentors.slice(0, 3).map((m: any, idx: number) => ({
-            id: String(m.id),
-            name: m.full_name || m.name || m.email,
-            initials: getInitials(m.full_name || m.name),
-            specialty: m.highest_qualification || "Obstetrics & Gynecology",
-            load: `${idx + 1}/3`,
+        for (const a of allAssignments) {
+            const mentorId = String(a.mentor?.id ?? "").trim();
+            const menteeId = String(a.mentee?.id ?? "").trim();
+            if (menteeId) {
+                assignedMenteeIds.add(menteeId);
+            }
+            let count = menteeId ? 1 : 0;
+            if (Array.isArray(a.mentees)) {
+                for (const m of a.mentees) {
+                    if (m?.id) {
+                        assignedMenteeIds.add(String(m.id).trim());
+                    }
+                }
+                count = Math.max(count, a.mentees.length);
+            }
+            if (mentorId) {
+                mentorLoadMap.set(mentorId, (mentorLoadMap.get(mentorId) || 0) + count);
+            }
+        }
+
+        const unassignedMenteesList = mentees.filter((m: any) => !assignedMenteeIds.has(String(m.id).trim()));
+
+        const leads: MentorLead[] = mentors.slice(0, 3).map((m: any) => {
+            const load = mentorLoadMap.get(String(m.id).trim()) || 0;
+            return {
+                id: String(m.id),
+                name: m.full_name || m.name || m.email,
+                initials: getInitials(m.full_name || m.name),
+                specialty: m.highest_qualification || m.profession || "Obstetrics & Gynecology",
+                load: `${load}/3`,
+            };
+        });
+
+        // Group unassigned mentees by real profession / qualification
+        const specialtyCounts = new Map<string, number>();
+        for (const m of unassignedMenteesList) {
+            const label = m.highest_qualification || m.profession || "General Midwifery";
+            specialtyCounts.set(label, (specialtyCounts.get(label) || 0) + 1);
+        }
+        const specialties = Array.from(specialtyCounts.entries()).map(([label, count]) => ({
+            label,
+            count,
         }));
 
-        const specialties = [
-            { label: "Maternal Health", count: Math.ceil(mentees.length / 2) || 2 },
-            { label: "Emergency Care", count: Math.floor(mentees.length / 3) || 1 },
-            { label: "Community Health", count: 1 },
-        ];
+        let readyToIntake = 0;
+        let vacant = 0;
+        let balanced = 0;
+        let atLimit = 0;
 
-        const nextMentee = mentees.find((m: any) => m.status !== "active") || mentees[0];
+        for (const m of mentors) {
+            const load = mentorLoadMap.get(String(m.id).trim()) || 0;
+            if (load === 0) {
+                vacant += 1;
+                readyToIntake += 1;
+            } else if (load < 3) {
+                balanced += 1;
+                readyToIntake += 1;
+            } else {
+                atLimit += 1;
+            }
+        }
+
+        const nextMentee = unassignedMenteesList[0];
 
         return {
             availableMentors: {
-                readyToIntake: Math.max(activeMentors.length * 2, 2),
-                vacant: Math.max(mentors.length - activeMentors.length, 1),
-                balanced: activeMentors.length,
-                atLimit: 0,
+                readyToIntake,
+                vacant,
+                balanced,
+                atLimit,
                 leads,
             },
             unassignedMentees: {
-                total: mentees.length,
-                urgent: Math.min(2, mentees.length),
-                waitingOver14Days: Math.min(1, mentees.length),
+                total: unassignedMenteesList.length,
+                urgent: unassignedMenteesList.filter((m: any) => m.status === "pending").length,
+                waitingOver14Days: 0,
                 bySpecialty: specialties,
                 nextInQueue: nextMentee
                     ? {
                           name: nextMentee.full_name || nextMentee.name || nextMentee.email,
-                          specialty: nextMentee.highest_qualification || "Midwifery Practice",
+                          specialty: nextMentee.highest_qualification || nextMentee.profession || "Midwifery Practice",
                       }
                     : null,
             },

@@ -29,7 +29,10 @@ export function saveStarredResourceId(id: string, starred: boolean): void {
     }
 }
 
-const MOCK_RESOURCES: Resource[] = [
+const MOCK_RESOURCES: Resource[] = [];
+
+/*
+const OLD_MOCK_RESOURCES: Resource[] = [
     {
         id: "r1",
         title: "Postpartum Hemorrhage Protocols",
@@ -167,6 +170,7 @@ const MOCK_RESOURCES: Resource[] = [
         url: "#",
     },
 ];
+*/
 
 function deriveKindAndCategory(
     type?: string,
