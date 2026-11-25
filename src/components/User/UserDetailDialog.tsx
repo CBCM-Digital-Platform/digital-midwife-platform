@@ -66,24 +66,11 @@ export function UserDetailDialog({
     getUserById(String(user.id), user.facilityId)
       .then((freshUser) => {
         if (isMounted && freshUser && freshUser.id) {
-          if (
-            (freshUser as MentorUser).assignedMenteesCount === undefined &&
-            (user as MentorUser)?.assignedMenteesCount !== undefined
-          ) {
+          if ((user as MentorUser)?.assignedMenteesCount !== undefined) {
             (freshUser as MentorUser).assignedMenteesCount = (user as MentorUser).assignedMenteesCount;
           }
           if (!freshUser.phone && user.phone) {
             freshUser.phone = user.phone;
-          }
-          if (!(freshUser as MentorUser).department && (user as MentorUser)?.department) {
-            (freshUser as MentorUser).department = (user as MentorUser).department;
-          }
-          if (
-            (!freshUser.profession || freshUser.profession === "Midwifery Preceptor") &&
-            user.profession &&
-            user.profession !== "Midwifery Preceptor"
-          ) {
-            freshUser.profession = user.profession;
           }
           if (!freshUser.highestQualification && user.highestQualification) {
             freshUser.highestQualification = user.highestQualification;
@@ -340,16 +327,14 @@ export function UserDetailDialog({
           {/* Clinical & Academic Details */}
           <div className="p-4 rounded-xl border border-gray-100 bg-white shadow-xs space-y-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">
-              Professional & Cadre Details
+              Qualifications & Clinical Details
             </span>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <span className="text-gray-400 block text-[11px]">Profession / Qualification</span>
+                <span className="text-gray-400 block text-[11px]">Highest Qualification</span>
                 <span className="font-bold text-gray-900">
-                  {currentUser.profession && currentUser.highestQualification && currentUser.profession !== currentUser.highestQualification
-                    ? `${currentUser.profession} (${currentUser.highestQualification})`
-                    : currentUser.highestQualification || currentUser.profession || (currentUser as any).highest_qualification || "Clinical Midwife"}
+                  {currentUser.highestQualification || (currentUser as any).highest_qualification || "Not specified"}
                 </span>
               </div>
 
@@ -375,33 +360,6 @@ export function UserDetailDialog({
                     {(currentUser as MenteeUser).assignedMentor?.name || "Unassigned"}
                   </span>
                 </div>
-              )}
-
-              {isMentor ? (
-                <div>
-                  <span className="text-gray-400 block text-[11px]">Clinical Department</span>
-                  <span className="font-bold text-gray-900">
-                    {(currentUser as MentorUser).department ||
-                      (currentUser.thematicArea
-                        ? `${resolveThematicAreaName(currentUser.thematicArea) || currentUser.thematicArea} Unit`
-                        : "Maternal & Child Health Department")}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Cadre Level</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MenteeUser).cadreLevel || (currentUser as any).highest_qualification || "Mentee"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Knowledge Score Tier</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MenteeUser).scoreTier || "Pending Evaluation"}
-                    </span>
-                  </div>
-                </>
               )}
             </div>
           </div>

@@ -17,7 +17,6 @@ import {
 import {
   userFormSchema,
   UserFormData,
-  genderOptions,
   highestQualificationsList,
   thematicAreasList,
 } from "@/schemas/user-schema";
@@ -155,13 +154,6 @@ function createNewUserFromForm(
       formData.thematic_area ||
       "General Practice";
 
-    const resolvedDepartment =
-      resolvedName && resolvedName !== "General Practice"
-        ? (resolvedName.toLowerCase().endsWith("unit") || resolvedName.toLowerCase().endsWith("department")
-            ? resolvedName
-            : `${resolvedName} Unit`)
-        : "Maternal & Child Health Department";
-
     const newMentor: MentorUser = {
       id: `mentor-${timestamp}`,
       systemId,
@@ -171,9 +163,7 @@ function createNewUserFromForm(
       role: "mentor",
       avatarInitials: initials,
       avatarBgColor: "bg-emerald-100 text-emerald-800",
-      profession: formData.profession || formData.highest_qualification || "Clinical Midwife Preceptor",
       highestQualification: formData.highest_qualification,
-      department: resolvedDepartment,
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
       thematicArea: resolvedName,
@@ -192,9 +182,7 @@ function createNewUserFromForm(
       role: "mentee",
       avatarInitials: initials,
       avatarBgColor: "bg-blue-100 text-blue-800",
-      profession: formData.profession || formData.highest_qualification || "Resident Midwife",
       highestQualification: formData.highest_qualification,
-      cadreLevel: formData.highest_qualification,
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
       thematicArea: undefined,
@@ -240,10 +228,8 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
     defaultValues: {
       first_name: "",
       last_name: "",
-      gender: "" as any,
       phone: "",
       email: "",
-      profession: "",
       highest_qualification: "",
       thematic_area: "",
       primary_facility: defaultFacilityName,
@@ -388,7 +374,7 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
         role: role,
-        highest_qualification: formData.highest_qualification || formData.profession.trim(),
+        highest_qualification: formData.highest_qualification,
         password: formData.password,
         must_change_password: Boolean(formData.force_password_change),
         training_status: "in_training",
@@ -523,30 +509,6 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
                   )}
                 </div>
 
-                {/* Gender */}
-                <div>
-                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Gender <span className="text-red-500">*</span>
-                  </Label>
-                  <select
-                    {...register("gender")}
-                    defaultValue=""
-                    className="w-full h-8 px-2.5 py-1 border border-input rounded-lg text-sm bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 cursor-pointer text-gray-700"
-                  >
-                    <option value="" disabled>
-                      Select gender
-                    </option>
-                    {genderOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.gender && (
-                    <p className="text-red-500 text-xs mt-1">{errors.gender.message}</p>
-                  )}
-                </div>
-
                 {/* Phone */}
                 <div>
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -563,7 +525,7 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
                 </div>
 
                 {/* Email */}
-                <div className="sm:col-span-2">
+                <div>
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
                     Email Address <span className="text-red-500">*</span>
                   </Label>
@@ -585,22 +547,8 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
                 Professional Information
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Profession */}
-                <div>
-                  <Label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Profession <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    {...register("profession")}
-                    placeholder={role === "mentor" ? "e.g. Lead Midwifery Preceptor" : "e.g. Resident Midwife"}
-                  />
-                  {errors.profession && (
-                    <p className="text-red-500 text-xs mt-1">{errors.profession.message}</p>
-                  )}
-                </div>
-
                 {/* Highest Qualification */}
-                <div>
+                <div className={role === "mentor" ? "" : "sm:col-span-2"}>
                   <Label className="block text-xs font-semibold text-gray-700 mb-1">
                     Highest Qualification <span className="text-red-500">*</span>
                   </Label>

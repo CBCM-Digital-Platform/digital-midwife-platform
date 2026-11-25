@@ -142,7 +142,7 @@ function normalizeSession(raw: any): MenteeSessionItem {
     id,
     title,
     mentorName,
-    mentorRole: mentor?.profession || "Certified Midwife Preceptor",
+    mentorRole: mentor?.highest_qualification || mentor?.highestQualification || "Clinical Preceptor",
     mode: mode === "in_person" ? "in_person" : mode === "hybrid" ? "hybrid" : "virtual",
     scheduledAt,
     durationMinutes,

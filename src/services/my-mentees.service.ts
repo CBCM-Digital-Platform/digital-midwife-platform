@@ -262,9 +262,9 @@ export async function getMyMentees(mentorIdOverride?: string | number): Promise<
             const active = userObj.status ? String(userObj.status).toLowerCase() !== "inactive" : true;
             const title = String(
                 userObj.highest_qualification ||
+                userObj.highestQualification ||
                 userObj.specialty ||
                 userObj.subtitle ||
-                userObj.profession ||
                 userObj.training_status ||
                 "Resident Midwife"
             );

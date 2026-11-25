@@ -361,15 +361,15 @@ export async function getAssignmentStats(facilityId?: number | string): Promise<
                 id: String(m.id),
                 name: m.full_name || m.name || m.email,
                 initials: getInitials(m.full_name || m.name),
-                specialty: m.highest_qualification || m.profession || "Obstetrics & Gynecology",
+                specialty: m.highest_qualification || m.highestQualification || m.thematic_area || "Clinical Midwifery",
                 load: `${load}/3`,
             };
         });
 
-        // Group unassigned mentees by real profession / qualification
+        // Group unassigned mentees by real qualification
         const specialtyCounts = new Map<string, number>();
         for (const m of unassignedMenteesList) {
-            const label = m.highest_qualification || m.profession || "General Midwifery";
+            const label = m.highest_qualification || m.highestQualification || "General Midwifery";
             specialtyCounts.set(label, (specialtyCounts.get(label) || 0) + 1);
         }
         const specialties = Array.from(specialtyCounts.entries()).map(([label, count]) => ({
@@ -413,7 +413,7 @@ export async function getAssignmentStats(facilityId?: number | string): Promise<
                 nextInQueue: nextMentee
                     ? {
                           name: nextMentee.full_name || nextMentee.name || nextMentee.email,
-                          specialty: nextMentee.highest_qualification || nextMentee.profession || "Midwifery Practice",
+                          specialty: nextMentee.highest_qualification || nextMentee.highestQualification || "Midwifery Practice",
                       }
                     : null,
             },

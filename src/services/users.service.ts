@@ -76,21 +76,6 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     raw.degree ||
     undefined;
 
-  const rawProfession =
-    raw.profession ||
-    raw.job_title ||
-    raw.title ||
-    raw.role_title ||
-    raw.cadre_level ||
-    raw.cadreLevel ||
-    raw.cadre ||
-    undefined;
-
-  const profession =
-    rawProfession ||
-    highestQualification ||
-    (role === "mentor" ? "Midwifery Preceptor" : "Resident Midwife");
-
   const phone =
     raw.phone ||
     raw.phone_number ||
@@ -100,13 +85,6 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     raw.telephone ||
     raw.mobile ||
     "";
-
-  const rawDepartment =
-    raw.department ||
-    raw.clinical_department ||
-    raw.clinicalDepartment ||
-    raw.unit ||
-    raw.department_name;
 
   const thematicAreaId =
     raw.thematic_area_id !== undefined && raw.thematic_area_id !== null
@@ -131,16 +109,6 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     (typeof rawThematicAreaName === "string" && rawThematicAreaName.trim() && !/^\d+$/.test(rawThematicAreaName.trim())
       ? rawThematicAreaName.trim()
       : undefined);
-
-  const department =
-    rawDepartment ||
-    (thematicArea
-      ? thematicArea.toLowerCase().endsWith("department") ||
-        thematicArea.toLowerCase().endsWith("unit") ||
-        thematicArea.toLowerCase().endsWith("care")
-        ? `${thematicArea} Unit`
-        : `${thematicArea} Department`
-      : "Maternal & Child Health Department");
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -183,13 +151,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       thematicAreaId,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
-      profession,
       highestQualification,
-      department,
-      yearsOfExperience:
-        raw.yearsOfExperience !== undefined || raw.years_of_experience !== undefined
-          ? Number(raw.yearsOfExperience || raw.years_of_experience)
-          : undefined,
       assignedMenteesCount: Number(raw.assignedMenteesCount || raw.assigned_mentees_count) || 0,
       status: status as any,
     };
@@ -218,9 +180,7 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       thematicAreaId,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-blue-100 text-blue-800",
-      profession,
       highestQualification,
-      cadreLevel: raw.cadreLevel || raw.cadre_level || highestQualification || "",
       assignedMentor: raw.assignedMentor || {
         name: raw.mentor_name || undefined,
         status: raw.mentor_id || raw.mentor_name ? "assigned" : "unassigned",
@@ -313,10 +273,6 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
         mentor.thematicArea = liveName || resolveThematicAreaName(mentor.thematicAreaId);
       } else if (mentor.thematicArea) {
         mentor.thematicArea = resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea;
-      }
-
-      if (!mentor.department && mentor.thematicArea) {
-        mentor.department = `${mentor.thematicArea} Unit`;
       }
 
       return mentor;
@@ -610,9 +566,6 @@ export async function getUserById(id: string, facilityId?: number | string): Pro
       mentor.thematicArea = resolveThematicAreaName(mentor.thematicAreaId);
     } else if (mentor.thematicArea) {
       mentor.thematicArea = resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea;
-    }
-    if (!mentor.department && mentor.thematicArea) {
-      mentor.department = `${mentor.thematicArea} Unit`;
     }
   }
 

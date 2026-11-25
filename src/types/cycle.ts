@@ -25,7 +25,8 @@ export interface CycleMentor {
     name: string;
     email?: string;
     phone?: string;
-    profession?: string;
+    highestQualification?: string;
+    thematicArea?: string;
     facility?: string;
     assignedMenteesCount?: number;
     status?: string;

@@ -41,9 +41,6 @@ export interface BaseUser {
 
 export interface MentorUser extends BaseUser {
   role: "mentor";
-  profession: string;
-  department: string;
-  yearsOfExperience?: number;
   assignedMenteesCount: number;
   status: MentorStatus;
 }
@@ -57,8 +54,7 @@ export interface AssignedMentorInfo {
 
 export interface MenteeUser extends BaseUser {
   role: "mentee";
-  profession: string;
-  cadreLevel: string;
+  cadreLevel?: string;
   assignedMentor: AssignedMentorInfo;
   knowledgeScore?: number;
   scoreTier?: "Tier 1" | "Tier 2" | "Remediation";

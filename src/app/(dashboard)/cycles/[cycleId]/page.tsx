@@ -133,7 +133,7 @@ export default async function CycleDetailPage({ params }: Props) {
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         <p className="font-semibold text-sm text-gray-900">{m.name}</p>
-                                        <p className="text-xs text-[#0B5D3B] font-medium mt-0.5">{m.profession}</p>
+                                        <p className="text-xs text-[#0B5D3B] font-medium mt-0.5">{m.highestQualification || m.thematicArea || "Clinical Mentor"}</p>
                                     </div>
                                     <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800">
                                         {m.assignedMenteesCount ?? 0} Mentees

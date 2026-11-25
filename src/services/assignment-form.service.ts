@@ -178,7 +178,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             id: String(m.id),
             name: m.name || m.email,
             initials: getInitials(m.name),
-            specialty: m.profession || "Obstetrics & Gynecology",
+            specialty: m.highestQualification || m.thematicArea || "Clinical Mentorship",
             currentLoad: m.assignedMenteesCount || 0,
             maxLoad: 3,
             avatarUrl: m.avatarUrl || undefined,
@@ -189,7 +189,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             id: String(me.id),
             name: me.name || me.email,
             initials: getInitials(me.name),
-            specialty: me.profession || "Midwifery Practice",
+            specialty: me.highestQualification || "Clinical Mentee",
             facility: facilityMap.get(Number(me.facilityId)) || me.facility || "Facility unavailable",
             facilityId: me.facilityId,
         }));

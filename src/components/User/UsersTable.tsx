@@ -190,45 +190,22 @@ export function UsersTable({
       },
     };
 
-    // Profession & Cadre Column
-    const professionCol: ColumnDef<ClinicalUser> = {
-      id: "profession",
-      header: "PROFESSION",
+    // Qualification Column (Backend: highest_qualification)
+    const qualificationCol: ColumnDef<ClinicalUser> = {
+      id: "qualification",
+      header: "QUALIFICATION",
       cell: ({ row }) => {
         const user = row.original;
-        const profession =
-          user.profession && user.profession !== "Midwifery Preceptor"
-            ? user.profession
-            : user.highestQualification ||
-              user.profession ||
-              (user as any).highest_qualification ||
-              (user.role === "mentor" ? "Midwifery Preceptor" : "Resident Midwife");
-        if (user.role === "mentor") {
-          const mentor = user as MentorUser;
-          const department =
-            mentor.department ||
-            (mentor.thematicArea
-              ? `${resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea} Unit`
-              : undefined);
-          return (
-            <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
-              {department && (
-                <span className="text-xs text-gray-500 truncate mt-0.5">{department}</span>
-              )}
-            </div>
-          );
-        } else {
-          const mentee = user as MenteeUser;
-          return (
-            <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
-              {mentee.cadreLevel && (
-                <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel}</span>
-              )}
-            </div>
-          );
-        }
+        const qualification =
+          user.highestQualification ||
+          (user as any).highest_qualification ||
+          (user as any).qualification ||
+          "Not specified";
+        return (
+          <span className="text-sm font-semibold text-gray-900 leading-tight">
+            {qualification}
+          </span>
+        );
       },
     };
 
@@ -433,23 +410,24 @@ export function UsersTable({
 
     // Composition based on role (facility column omitted as users belong to same facility context)
     if (role === "mentor") {
-      return [identityCol, professionCol, thematicAreaCol, loadCol, statusCol, actionsCol];
+      return [identityCol, qualificationCol, thematicAreaCol, loadCol, statusCol, actionsCol];
     } else {
-      return [identityCol, professionCol, assignedMentorCol, knowledgeScoreCol, statusCol, actionsCol];
+      return [identityCol, qualificationCol, assignedMentorCol, knowledgeScoreCol, statusCol, actionsCol];
     }
   }, [role, activeMenuUserId, updatingStatusUserId]);
 
   // 2. CLIENT-SIDE FILTERING (Text search & dropdowns)
   const filteredData = useMemo(() => {
     return usersData.filter((item) => {
-      // Global search matches name, systemId, profession, or facility
+      // Global search matches name, systemId, qualification, facility, or thematic area
       if (globalFilter.trim()) {
         const query = globalFilter.toLowerCase();
         const matchesName = (item.name || "").toLowerCase().includes(query);
         const matchesId = (item.systemId || "").toLowerCase().includes(query);
         const matchesFacility = (item.facility || "").toLowerCase().includes(query);
+        const matchesQualification = (item.highestQualification || (item as any).highest_qualification || "").toLowerCase().includes(query);
         const matchesThematic = (item.thematicArea || "").toLowerCase().includes(query);
-        if (!matchesName && !matchesId && !matchesFacility && !matchesThematic) {
+        if (!matchesName && !matchesId && !matchesFacility && !matchesQualification && !matchesThematic) {
           return false;
         }
       }
@@ -541,11 +519,12 @@ export function UsersTable({
   const totalDisplayCount = totalCohortCount || usersData.length;
 
   const handleExportCsv = () => {
-    const headers = ["Name", "ID", "Facility", "Thematic Area", "Status"];
+    const headers = ["Name", "ID", "Facility", "Qualification", "Thematic Area", "Status"];
     const rows = filteredData.map((d) => [
       d.name,
       d.systemId,
       d.facility,
+      d.highestQualification || (d as any).highest_qualification || "",
       resolveThematicAreaName(d.thematicArea) ||
         (d.thematicAreaId !== undefined ? resolveThematicAreaName(d.thematicAreaId) : undefined) ||
         d.thematicArea ||
