@@ -205,28 +205,32 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
   const query = new URLSearchParams({ role: "mentor", page: "1", limit: "100" });
 
   try {
-    const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
+    const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
     const [res, assignmentsList] = await Promise.all([
       apiClient<any>(`/api/v1/users?${query.toString()}`),
       getAssignments(activeFacilityId).catch(() => []),
     ]);
 
     const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
-    const allAssignments = [...assignmentsList, ...storedAssignments];
+    const facilityStoredAssignments = activeFacilityId
+      ? storedAssignments.filter((a) => !a.facilityId || String(a.facilityId) === String(activeFacilityId))
+      : storedAssignments;
+    const allAssignments = [...assignmentsList, ...facilityStoredAssignments];
+    const groupedAssignments = groupAssignmentsByMentor(allAssignments);
 
-    // Count real assigned mentees per mentor from live assignments
+    // Count real unique assigned mentees per mentor from grouped assignments
     const mentorMenteesCountMap = new Map<string, number>();
 
-    for (const a of allAssignments) {
+    for (const a of groupedAssignments) {
       const mentorId = String(a.mentor?.id ?? "").trim();
       const mentorName = String(a.mentor?.name ?? "").trim().toLowerCase();
-      const count = Array.isArray(a.mentees) && a.mentees.length > 0 ? a.mentees.length : (a.mentee?.id ? 1 : 0);
+      const count = a.mentees && a.mentees.length > 0 ? a.mentees.length : (a.mentee?.id ? 1 : 0);
 
       if (mentorId) {
-        mentorMenteesCountMap.set(mentorId, (mentorMenteesCountMap.get(mentorId) || 0) + count);
+        mentorMenteesCountMap.set(mentorId, count);
       }
       if (mentorName) {
-        mentorMenteesCountMap.set(mentorName, (mentorMenteesCountMap.get(mentorName) || 0) + count);
+        mentorMenteesCountMap.set(mentorName, count);
       }
     }
 
@@ -236,9 +240,7 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
       const countById = mentorMenteesCountMap.get(String(mentor.id).trim());
       const countByName = mentorMenteesCountMap.get(String(mentor.name).trim().toLowerCase());
       const count = countById !== undefined ? countById : countByName;
-      if (count !== undefined) {
-        mentor.assignedMenteesCount = count;
-      }
+      mentor.assignedMenteesCount = count !== undefined ? count : 0;
       return mentor;
     }) as MentorUser[];
 
@@ -275,19 +277,23 @@ export async function getMentees(facilityId?: number | string): Promise<MenteeUs
   const query = new URLSearchParams({ role: "mentee", page: "1", limit: "100" });
 
   try {
-    const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
+    const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
     const [res, assignmentsList] = await Promise.all([
       apiClient<any>(`/api/v1/users?${query.toString()}`),
       getAssignments(activeFacilityId).catch(() => []),
     ]);
 
     const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
-    const allAssignments = [...assignmentsList, ...storedAssignments];
+    const facilityStoredAssignments = activeFacilityId
+      ? storedAssignments.filter((a) => !a.facilityId || String(a.facilityId) === String(activeFacilityId))
+      : storedAssignments;
+    const allAssignments = [...assignmentsList, ...facilityStoredAssignments];
+    const groupedAssignments = groupAssignmentsByMentor(allAssignments);
 
     // Build assignment lookup map: menteeId / menteeName -> AssignedMentorInfo
     const assignmentMap = new Map<string, { name: string; title: string; avatarInitials: string; status: "assigned" }>();
 
-    for (const a of allAssignments) {
+    for (const a of groupedAssignments) {
       const mentorName = a.mentor?.name;
       const mentorTitle = a.mentor?.subtitle || "Clinical Mentor";
       const mentorInitials = a.mentor?.initials || "CM";
@@ -442,25 +448,50 @@ export async function createUser(data: Partial<ClinicalUser>): Promise<ClinicalU
 
 /**
  * Fetches a single user by ID and normalizes into a strongly typed ClinicalUser model.
+ * Automatically links real assigned mentor or mentee load within the user's facility.
  */
-export async function getUserById(id: string): Promise<ClinicalUser> {
-  const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
-  const [res, assignmentsList] = await Promise.all([
-    apiClient.get<any>(`/api/v1/users/${id}`),
-    getAssignments().catch(() => []),
-  ]);
+export async function getUserById(id: string, facilityId?: number | string): Promise<ClinicalUser> {
+  const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
+  const res = await apiClient.get<any>(`/api/v1/users/${id}`);
   const raw = res?.data?.user || res?.data || res?.user || res;
   const user = normalizeUser(raw, raw?.role || "mentee");
 
+  let targetFacilityId = facilityId ?? user.facilityId;
+  if (!targetFacilityId && typeof window === "undefined") {
+    try {
+      const { getServerSession } = await import("next-auth/next");
+      const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+      const session = await getServerSession(authOptions);
+      targetFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    } catch {
+      // Ignore
+    }
+  } else if (!targetFacilityId && typeof window !== "undefined") {
+    try {
+      const { getSession } = await import("next-auth/react");
+      const session = await getSession();
+      targetFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    } catch {
+      // Ignore
+    }
+  }
+
+  const assignmentsList = await getAssignments(targetFacilityId).catch(() => []);
   const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
-  const allAssignments = [...assignmentsList, ...storedAssignments];
+  const facilityStoredAssignments = targetFacilityId
+    ? storedAssignments.filter((a) => !a.facilityId || String(a.facilityId) === String(targetFacilityId))
+    : storedAssignments;
+
+  const allAssignments = [...assignmentsList, ...facilityStoredAssignments];
+  const groupedAssignments = groupAssignmentsByMentor(allAssignments);
 
   if (user.role === "mentee") {
-    const matched = allAssignments.find((a) => {
+    const targetId = String(id).trim();
+    const targetName = String(user.name).trim().toLowerCase();
+
+    const matched = groupedAssignments.find((a) => {
       const mId = String(a.mentee?.id ?? "").trim();
       const mName = String(a.mentee?.name ?? "").trim().toLowerCase();
-      const targetId = String(id).trim();
-      const targetName = String(user.name).trim().toLowerCase();
       if (mId === targetId || (mName && mName === targetName)) return true;
       if (Array.isArray(a.mentees)) {
         return a.mentees.some(
@@ -481,17 +512,19 @@ export async function getUserById(id: string): Promise<ClinicalUser> {
       };
     }
   } else if (user.role === "mentor") {
-    let count = 0;
     const mentorId = String(id).trim();
     const mentorName = String(user.name).trim().toLowerCase();
-    for (const a of allAssignments) {
-      if (
+
+    const matched = groupedAssignments.find(
+      (a) =>
         String(a.mentor?.id ?? "").trim() === mentorId ||
         (a.mentor?.name && String(a.mentor.name).trim().toLowerCase() === mentorName)
-      ) {
-        count += Array.isArray(a.mentees) && a.mentees.length > 0 ? a.mentees.length : (a.mentee?.id ? 1 : 0);
-      }
-    }
+    );
+
+    const count = matched
+      ? (matched.mentees && matched.mentees.length > 0 ? matched.mentees.length : (matched.mentee?.id ? 1 : 0))
+      : 0;
+
     (user as MentorUser).assignedMenteesCount = count;
   }
 

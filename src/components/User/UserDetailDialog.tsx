@@ -63,9 +63,15 @@ export function UserDetailDialog({
     let isMounted = true;
     setIsLoading(true);
 
-    getUserById(String(user.id))
+    getUserById(String(user.id), user.facilityId)
       .then((freshUser) => {
         if (isMounted && freshUser && freshUser.id) {
+          if (
+            (freshUser as MentorUser).assignedMenteesCount === undefined &&
+            (user as MentorUser)?.assignedMenteesCount !== undefined
+          ) {
+            (freshUser as MentorUser).assignedMenteesCount = (user as MentorUser).assignedMenteesCount;
+          }
           setCurrentUser(freshUser);
           setTargetStatus(freshUser.status || "active");
         }

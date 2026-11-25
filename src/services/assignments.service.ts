@@ -216,6 +216,14 @@ export async function getAssignments(facilityId?: number | string): Promise<Assi
         } catch {
             // Ignore session resolution failure
         }
+    } else if (activeFacilityId === undefined && typeof window !== "undefined") {
+        try {
+            const { getSession } = await import("next-auth/react");
+            const session = await getSession();
+            activeFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+        } catch {
+            // Ignore session resolution failure
+        }
     }
 
     const [assignmentsResponse, lookups] = await Promise.all([
@@ -480,30 +488,51 @@ export function removeCreatedAssignment(id: string): void {
 
 /**
  * Groups a flat list of assignments by mentor so each mentor is associated
- * with the horizontal list of their assigned mentees.
+ * with the horizontal list of their unique assigned mentees.
+ * Uses both mentor ID and normalized mentor name to resolve the same mentor across records.
  */
 export function groupAssignmentsByMentor(assignments: Assignment[]): Assignment[] {
     const map = new Map<string, Assignment>();
+    const nameToKeyMap = new Map<string, string>();
 
     for (const a of assignments) {
-        const mentorKey = String(a.mentor.id || a.mentor.name).trim();
+        const mentorId = String(a.mentor?.id ?? "").trim();
+        const mentorName = String(a.mentor?.name ?? "").trim().toLowerCase();
+
+        let mentorKey = mentorId;
+        if (!mentorKey && mentorName) {
+            mentorKey = nameToKeyMap.get(mentorName) || mentorName;
+        } else if (mentorKey && mentorName) {
+            if (nameToKeyMap.has(mentorName)) {
+                mentorKey = nameToKeyMap.get(mentorName)!;
+            } else {
+                nameToKeyMap.set(mentorName, mentorKey);
+            }
+        }
+
         const existing = map.get(mentorKey);
 
         const currentMentees: (Person & { facility?: string })[] =
             a.mentees && a.mentees.length > 0
                 ? a.mentees
-                : [{ ...a.mentee, facility: a.facility }];
+                : a.mentee && (a.mentee.id || a.mentee.name)
+                ? [{ ...a.mentee, facility: a.facility }]
+                : [];
 
         if (existing) {
             const existingMentees = existing.mentees || [
                 { ...existing.mentee, facility: existing.facility },
             ];
-            const seenIds = new Set(existingMentees.map((m) => String(m.id || m.name).trim()));
+            const seenIds = new Set(existingMentees.map((m) => String(m.id ?? "").trim()).filter(Boolean));
+            const seenNames = new Set(existingMentees.map((m) => String(m.name ?? "").trim().toLowerCase()).filter(Boolean));
 
             for (const m of currentMentees) {
-                const id = String(m.id || m.name).trim();
-                if (!seenIds.has(id)) {
-                    seenIds.add(id);
+                const id = String(m.id ?? "").trim();
+                const name = String(m.name ?? "").trim().toLowerCase();
+                const alreadySeen = (id && seenIds.has(id)) || (name && seenNames.has(name));
+                if (!alreadySeen) {
+                    if (id) seenIds.add(id);
+                    if (name) seenNames.add(name);
                     existingMentees.push(m);
                 }
             }
@@ -518,6 +547,9 @@ export function groupAssignmentsByMentor(assignments: Assignment[]): Assignment[
                 existing.isNew = true;
             }
         } else {
+            if (mentorName) {
+                nameToKeyMap.set(mentorName, mentorKey);
+            }
             map.set(mentorKey, {
                 ...a,
                 id: a.id || `grouped-${mentorKey}`,

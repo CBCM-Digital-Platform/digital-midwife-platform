@@ -420,9 +420,11 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             .map((mentorId) => {
                 const u = mentorMap.get(mentorId);
                 if (!u) return null;
-                const assignedCount = rawAssignments.filter(
-                    (a: any) => String(a.mentor_id) === mentorId
-                ).length || 0;
+                const assignedCount = new Set(
+                    rawAssignments
+                        .filter((a: any) => String(a.mentor_id ?? a.mentorId) === mentorId && (a.mentee_id ?? a.menteeId))
+                        .map((a: any) => String(a.mentee_id ?? a.menteeId))
+                ).size;
                 const facId = u.facility_id ?? u.facilityId;
                 const facilityName =
                     (facId && FACILITY_ID_MAP[facId]) ||
