@@ -11,6 +11,12 @@ export interface AssessmentPassingRule {
     is_active: boolean;
 }
 
+export interface EnrichedPassingRule extends AssessmentPassingRule {
+    cycleName?: string;
+    thematicAreaName?: string;
+    thematicAreaCode?: string;
+}
+
 export interface AssessmentPassingRuleInput {
     cycle_id: number;
     thematic_area_id: number;
@@ -18,6 +24,11 @@ export interface AssessmentPassingRuleInput {
     theory_min_score: number;
     practical_min_score: number;
     is_active?: boolean;
+}
+
+export interface PassingRuleLookups {
+    cycles: Array<{ id: number; name: string }>;
+    thematicAreas: Array<{ id: number; name: string; code: string }>;
 }
 
 type ApiRecord = Record<string, unknown>;
@@ -153,3 +164,69 @@ export async function deleteAssessmentPassingRule(ruleId: number): Promise<void>
 }
 
 export const deactivateAssessmentPassingRule = deleteAssessmentPassingRule;
+
+/**
+ * Fetch live cycles and thematic areas directly from the backend to populate passing rule dropdowns and lookups.
+ */
+export async function getPassingRuleLookups(): Promise<PassingRuleLookups> {
+    const [cyclesRes, thematicAreasRes] = await Promise.all([
+        apiClient.get<unknown>(ENDPOINTS.CYCLES.BASE, { params: { limit: 100 } }).catch(() => null),
+        apiClient.get<unknown>(ENDPOINTS.THEMATIC_AREAS.BASE, { params: { limit: 100 } }).catch(() => null),
+    ]);
+
+    const rawCycles = getApiList(cyclesRes, ["items", "cycles", "mentorship_cycles", "results"]);
+    const rawThematicAreas = getApiList(thematicAreasRes, ["items", "thematic_areas", "thematicAreas", "results"]);
+
+    const cycles = rawCycles
+        .map((c) => ({
+            id: Number(c.id),
+            name: String(c.name ?? c.title ?? c.cycle_name ?? `Cycle #${c.id}`).trim(),
+        }))
+        .filter((c) => !Number.isNaN(c.id) && c.id > 0);
+
+    const thematicAreas = rawThematicAreas
+        .map((ta) => ({
+            id: Number(ta.id),
+            name: String(ta.name ?? ta.title ?? `Thematic Area #${ta.id}`).trim(),
+            code: String(ta.code ?? `TA-${ta.id}`).trim(),
+        }))
+        .filter((ta) => !Number.isNaN(ta.id) && ta.id > 0);
+
+    return { cycles, thematicAreas };
+}
+
+/**
+ * Retrieves passing rules from the backend and resolves cycle and thematic area names without mock data.
+ */
+export async function getEnrichedAssessmentPassingRules(): Promise<{
+    rules: EnrichedPassingRule[];
+    cycles: Array<{ id: number; name: string }>;
+    thematicAreas: Array<{ id: number; name: string; code: string }>;
+}> {
+    const [rules, lookups] = await Promise.all([
+        getAssessmentPassingRules().catch(() => []),
+        getPassingRuleLookups(),
+    ]);
+
+    const cycleMap = new Map<number, string>(lookups.cycles.map((c) => [c.id, c.name]));
+    const thematicAreaMap = new Map<number, { name: string; code: string }>(
+        lookups.thematicAreas.map((ta) => [ta.id, { name: ta.name, code: ta.code }])
+    );
+
+    const enrichedRules: EnrichedPassingRule[] = rules.map((r) => {
+        const cycleName = r.cycle_id ? cycleMap.get(r.cycle_id) : undefined;
+        const ta = r.thematic_area_id ? thematicAreaMap.get(r.thematic_area_id) : undefined;
+        return {
+            ...r,
+            cycleName,
+            thematicAreaName: ta?.name,
+            thematicAreaCode: ta?.code,
+        };
+    });
+
+    return {
+        rules: enrichedRules,
+        cycles: lookups.cycles,
+        thematicAreas: lookups.thematicAreas,
+    };
+}

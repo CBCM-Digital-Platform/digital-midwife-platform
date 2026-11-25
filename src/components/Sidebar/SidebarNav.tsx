@@ -24,6 +24,7 @@ import {
   Calendar,
   MessageSquare,
   Layers,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { NavItem } from "@/types/navigation";
@@ -52,6 +53,8 @@ const iconMap: Record<string, LucideIcon> = {
   resources: Library,
   sessions: Calendar,
   messages: MessageSquare,
+  "passing-rules": SlidersHorizontal,
+  "assessment-passing-rules": SlidersHorizontal,
 };
 
 interface SidebarNavProps {

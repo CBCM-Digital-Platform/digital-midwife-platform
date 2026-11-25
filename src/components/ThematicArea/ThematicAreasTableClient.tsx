@@ -156,24 +156,26 @@ export function ThematicAreasTableClient({
     () => [
       {
         accessorKey: "code",
-        header: "Thematic Area & Code",
+        header: "Domain Code",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs font-bold px-2 py-1 rounded-md bg-gray-100 text-gray-800 border border-gray-200 inline-block">
+            {row.original.code}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "name",
+        header: "Thematic Area Name",
         cell: ({ row }) => {
           const area = row.original;
           return (
-            <div className="flex items-center gap-2.5 max-w-[280px]">
+            <div className="flex items-center gap-2.5 max-w-[320px]">
               <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-200 text-[#194611] flex items-center justify-center shrink-0 font-bold text-xs">
                 <Layers className="h-4 w-4" />
               </div>
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="font-semibold text-gray-900 truncate text-xs" title={area.name}>
-                    {area.name}
-                  </span>
-                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 shrink-0">
-                    {area.code}
-                  </span>
-                </div>
-              </div>
+              <span className="font-semibold text-gray-900 truncate text-xs" title={area.name}>
+                {area.name}
+              </span>
             </div>
           );
         },
