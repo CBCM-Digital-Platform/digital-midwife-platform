@@ -361,20 +361,12 @@ export function UserDetailDialog({
               )}
 
               {isMentor ? (
-                <>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Clinical Department</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MentorUser).department || "Not specified"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Years of Experience</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MentorUser).yearsOfExperience ?? 0} Years
-                    </span>
-                  </div>
-                </>
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Clinical Department</span>
+                  <span className="font-bold text-gray-900">
+                    {(currentUser as MentorUser).department || "Not specified"}
+                  </span>
+                </div>
               ) : (
                 <>
                   <div>

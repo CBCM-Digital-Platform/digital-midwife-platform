@@ -348,16 +348,6 @@ export function UsersTable({
       },
     };
 
-    // Role-specific: MENTOR Experience
-    const experienceCol: ColumnDef<ClinicalUser> = {
-      id: "experience",
-      header: "EXPERIENCE",
-      cell: ({ row }) => {
-        const mentor = row.original as MentorUser;
-        return <span className="text-sm font-semibold text-gray-800">{mentor.yearsOfExperience} yrs</span>;
-      },
-    };
-
     // Role-specific: MENTOR Load
     const loadCol: ColumnDef<ClinicalUser> = {
       id: "load",
@@ -439,7 +429,7 @@ export function UsersTable({
 
     // Composition based on role (facility column omitted as users belong to same facility context)
     if (role === "mentor") {
-      return [identityCol, professionCol, thematicAreaCol, experienceCol, loadCol, statusCol, actionsCol];
+      return [identityCol, professionCol, thematicAreaCol, loadCol, statusCol, actionsCol];
     } else {
       return [identityCol, professionCol, assignedMentorCol, knowledgeScoreCol, statusCol, actionsCol];
     }

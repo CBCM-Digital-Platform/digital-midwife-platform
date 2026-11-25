@@ -132,7 +132,10 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
       profession,
       department: raw.department || "",
-      yearsOfExperience: Number(raw.yearsOfExperience || raw.years_of_experience) || 0,
+      yearsOfExperience:
+        raw.yearsOfExperience !== undefined || raw.years_of_experience !== undefined
+          ? Number(raw.yearsOfExperience || raw.years_of_experience)
+          : undefined,
       assignedMenteesCount: Number(raw.assignedMenteesCount || raw.assigned_mentees_count) || 0,
       status: status as any,
     };

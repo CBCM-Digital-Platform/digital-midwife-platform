@@ -42,7 +42,7 @@ export interface MentorUser extends BaseUser {
   role: "mentor";
   profession: string;
   department: string;
-  yearsOfExperience: number;
+  yearsOfExperience?: number;
   assignedMenteesCount: number;
   status: MentorStatus;
 }

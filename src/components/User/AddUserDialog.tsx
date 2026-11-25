@@ -162,7 +162,6 @@ function createNewUserFromForm(
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
       thematicArea: formData.thematic_area || "General Practice",
       thematicAreaId,
-      yearsOfExperience: Number(formData.years_of_experience) || 0,
       assignedMenteesCount: 0,
       status: "active",
     };
@@ -229,7 +228,6 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
       email: "",
       profession: "",
       highest_qualification: "",
-      years_of_experience: "" as any,
       thematic_area: "",
       primary_facility: defaultFacilityName,
       username: "",
@@ -344,14 +342,6 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
           setSubmitError("Primary Thematic Area is required for Mentor registration.");
           return;
         }
-        if (
-          formData.years_of_experience === "" ||
-          formData.years_of_experience === undefined ||
-          formData.years_of_experience === null
-        ) {
-          setSubmitError("Years of Experience is required for Mentor registration.");
-          return;
-        }
       }
 
       const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
@@ -391,17 +381,9 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
         payload.facility_id = assignedFacilityId;
       }
 
-      // Backend provides thematic_area_id and years_of_experience for mentor role only
-      if (role === "mentor") {
-        if (numericThematicAreaId !== undefined) {
-          payload.thematic_area_id = numericThematicAreaId;
-        }
-        if (formData.thematic_area) {
-          payload.thematic_area = matchedArea?.name || formData.thematic_area;
-        }
-        if (formData.years_of_experience) {
-          payload.years_of_experience = Number(formData.years_of_experience);
-        }
+      // Backend provides thematic_area_id for mentor role only
+      if (role === "mentor" && numericThematicAreaId !== undefined) {
+        payload.thematic_area_id = numericThematicAreaId;
       }
 
       const res = await apiClient.post<any>("/api/v1/users", payload);
@@ -608,24 +590,6 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
                     <p className="text-red-500 text-xs mt-1">{errors.highest_qualification.message}</p>
                   )}
                 </div>
-
-                {/* Years of Experience (Mentor only) */}
-                {role === "mentor" && (
-                  <div>
-                    <Label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Years of Experience <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      {...register("years_of_experience")}
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 5"
-                    />
-                    {errors.years_of_experience && (
-                      <p className="text-red-500 text-xs mt-1">{errors.years_of_experience.message}</p>
-                    )}
-                  </div>
-                )}
 
                 {/* Thematic Area (Mentor only) */}
                 {role === "mentor" && (
