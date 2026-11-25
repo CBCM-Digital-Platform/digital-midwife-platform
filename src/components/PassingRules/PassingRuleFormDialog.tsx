@@ -45,7 +45,7 @@ export function PassingRuleFormDialog({
   const [theoryMinScore, setTheoryMinScore] = useState<string>("75");
   const [theoryError, setTheoryError] = useState<string | null>(null);
 
-  const [practicalMinScore, setPracticalMinScore] = useState<string>("75");
+  const [practicalMinScore, setPracticalMinScore] = useState<string>("3");
   const [practicalError, setPracticalError] = useState<string | null>(null);
 
   const [isActive, setIsActive] = useState<boolean>(true);
@@ -59,14 +59,14 @@ export function PassingRuleFormDialog({
       setThematicAreaId(rule.thematic_area_id ? String(rule.thematic_area_id) : "");
       setCriteriaMinScore(String(rule.criteria_min_score ?? 70));
       setTheoryMinScore(String(rule.theory_min_score ?? 75));
-      setPracticalMinScore(String(rule.practical_min_score ?? 75));
+      setPracticalMinScore(String(rule.practical_min_score ?? 3));
       setIsActive(rule.is_active !== undefined ? rule.is_active : true);
     } else {
       setCycleId(cycles.length > 0 ? String(cycles[0].id) : "");
       setThematicAreaId(thematicAreas.length > 0 ? String(thematicAreas[0].id) : "");
       setCriteriaMinScore("70");
       setTheoryMinScore("75");
-      setPracticalMinScore("75");
+      setPracticalMinScore("3");
       setIsActive(true);
     }
     setCycleError(null);
@@ -126,12 +126,20 @@ export function PassingRuleFormDialog({
       setTheoryError(null);
     }
 
-    const practicalRes = validateScore(practicalMinScore, "Practical minimum score");
-    if (!practicalRes.valid) {
-      setPracticalError(practicalRes.error || null);
+    const numPractical = Number(practicalMinScore);
+    let practicalValidNum = 3;
+    if (
+      practicalMinScore.trim() === "" ||
+      Number.isNaN(numPractical) ||
+      !Number.isInteger(numPractical) ||
+      numPractical < 1 ||
+      numPractical > 5
+    ) {
+      setPracticalError("Practical threshold (practical_min_score) must be an integer between 1 and 5.");
       hasError = true;
     } else {
       setPracticalError(null);
+      practicalValidNum = numPractical;
     }
 
     if (hasError) return;
@@ -146,7 +154,7 @@ export function PassingRuleFormDialog({
           thematic_area_id: numThematicId,
           criteria_min_score: criteriaRes.num,
           theory_min_score: theoryRes.num,
-          practical_min_score: practicalRes.num,
+          practical_min_score: practicalValidNum,
           is_active: isActive,
         });
       } else {
@@ -155,7 +163,7 @@ export function PassingRuleFormDialog({
           thematic_area_id: numThematicId,
           criteria_min_score: criteriaRes.num,
           theory_min_score: theoryRes.num,
-          practical_min_score: practicalRes.num,
+          practical_min_score: practicalValidNum,
           is_active: isActive,
         });
       }
@@ -272,7 +280,9 @@ export function PassingRuleFormDialog({
 
         {/* Score Thresholds Grid */}
         <div className="pt-2 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-700 mb-2">Passing Thresholds (0 - 100%)</p>
+          <p className="text-xs font-semibold text-gray-700 mb-2">
+            Passing Thresholds (Criteria & Theory: 0–100%, Practical OSCE: 1–5 Scale)
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Criteria Min Score */}
             <div>
@@ -322,25 +332,30 @@ export function PassingRuleFormDialog({
               )}
             </div>
 
-            {/* Practical Min Score */}
+            {/* Practical Min Score (Scale 1 - 5) */}
             <div>
               <Label htmlFor="rule-practical" className="block text-[11px] font-medium text-gray-600 mb-1">
-                Practical OSCE Min (%)
+                Practical OSCE Min (1 - 5)
               </Label>
-              <Input
+              <select
                 id="rule-practical"
-                type="number"
-                min="0"
-                max="100"
-                step="1"
                 value={practicalMinScore}
                 onChange={(e) => {
                   setPracticalMinScore(e.target.value);
                   if (practicalError) setPracticalError(null);
                 }}
                 required
-                className={cn("h-9 text-sm", practicalError && "border-red-500 focus-visible:ring-red-500")}
-              />
+                className={cn(
+                  "w-full h-9 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer",
+                  practicalError && "border-red-500 focus:ring-red-500"
+                )}
+              >
+                <option value="1">Level 1 (Novice)</option>
+                <option value="2">Level 2 (Advanced Beginner)</option>
+                <option value="3">Level 3 (Competent — Benchmark)</option>
+                <option value="4">Level 4 (Proficient)</option>
+                <option value="5">Level 5 (Master / Expert)</option>
+              </select>
               {practicalError && (
                 <p className="text-[10px] text-red-600 mt-1">{practicalError}</p>
               )}

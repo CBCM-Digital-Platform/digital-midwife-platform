@@ -112,8 +112,8 @@ export function PassingRulesTableClient({
       ? Math.round(rules.reduce((acc, r) => acc + (r.theory_min_score || 0), 0) / total)
       : 0;
     const avgPractical = total > 0
-      ? Math.round(rules.reduce((acc, r) => acc + (r.practical_min_score || 0), 0) / total)
-      : 0;
+      ? (rules.reduce((acc, r) => acc + (r.practical_min_score || 0), 0) / total).toFixed(1)
+      : "0.0";
     return { total, active, avgTheory, avgPractical };
   }, [rules]);
 
@@ -188,7 +188,7 @@ export function PassingRulesTableClient({
         header: "Practical OSCE Min",
         cell: ({ row }) => (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            {row.original.practical_min_score}%
+            Level {row.original.practical_min_score} / 5
           </span>
         ),
       },
@@ -309,9 +309,9 @@ export function PassingRulesTableClient({
         <div className="p-4 rounded-xl border border-gray-200 bg-white shadow-2xs">
           <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
             <Layers className="h-4 w-4 text-amber-600" />
-            <span>Avg. Practical OSCE</span>
+            <span>Avg. Practical Level</span>
           </div>
-          <p className="mt-2 text-2xl font-bold text-amber-900">{stats.avgPractical}%</p>
+          <p className="mt-2 text-2xl font-bold text-amber-900">{stats.avgPractical} / 5</p>
         </div>
       </div>
 

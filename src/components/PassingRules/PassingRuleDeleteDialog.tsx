@@ -70,7 +70,7 @@ export function PassingRuleDeleteDialog({
           <div className="flex items-center gap-3 text-gray-500 pt-1">
             <span>Criteria: {rule.criteria_min_score}%</span>
             <span>Theory: {rule.theory_min_score}%</span>
-            <span>Practical: {rule.practical_min_score}%</span>
+            <span>Practical: Level {rule.practical_min_score} / 5</span>
           </div>
         </div>
 
