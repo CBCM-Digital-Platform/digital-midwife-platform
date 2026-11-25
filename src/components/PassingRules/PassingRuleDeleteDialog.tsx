@@ -68,9 +68,9 @@ export function PassingRuleDeleteDialog({
             {rule.thematicAreaName || `Domain #${rule.thematic_area_id}`}
           </p>
           <div className="flex items-center gap-3 text-gray-500 pt-1">
-            <span>Criteria: {rule.criteria_min_score}%</span>
-            <span>Theory: {rule.theory_min_score}%</span>
-            <span>Practical: Level {rule.practical_min_score} / 5</span>
+            <span>Pre-Test: {rule.pre_test_threshold ?? rule.criteria_min_score ?? 0}%</span>
+            <span>Post-Test Theory: {rule.post_test_threshold ?? rule.theory_min_score ?? 0}%</span>
+            <span>Practical OSCE: Level {rule.practical_threshold ?? rule.practical_min_score ?? 1} / 5</span>
           </div>
         </div>
 

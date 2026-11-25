@@ -5,10 +5,14 @@ export interface AssessmentPassingRule {
     id: number;
     cycle_id: number | null;
     thematic_area_id: number | null;
-    criteria_min_score: number;
-    theory_min_score: number;
-    practical_min_score: number;
+    pre_test_threshold: number;
+    post_test_threshold: number;
+    practical_threshold: number;
     is_active: boolean;
+    // Compatibility aliases
+    criteria_min_score?: number;
+    theory_min_score?: number;
+    practical_min_score?: number;
 }
 
 export interface EnrichedPassingRule extends AssessmentPassingRule {
@@ -20,10 +24,14 @@ export interface EnrichedPassingRule extends AssessmentPassingRule {
 export interface AssessmentPassingRuleInput {
     cycle_id: number;
     thematic_area_id: number;
-    criteria_min_score: number;
-    theory_min_score: number;
-    practical_min_score: number;
+    pre_test_threshold: number;
+    post_test_threshold: number;
+    practical_threshold: number;
     is_active?: boolean;
+    // Compatibility aliases
+    criteria_min_score?: number;
+    theory_min_score?: number;
+    practical_min_score?: number;
 }
 
 export interface PassingRuleLookups {
@@ -86,13 +94,20 @@ function normalizePassingRule(response: unknown): AssessmentPassingRule {
     if (!Number.isInteger(id) || id < 1) {
         throw new Error("The assessment passing-rules API returned an invalid rule.");
     }
+    const preTest = Number(rule.pre_test_threshold ?? rule.criteria_min_score ?? 0);
+    const postTest = Number(rule.post_test_threshold ?? rule.theory_min_score ?? 0);
+    const practical = Number(rule.practical_threshold ?? rule.practical_min_score ?? 1);
+
     return {
         id,
         cycle_id: rule.cycle_id == null ? null : Number(rule.cycle_id),
         thematic_area_id: rule.thematic_area_id == null ? null : Number(rule.thematic_area_id),
-        criteria_min_score: Number(rule.criteria_min_score ?? 0),
-        theory_min_score: Number(rule.theory_min_score ?? 0),
-        practical_min_score: Number(rule.practical_min_score ?? 0),
+        pre_test_threshold: preTest,
+        post_test_threshold: postTest,
+        practical_threshold: practical,
+        criteria_min_score: preTest,
+        theory_min_score: postTest,
+        practical_min_score: practical,
         is_active: rule.is_active !== undefined ? Boolean(rule.is_active) : true,
     };
 }
@@ -103,15 +118,7 @@ function normalizePassingRule(response: unknown): AssessmentPassingRule {
  */
 export async function getAssessmentPassingRules(): Promise<AssessmentPassingRule[]> {
     const response = await apiClient.get<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULES);
-    return getApiList(response, ["rules", "items"]).map((rule) => ({
-        id: Number(rule.id),
-        cycle_id: rule.cycle_id == null ? null : Number(rule.cycle_id),
-        thematic_area_id: rule.thematic_area_id == null ? null : Number(rule.thematic_area_id),
-        criteria_min_score: Number(rule.criteria_min_score ?? 0),
-        theory_min_score: Number(rule.theory_min_score ?? 0),
-        practical_min_score: Number(rule.practical_min_score ?? 0),
-        is_active: rule.is_active !== undefined ? Boolean(rule.is_active) : true,
-    }));
+    return getApiList(response, ["rules", "items"]).map((rule) => normalizePassingRule(rule));
 }
 
 /**
@@ -133,7 +140,15 @@ export async function getAssessmentPassingRuleById(ruleId: number): Promise<Asse
 export async function createAssessmentPassingRule(
     input: Omit<AssessmentPassingRuleInput, "is_active"> & { is_active?: boolean }
 ): Promise<AssessmentPassingRule> {
-    const response = await apiClient.post<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULES, input);
+    const payload = {
+        cycle_id: input.cycle_id,
+        thematic_area_id: input.thematic_area_id,
+        pre_test_threshold: Number(input.pre_test_threshold ?? input.criteria_min_score ?? 0),
+        post_test_threshold: Number(input.post_test_threshold ?? input.theory_min_score ?? 75),
+        practical_threshold: Number(input.practical_threshold ?? input.practical_min_score ?? 3),
+        ...(input.is_active !== undefined ? { is_active: input.is_active } : {}),
+    };
+    const response = await apiClient.post<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULES, payload);
     return normalizePassingRule(response);
 }
 
@@ -148,7 +163,21 @@ export async function updateAssessmentPassingRule(
     if (!Number.isInteger(ruleId) || ruleId < 1) {
         throw new Error("Passing rule ID must be a positive integer.");
     }
-    const response = await apiClient.patch<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULE(ruleId), input);
+    const payload: Record<string, unknown> = {};
+    if (input.cycle_id !== undefined) payload.cycle_id = input.cycle_id;
+    if (input.thematic_area_id !== undefined) payload.thematic_area_id = input.thematic_area_id;
+    if (input.pre_test_threshold !== undefined || input.criteria_min_score !== undefined) {
+        payload.pre_test_threshold = Number(input.pre_test_threshold ?? input.criteria_min_score);
+    }
+    if (input.post_test_threshold !== undefined || input.theory_min_score !== undefined) {
+        payload.post_test_threshold = Number(input.post_test_threshold ?? input.theory_min_score);
+    }
+    if (input.practical_threshold !== undefined || input.practical_min_score !== undefined) {
+        payload.practical_threshold = Number(input.practical_threshold ?? input.practical_min_score);
+    }
+    if (input.is_active !== undefined) payload.is_active = input.is_active;
+
+    const response = await apiClient.patch<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULE(ruleId), payload);
     return normalizePassingRule(response);
 }
 

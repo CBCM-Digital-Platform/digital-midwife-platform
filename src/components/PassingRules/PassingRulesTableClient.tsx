@@ -109,10 +109,10 @@ export function PassingRulesTableClient({
     const total = rules.length;
     const active = rules.filter((r) => r.is_active).length;
     const avgTheory = total > 0
-      ? Math.round(rules.reduce((acc, r) => acc + (r.theory_min_score || 0), 0) / total)
+      ? Math.round(rules.reduce((acc, r) => acc + (r.post_test_threshold ?? r.theory_min_score ?? 0), 0) / total)
       : 0;
     const avgPractical = total > 0
-      ? (rules.reduce((acc, r) => acc + (r.practical_min_score || 0), 0) / total).toFixed(1)
+      ? (rules.reduce((acc, r) => acc + (r.practical_threshold ?? r.practical_min_score ?? 0), 0) / total).toFixed(1)
       : "0.0";
     return { total, active, avgTheory, avgPractical };
   }, [rules]);
@@ -166,31 +166,34 @@ export function PassingRulesTableClient({
         },
       },
       {
-        accessorKey: "criteria_min_score",
-        header: "Criteria Min",
+        accessorKey: "pre_test_threshold",
+        header: "Pre-Test Min",
         cell: ({ row }) => (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
-            {row.original.criteria_min_score}%
+            {row.original.pre_test_threshold ?? row.original.criteria_min_score ?? 0}%
           </span>
         ),
       },
       {
-        accessorKey: "theory_min_score",
-        header: "Theory Exam Min",
+        accessorKey: "post_test_threshold",
+        header: "Post-Test Theory Min",
         cell: ({ row }) => (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200">
-            {row.original.theory_min_score}%
+            {row.original.post_test_threshold ?? row.original.theory_min_score ?? 0}%
           </span>
         ),
       },
       {
-        accessorKey: "practical_min_score",
+        accessorKey: "practical_threshold",
         header: "Practical OSCE Min",
-        cell: ({ row }) => (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            Level {row.original.practical_min_score} / 5
-          </span>
-        ),
+        cell: ({ row }) => {
+          const lvl = row.original.practical_threshold ?? row.original.practical_min_score ?? 1;
+          return (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              Level {lvl} / 5
+            </span>
+          );
+        },
       },
       {
         accessorKey: "is_active",

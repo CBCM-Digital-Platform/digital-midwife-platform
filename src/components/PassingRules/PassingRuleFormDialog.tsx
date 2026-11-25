@@ -39,13 +39,13 @@ export function PassingRuleFormDialog({
   const [thematicAreaId, setThematicAreaId] = useState<string>("");
   const [thematicAreaError, setThematicAreaError] = useState<string | null>(null);
 
-  const [criteriaMinScore, setCriteriaMinScore] = useState<string>("70");
-  const [criteriaError, setCriteriaError] = useState<string | null>(null);
+  const [preTestThreshold, setPreTestThreshold] = useState<string>("70");
+  const [preTestError, setPreTestError] = useState<string | null>(null);
 
-  const [theoryMinScore, setTheoryMinScore] = useState<string>("75");
-  const [theoryError, setTheoryError] = useState<string | null>(null);
+  const [postTestThreshold, setPostTestThreshold] = useState<string>("75");
+  const [postTestError, setPostTestError] = useState<string | null>(null);
 
-  const [practicalMinScore, setPracticalMinScore] = useState<string>("3");
+  const [practicalThreshold, setPracticalThreshold] = useState<string>("3");
   const [practicalError, setPracticalError] = useState<string | null>(null);
 
   const [isActive, setIsActive] = useState<boolean>(true);
@@ -54,28 +54,29 @@ export function PassingRuleFormDialog({
   const [serverError, setServerError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!open) return;
     if (rule) {
       setCycleId(rule.cycle_id ? String(rule.cycle_id) : "");
       setThematicAreaId(rule.thematic_area_id ? String(rule.thematic_area_id) : "");
-      setCriteriaMinScore(String(rule.criteria_min_score ?? 70));
-      setTheoryMinScore(String(rule.theory_min_score ?? 75));
-      setPracticalMinScore(String(rule.practical_min_score ?? 3));
+      setPreTestThreshold(String(rule.pre_test_threshold ?? rule.criteria_min_score ?? 70));
+      setPostTestThreshold(String(rule.post_test_threshold ?? rule.theory_min_score ?? 75));
+      setPracticalThreshold(String(rule.practical_threshold ?? rule.practical_min_score ?? 3));
       setIsActive(rule.is_active !== undefined ? rule.is_active : true);
     } else {
-      setCycleId(cycles.length > 0 ? String(cycles[0].id) : "");
-      setThematicAreaId(thematicAreas.length > 0 ? String(thematicAreas[0].id) : "");
-      setCriteriaMinScore("70");
-      setTheoryMinScore("75");
-      setPracticalMinScore("3");
+      setCycleId((prev) => prev || (cycles.length > 0 ? String(cycles[0].id) : ""));
+      setThematicAreaId((prev) => prev || (thematicAreas.length > 0 ? String(thematicAreas[0].id) : ""));
+      setPreTestThreshold("70");
+      setPostTestThreshold("75");
+      setPracticalThreshold("3");
       setIsActive(true);
     }
     setCycleError(null);
     setThematicAreaError(null);
-    setCriteriaError(null);
-    setTheoryError(null);
+    setPreTestError(null);
+    setPostTestError(null);
     setPracticalError(null);
     setServerError(null);
-  }, [rule, open, cycles, thematicAreas]);
+  }, [open, rule]);
 
   const validateScore = (val: string, name: string): { valid: boolean; num: number; error?: string } => {
     const num = Number(val);
@@ -110,32 +111,32 @@ export function PassingRuleFormDialog({
       setThematicAreaError(null);
     }
 
-    const criteriaRes = validateScore(criteriaMinScore, "Criteria minimum score");
-    if (!criteriaRes.valid) {
-      setCriteriaError(criteriaRes.error || null);
+    const preTestRes = validateScore(preTestThreshold, "Pre-test threshold score");
+    if (!preTestRes.valid) {
+      setPreTestError(preTestRes.error || null);
       hasError = true;
     } else {
-      setCriteriaError(null);
+      setPreTestError(null);
     }
 
-    const theoryRes = validateScore(theoryMinScore, "Theory minimum score");
-    if (!theoryRes.valid) {
-      setTheoryError(theoryRes.error || null);
+    const postTestRes = validateScore(postTestThreshold, "Post-test theory threshold score");
+    if (!postTestRes.valid) {
+      setPostTestError(postTestRes.error || null);
       hasError = true;
     } else {
-      setTheoryError(null);
+      setPostTestError(null);
     }
 
-    const numPractical = Number(practicalMinScore);
+    const numPractical = Number(practicalThreshold);
     let practicalValidNum = 3;
     if (
-      practicalMinScore.trim() === "" ||
+      practicalThreshold.trim() === "" ||
       Number.isNaN(numPractical) ||
       !Number.isInteger(numPractical) ||
       numPractical < 1 ||
       numPractical > 5
     ) {
-      setPracticalError("Practical threshold (practical_min_score) must be an integer between 1 and 5.");
+      setPracticalError("Practical threshold (practical_threshold) must be an integer between 1 and 5.");
       hasError = true;
     } else {
       setPracticalError(null);
@@ -152,18 +153,18 @@ export function PassingRuleFormDialog({
         saved = await updateAssessmentPassingRule(rule.id, {
           cycle_id: numCycleId,
           thematic_area_id: numThematicId,
-          criteria_min_score: criteriaRes.num,
-          theory_min_score: theoryRes.num,
-          practical_min_score: practicalValidNum,
+          pre_test_threshold: preTestRes.num,
+          post_test_threshold: postTestRes.num,
+          practical_threshold: practicalValidNum,
           is_active: isActive,
         });
       } else {
         saved = await createAssessmentPassingRule({
           cycle_id: numCycleId,
           thematic_area_id: numThematicId,
-          criteria_min_score: criteriaRes.num,
-          theory_min_score: theoryRes.num,
-          practical_min_score: practicalValidNum,
+          pre_test_threshold: preTestRes.num,
+          post_test_threshold: postTestRes.num,
+          practical_threshold: practicalValidNum,
           is_active: isActive,
         });
       }
@@ -281,67 +282,67 @@ export function PassingRuleFormDialog({
         {/* Score Thresholds Grid */}
         <div className="pt-2 border-t border-gray-100">
           <p className="text-xs font-semibold text-gray-700 mb-2">
-            Passing Thresholds (Criteria & Theory: 0–100%, Practical OSCE: 1–5 Scale)
+            Passing Thresholds (Pre-Test & Post-Test Theory: 0–100%, Practical OSCE: Level 1–5)
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Criteria Min Score */}
+            {/* Pre-Test Threshold */}
             <div>
-              <Label htmlFor="rule-criteria" className="block text-[11px] font-medium text-gray-600 mb-1">
-                Criteria Min Score (%)
+              <Label htmlFor="rule-pretest" className="block text-[11px] font-medium text-gray-600 mb-1">
+                Pre-Test Threshold (%)
               </Label>
               <Input
-                id="rule-criteria"
+                id="rule-pretest"
                 type="number"
                 min="0"
                 max="100"
                 step="1"
-                value={criteriaMinScore}
+                value={preTestThreshold}
                 onChange={(e) => {
-                  setCriteriaMinScore(e.target.value);
-                  if (criteriaError) setCriteriaError(null);
+                  setPreTestThreshold(e.target.value);
+                  if (preTestError) setPreTestError(null);
                 }}
                 required
-                className={cn("h-9 text-sm", criteriaError && "border-red-500 focus-visible:ring-red-500")}
+                className={cn("h-9 text-sm", preTestError && "border-red-500 focus-visible:ring-red-500")}
               />
-              {criteriaError && (
-                <p className="text-[10px] text-red-600 mt-1">{criteriaError}</p>
+              {preTestError && (
+                <p className="text-[10px] text-red-600 mt-1">{preTestError}</p>
               )}
             </div>
 
-            {/* Theory Min Score */}
+            {/* Post-Test Theory Threshold */}
             <div>
-              <Label htmlFor="rule-theory" className="block text-[11px] font-medium text-gray-600 mb-1">
-                Theory Min Score (%)
+              <Label htmlFor="rule-posttest" className="block text-[11px] font-medium text-gray-600 mb-1">
+                Post-Test Theory (%) <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="rule-theory"
+                id="rule-posttest"
                 type="number"
                 min="0"
                 max="100"
                 step="1"
-                value={theoryMinScore}
+                value={postTestThreshold}
                 onChange={(e) => {
-                  setTheoryMinScore(e.target.value);
-                  if (theoryError) setTheoryError(null);
+                  setPostTestThreshold(e.target.value);
+                  if (postTestError) setPostTestError(null);
                 }}
                 required
-                className={cn("h-9 text-sm", theoryError && "border-red-500 focus-visible:ring-red-500")}
+                className={cn("h-9 text-sm", postTestError && "border-red-500 focus-visible:ring-red-500")}
               />
-              {theoryError && (
-                <p className="text-[10px] text-red-600 mt-1">{theoryError}</p>
+              {postTestError && (
+                <p className="text-[10px] text-red-600 mt-1">{postTestError}</p>
               )}
             </div>
 
-            {/* Practical Min Score (Scale 1 - 5) */}
+            {/* Practical Threshold (Scale 1 - 5) */}
             <div>
               <Label htmlFor="rule-practical" className="block text-[11px] font-medium text-gray-600 mb-1">
-                Practical OSCE Min (1 - 5)
+                Practical OSCE Min (1 - 5) <span className="text-red-500">*</span>
               </Label>
               <select
                 id="rule-practical"
-                value={practicalMinScore}
+                value={practicalThreshold}
                 onChange={(e) => {
-                  setPracticalMinScore(e.target.value);
+                  setPracticalThreshold(e.target.value);
                   if (practicalError) setPracticalError(null);
                 }}
                 required
