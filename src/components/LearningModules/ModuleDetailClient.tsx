@@ -2942,7 +2942,7 @@ export function ModuleDetailClient({
       {/* Modal 3: Add Learning Material */}
       {isSuperAdmin && (
         <Dialog open={isAddMaterialOpen} onOpenChange={setIsAddMaterialOpen}>
-          <DialogContent className={cn("bg-white p-6 rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto", newMaterialCategory === "PRACTICAL_ASSESSMENT" ? "max-w-3xl" : "max-w-xl")}>
+          <DialogContent className={cn("bg-white p-6 rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto w-[calc(100vw-2rem)]", newMaterialCategory === "PRACTICAL_ASSESSMENT" ? "sm:max-w-3xl md:max-w-4xl" : "sm:max-w-2xl md:max-w-3xl")}>
             <DialogHeader className="pb-3 border-b border-gray-100">
               <DialogTitle className="text-lg font-bold text-[#194611]">
                 {newMaterialCategory === "PRACTICAL_ASSESSMENT"
@@ -2986,37 +2986,28 @@ export function ModuleDetailClient({
                 </select>
               </div>
 
-              {/* Conditional Subcategory & Stage for EXAMINATION */}
+              {/* Conditional Subcategory for EXAMINATION */}
               {newMaterialCategory === "EXAMINATION" && (
-                <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200 space-y-2.5">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                        Subcategory
-                      </label>
-                      <select
-                        value={newExamSubcategory}
-                        onChange={(e) => setNewExamSubcategory(e.target.value as any)}
-                        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
-                      >
-                        <option value="EXAM_QUESTIONS">Questions (EXAM_QUESTIONS)</option>
-                        <option value="ANSWER_KEY">Answer Key (ANSWER_KEY)</option>
-                      </select>
-                    </div>
+                <div className="p-3.5 rounded-lg bg-blue-50/70 border border-blue-200 space-y-2.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
+                      Examination Component <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newExamSubcategory}
+                      onChange={(e) => setNewExamSubcategory(e.target.value as any)}
+                      className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
+                    >
+                      <option value="EXAM_QUESTIONS">Course Examination Paper (Questions)</option>
+                      <option value="ANSWER_KEY">Official Answer Key (Mentor/Admin Only)</option>
+                    </select>
+                  </div>
 
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                        Exam Stage
-                      </label>
-                      <select
-                        value={newExamStage}
-                        onChange={(e) => setNewExamStage(e.target.value as any)}
-                        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
-                      >
-                        <option value="PRETEST">Pre-Test (PRETEST)</option>
-                        <option value="POST_TEST">Post-Test (POST_TEST)</option>
-                      </select>
-                    </div>
+                  <div className="flex items-start gap-2 p-2 bg-blue-100/60 border border-blue-200 rounded text-blue-900 text-xs">
+                    <Award className="w-3.5 h-3.5 text-blue-700 shrink-0 mt-0.5" />
+                    <span className="text-[11px] leading-relaxed">
+                      <strong>Unified Course Examination:</strong> Pre-Test and Post-Test share the same examination paper (shuffled automatically by the system for mentees). You only need to upload one exam file.
+                    </span>
                   </div>
 
                   {newExamSubcategory === "ANSWER_KEY" && (

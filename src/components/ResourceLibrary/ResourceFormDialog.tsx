@@ -265,7 +265,7 @@ export function ResourceFormDialog({
       setIsRequired(examSubcategory === "EXAM_QUESTIONS");
       if (!title || title.includes("Manual") || title.includes("Slides")) {
         setTitle(
-          `${examinationStage === "PRETEST" ? "Pre-Test" : "Post-Test"} Examination ${
+          `Course Examination ${
             examSubcategory === "ANSWER_KEY" ? "Answer Key" : "Questions"
           }`
         );
@@ -529,7 +529,7 @@ export function ResourceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[620px] p-0 bg-white border border-gray-100 shadow-2xl rounded-2xl overflow-hidden max-h-[92dvh] flex flex-col">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl md:max-w-4xl lg:max-w-5xl p-0 bg-white border border-gray-100 shadow-2xl rounded-2xl overflow-hidden max-h-[92dvh] flex flex-col">
         {/* Modal Header */}
         <DialogHeader className="p-5 sm:p-6 bg-gray-50/90 border-b border-gray-100 shrink-0">
           <div className="flex items-center justify-between">
@@ -700,42 +700,34 @@ export function ResourceFormDialog({
               {/* CASE 1: EXAMINATION SUB-SELECTORS */}
               {materialCategory === "EXAMINATION" && (
                 <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-[11px] font-bold text-gray-700 block mb-1">
-                        Subcategory <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        value={examSubcategory}
-                        onChange={(e) => {
-                          const val = e.target.value as ExamSubcategory;
-                          setExamSubcategory(val);
-                          setIsRequired(val === "EXAM_QUESTIONS");
-                        }}
-                        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
-                      >
-                        <option value="EXAM_QUESTIONS">Questions (EXAM_QUESTIONS)</option>
-                        <option value="ANSWER_KEY">Answer Key (ANSWER_KEY)</option>
-                      </select>
-                    </div>
+                  <div>
+                    <Label className="text-[11px] font-bold text-gray-700 block mb-1">
+                      Examination Component <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      value={examSubcategory}
+                      onChange={(e) => {
+                        const val = e.target.value as ExamSubcategory;
+                        setExamSubcategory(val);
+                        setIsRequired(val === "EXAM_QUESTIONS");
+                        setTitle(`Course Examination ${val === "ANSWER_KEY" ? "Answer Key" : "Questions"}`);
+                      }}
+                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[#194611]"
+                    >
+                      <option value="EXAM_QUESTIONS">Course Examination Paper (Questions)</option>
+                      <option value="ANSWER_KEY">Official Answer Key (Mentor/Admin Only)</option>
+                    </select>
+                  </div>
 
-                    <div>
-                      <Label className="text-[11px] font-bold text-gray-700 block mb-1">
-                        Exam Stage <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        value={examinationStage}
-                        onChange={(e) => setExaminationStage(e.target.value as any)}
-                        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
-                      >
-                        <option value="PRETEST">Pre-Test (PRETEST)</option>
-                        <option value="POST_TEST">Post-Test (POST_TEST)</option>
-                      </select>
-                    </div>
+                  <div className="flex items-start gap-2 p-2.5 bg-blue-100/70 border border-blue-200 rounded-lg text-blue-900 text-xs">
+                    <Award className="w-4 h-4 shrink-0 text-blue-700 mt-0.5" />
+                    <span className="text-[11px] leading-relaxed">
+                      <strong>Unified Course Examination:</strong> Pre-Test and Post-Test use the same exam paper (questions and choices are automatically shuffled by the system for mentees). Only one exam document needs to be uploaded.
+                    </span>
                   </div>
 
                   {examSubcategory === "ANSWER_KEY" && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-100/90 p-2 rounded-lg border border-amber-300">
+                    <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-100/90 p-2.5 rounded-lg border border-amber-300">
                       <Lock className="w-3.5 h-3.5 shrink-0 text-amber-700" />
                       <span>
                         Confidential Answer Key: Locked until mentees complete their examination.

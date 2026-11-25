@@ -221,9 +221,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
       setIsRequired(examSubcategory === "EXAM_QUESTIONS");
       if (!materialTitle || materialTitle.includes("Manual") || materialTitle.includes("Slides")) {
         setMaterialTitle(
-          `${title.trim() || "Clinical Module"} - ${
-            examinationStage === "PRETEST" ? "Pre-Test" : "Post-Test"
-          } Examination`
+          `${title.trim() || "Clinical Module"} - Course Examination`
         );
       }
     } else if (newCat === "PRACTICAL_ASSESSMENT") {
@@ -1122,36 +1120,14 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                             </div>
                           </div>
 
-                          {/* Exam Stage: PRETEST vs POST_TEST */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-gray-800">
-                              Examination Stage <span className="text-red-500">*</span>
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setExaminationStage("PRETEST")}
-                                className={cn(
-                                  "py-2 px-3 text-xs font-semibold rounded-lg border transition text-center",
-                                  examinationStage === "PRETEST"
-                                    ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
-                                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                                )}
-                              >
-                                Pre-Test (PRETEST)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setExaminationStage("POST_TEST")}
-                                className={cn(
-                                  "py-2 px-3 text-xs font-semibold rounded-lg border transition text-center",
-                                  examinationStage === "POST_TEST"
-                                    ? "bg-[#194611] text-white border-[#194611] shadow-2xs"
-                                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                                )}
-                              >
-                                Post-Test (POST_TEST)
-                              </button>
+                          {/* Unified Examination Note */}
+                          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-100/70 border border-blue-200 text-blue-900 text-xs">
+                            <Award className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                            <div className="space-y-0.5">
+                              <p className="font-bold text-blue-950">Unified Course Examination</p>
+                              <p className="text-[11px] text-blue-800 leading-relaxed">
+                                Pre-Test and Post-Test use the exact same examination paper. Questions and choices are automatically shuffled by the platform for mentees. You only need to upload one exam file.
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -1455,7 +1431,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                             examSubcategory === "EXAM_QUESTIONS"
                               ? "Question Bank / Exam Paper"
                               : "Official Answer Key"
-                          } (${examinationStage})`
+                          } (Pre-Test & Post-Test Shuffled)`
                         : "Upload Training & Curriculum Media"}
                     </CardTitle>
                     <CardDescription className="text-xs text-gray-500 mt-0.5">
@@ -1681,14 +1657,14 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                           <div>
                             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-900">
                               <Award className="w-4 h-4 text-blue-700" />
-                              Stage: {examinationStage} Examination Questions
+                              Unified Course Examination Questions
                             </div>
                             <p className="text-xs text-blue-800 mt-0.5">
-                              Uploaded test questions will be presented during clinical assessments.
+                              Uploaded test questions serve as both Pre-Test and Post-Test (shuffled automatically by the system).
                             </p>
                           </div>
                           <Badge className="bg-blue-600 text-white text-[10px]">
-                            {examinationStage}
+                            Pre/Post Shuffled
                           </Badge>
                         </div>
                       )}
