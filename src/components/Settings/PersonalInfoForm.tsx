@@ -7,7 +7,7 @@ import { Mail, Phone, Save, User } from "lucide-react";
 import { useSession } from "next-auth/react";
 import type { AdminProfile } from "@/types/settings";
 import { updateProfile } from "@/services/settings-data.service";
-import { REGIONS, profileSchema, type ProfileFormValues } from "./settingsSchema";
+import { profileSchema, type ProfileFormValues } from "./settingsSchema";
 import { Field, inputClass } from "./FormField";
 
 interface Props {
@@ -41,9 +41,6 @@ export default function PersonalInfoForm({ profile, onSaved }: Props) {
             email: profile.email,
             phone: profile.phone,
             facilityName: profile.facilityName,
-            region: profile.region,
-            zone: profile.zone,
-            woreda: profile.woreda,
         },
     });
 
@@ -110,28 +107,17 @@ export default function PersonalInfoForm({ profile, onSaved }: Props) {
                 </div>
 
                 <div className="pt-2">
-                    <SectionLabel>FACILITY DETAILS</SectionLabel>
+                    <SectionLabel>ASSIGNED FACILITY</SectionLabel>
                 </div>
-                <Field label="Facility Name" htmlFor="facilityName" error={errors.facilityName?.message}>
-                    <input id="facilityName" {...register("facilityName")} className={inputClass} />
+                <Field label="Facility" htmlFor="facilityName" error={errors.facilityName?.message}>
+                    <input
+                        id="facilityName"
+                        {...register("facilityName")}
+                        readOnly
+                        disabled
+                        className={`${inputClass} bg-gray-50 text-gray-600 cursor-not-allowed`}
+                    />
                 </Field>
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Region" htmlFor="region" error={errors.region?.message}>
-                        <select id="region" {...register("region")} className={inputClass}>
-                            {REGIONS.map((r) => (
-                                <option key={r} value={r}>
-                                    {r}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field label="Zone / Sub-County" htmlFor="zone" error={errors.zone?.message}>
-                        <input id="zone" {...register("zone")} className={inputClass} />
-                    </Field>
-                    <Field label="Woreda / Ward" htmlFor="woreda" error={errors.woreda?.message}>
-                        <input id="woreda" {...register("woreda")} className={inputClass} />
-                    </Field>
-                </div>
             </div>
 
             {serverError && (

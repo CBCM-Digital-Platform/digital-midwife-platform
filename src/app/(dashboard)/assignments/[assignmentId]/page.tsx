@@ -174,9 +174,19 @@ export default async function AssignmentDetailPage({
                         <Calendar className="size-5 shrink-0 text-[#194611]" />
                         <div className="min-w-0">
                             <p className="text-xs text-gray-500">Mentorship Cycle</p>
-                            <p className="truncate text-sm font-semibold text-gray-900">
-                                {assignment.cycleName || "Cohort Mentorship Cycle"}
-                            </p>
+                            {assignment.cycleId ? (
+                                <Link
+                                    href={`/cycles/${assignment.cycleId}`}
+                                    className="truncate text-sm font-semibold text-[#194611] hover:underline block"
+                                    title="View Mentorship Cycle Details"
+                                >
+                                    {assignment.cycleName || `Cycle #${assignment.cycleId}`}
+                                </Link>
+                            ) : (
+                                <p className="truncate text-sm font-semibold text-gray-900">
+                                    {assignment.cycleName || "Cohort Mentorship Cycle"}
+                                </p>
+                            )}
                         </div>
                     </div>
 

@@ -540,64 +540,13 @@ export async function syncAssessmentTheory(assessmentId: string | number): Promi
     return apiClient.post<unknown>(ENDPOINTS.ASSESSMENTS.SYNC_THEORY(id));
 }
 
-export async function getAssessmentPassingRules(): Promise<AssessmentPassingRule[]> {
-    const response = await apiClient.get<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULES);
-    return getApiList(response, ["rules"]).map((rule) => ({
-        id: Number(rule.id),
-        cycle_id: rule.cycle_id == null ? null : Number(rule.cycle_id),
-        thematic_area_id: rule.thematic_area_id == null ? null : Number(rule.thematic_area_id),
-        criteria_min_score: Number(rule.criteria_min_score),
-        theory_min_score: Number(rule.theory_min_score),
-        practical_min_score: Number(rule.practical_min_score),
-        is_active: Boolean(rule.is_active),
-    }));
-}
-
-export interface AssessmentPassingRuleInput {
-    cycle_id: number;
-    thematic_area_id: number;
-    criteria_min_score: number;
-    theory_min_score: number;
-    practical_min_score: number;
-    is_active?: boolean;
-}
-
-export async function createAssessmentPassingRule(
-    input: Omit<AssessmentPassingRuleInput, "is_active">
-): Promise<AssessmentPassingRule> {
-    const response = await apiClient.post<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULES, input);
-    return normalizePassingRule(response);
-}
-
-export async function updateAssessmentPassingRule(
-    ruleId: number,
-    input: Partial<AssessmentPassingRuleInput>
-): Promise<AssessmentPassingRule> {
-    const response = await apiClient.patch<unknown>(ENDPOINTS.ASSESSMENTS.PASSING_RULE(ruleId), input);
-    return normalizePassingRule(response);
-}
-
-export async function deactivateAssessmentPassingRule(ruleId: number): Promise<void> {
-    if (!Number.isInteger(ruleId) || ruleId < 1) {
-        throw new Error("Passing rule ID must be a positive integer.");
-    }
-    await apiClient.delete(ENDPOINTS.ASSESSMENTS.PASSING_RULE(ruleId));
-}
-
-function normalizePassingRule(response: unknown): AssessmentPassingRule {
-    const data = asRecord(unwrap(response));
-    const rule = asRecord(data.rule ?? data);
-    const id = Number(rule.id);
-    if (!Number.isInteger(id) || id < 1) {
-        throw new Error("The assessment passing-rules API returned an invalid rule.");
-    }
-    return {
-        id,
-        cycle_id: rule.cycle_id == null ? null : Number(rule.cycle_id),
-        thematic_area_id: rule.thematic_area_id == null ? null : Number(rule.thematic_area_id),
-        criteria_min_score: Number(rule.criteria_min_score),
-        theory_min_score: Number(rule.theory_min_score),
-        practical_min_score: Number(rule.practical_min_score),
-        is_active: Boolean(rule.is_active),
-    };
-}
+export {
+    getAssessmentPassingRules,
+    getAssessmentPassingRuleById,
+    createAssessmentPassingRule,
+    updateAssessmentPassingRule,
+    deactivateAssessmentPassingRule,
+    deleteAssessmentPassingRule,
+    type AssessmentPassingRule,
+    type AssessmentPassingRuleInput,
+} from "@/services/assessment-passing-rules.service";

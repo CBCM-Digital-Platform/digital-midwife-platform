@@ -62,6 +62,7 @@ function mapAssignment(
         mentees: Map<string, ApiRecord>;
         facilities: Map<string, string>;
         thematicAreas: Map<string, string>;
+        cycles?: Map<string, string>;
     },
 ): Assignment {
     const mentorId = raw.mentor_id ?? raw.mentorId ?? asRecord(raw.mentor).id;
@@ -162,7 +163,13 @@ function mapAssignment(
         status: ["assigned", "active"].includes(status) ? "active" : "pending",
         backendStatus: status || undefined,
         isNew,
-        cycleName: String(asRecord(raw.cycle).name ?? raw.cycle_name ?? ""),
+        cycleName: String(
+            asRecord(raw.cycle).name ??
+            raw.cycle_name ??
+            raw.cycleName ??
+            (cycleId && lookups.cycles ? lookups.cycles.get(String(cycleId)) : "") ??
+            ""
+        ).trim(),
         notes: typeof raw.notes === "string" ? raw.notes : undefined,
         createdAt: assignedAt || undefined,
         facilityId: typeof facilityId === "string" || typeof facilityId === "number" ? facilityId : undefined,
@@ -173,16 +180,18 @@ function mapAssignment(
 }
 
 async function getAssignmentLookups() {
-    const [mentorsResponse, menteesResponse, facilitiesResponse, thematicAreasResponse] = await Promise.all([
+    const [mentorsResponse, menteesResponse, facilitiesResponse, thematicAreasResponse, cyclesResponse] = await Promise.all([
         apiClient<unknown>("/api/v1/users", { params: { role: "mentor", page: 1, limit: 100 } }).catch(() => null),
         apiClient<unknown>("/api/v1/users", { params: { role: "mentee", page: 1, limit: 100 } }).catch(() => null),
         apiClient<unknown>(ENDPOINTS.FACILITIES.BASE, { params: { page: 1, limit: 100 } }).catch(() => null),
         apiClient<unknown>(ENDPOINTS.THEMATIC_AREAS.BASE, { params: { page: 1, limit: 100 } }).catch(() => null),
+        apiClient<unknown>(ENDPOINTS.CYCLES.BASE, { params: { page: 1, limit: 100 } }).catch(() => null),
     ]);
     const mentors = mentorsResponse ? getApiList(mentorsResponse, ["items", "users", "results"]) : [];
     const mentees = menteesResponse ? getApiList(menteesResponse, ["items", "users", "results"]) : [];
     const facilities = facilitiesResponse ? getApiList(facilitiesResponse, ["items", "facilities", "results"]) : [];
     const thematicAreas = thematicAreasResponse ? getApiList(thematicAreasResponse, ["items", "thematic_areas", "thematicAreas", "results"]) : [];
+    const cycles = cyclesResponse ? getApiList(cyclesResponse, ["items", "cycles", "mentorship_cycles", "results"]) : [];
 
     const thematicAreaMap = new Map<string, string>();
     for (const ta of thematicAreas) {
@@ -197,11 +206,21 @@ async function getAssignmentLookups() {
         }
     }
 
+    const cycleMap = new Map<string, string>();
+    for (const cy of cycles) {
+        const id = String(cy.id ?? "");
+        const name = String(cy.name ?? cy.title ?? cy.cycle_name ?? "").trim();
+        if (id && name) {
+            cycleMap.set(id, name);
+        }
+    }
+
     return {
         mentors: new Map(mentors.map((user) => [String(user.id), user])),
         mentees: new Map(mentees.map((user) => [String(user.id), user])),
         facilities: new Map(facilities.map((facility) => [String(facility.id), String(facility.name ?? "")])),
         thematicAreas: thematicAreaMap,
+        cycles: cycleMap,
     };
 }
 

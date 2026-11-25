@@ -24,7 +24,6 @@ import {
   updateThematicAreaStatus,
   deleteThematicArea,
   getStoredAreas,
-  THEMATIC_CATEGORIES,
 } from "@/services/thematic-areas.service";
 import type { ThematicArea, ThematicAreaStatus } from "@/types/thematic-area";
 import { cn } from "@/lib/utils";
@@ -41,7 +40,6 @@ export function ThematicAreasTableClient({
   const [selectedAreaForEdit, setSelectedAreaForEdit] = useState<ThematicArea | null>(null);
   const [selectedAreaForDetail, setSelectedAreaForDetail] = useState<ThematicArea | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [toastMessage, setToastMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -149,12 +147,9 @@ export function ThematicAreasTableClient({
       if (statusFilter !== "all" && area.status !== statusFilter) {
         return false;
       }
-      if (categoryFilter !== "all" && area.category !== categoryFilter) {
-        return false;
-      }
       return true;
     });
-  }, [areas, statusFilter, categoryFilter]);
+  }, [areas, statusFilter]);
 
   // Table Column Definitions
   const columns = useMemo<ColumnDef<ThematicArea>[]>(
@@ -165,7 +160,7 @@ export function ThematicAreasTableClient({
         cell: ({ row }) => {
           const area = row.original;
           return (
-            <div className="flex items-center gap-2.5 max-w-[260px] sm:max-w-[280px]">
+            <div className="flex items-center gap-2.5 max-w-[280px]">
               <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-200 text-[#194611] flex items-center justify-center shrink-0 font-bold text-xs">
                 <Layers className="h-4 w-4" />
               </div>
@@ -178,24 +173,10 @@ export function ThematicAreasTableClient({
                     {area.code}
                   </span>
                 </div>
-                {area.description && (
-                  <span className="text-[11px] text-gray-400 truncate mt-0.5" title={area.description}>
-                    {area.description}
-                  </span>
-                )}
               </div>
             </div>
           );
         },
-      },
-      {
-        accessorKey: "category",
-        header: "Clinical Domain",
-        cell: ({ row }) => (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-100 whitespace-nowrap">
-            {row.original.category}
-          </span>
-        ),
       },
       {
         accessorKey: "competenciesCount",
@@ -213,28 +194,6 @@ export function ThematicAreasTableClient({
                 <BookOpen className="h-3.5 w-3.5 text-gray-400" />
                 {a.modulesCount || 3} Modules
               </span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: "targetCadres",
-        header: "Applicable Cadres",
-        cell: ({ row }) => {
-          const cadres = row.original.targetCadres || [];
-          if (cadres.length === 0) {
-            return <span className="text-xs text-gray-400 whitespace-nowrap">All Midwifery Cadres</span>;
-          }
-          return (
-            <div className="flex items-center gap-1 max-w-[150px] truncate">
-              <span className="text-xs text-gray-700 font-medium truncate" title={cadres.join(", ")}>
-                {cadres[0]}
-              </span>
-              {cadres.length > 1 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-gray-100 text-gray-600 font-medium shrink-0">
-                  +{cadres.length - 1}
-                </span>
-              )}
             </div>
           );
         },
@@ -372,7 +331,7 @@ export function ThematicAreasTableClient({
         columns={columns}
         data={filteredData}
         onRowClick={(area) => setSelectedAreaForDetail(area)}
-        searchPlaceholder="Search thematic areas by code, title, or clinical domain..."
+        searchPlaceholder="Search thematic areas by code or title..."
         emptyMessage="No thematic areas found matching your filter criteria."
         actions={
           <button
@@ -397,21 +356,6 @@ export function ThematicAreasTableClient({
               <option value="active">Active Only</option>
               <option value="under_review">Under Review</option>
               <option value="inactive">Inactive / Archived</option>
-            </select>
-
-            {/* Category / Domain Filter */}
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-9 px-3 py-1 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#194611] cursor-pointer"
-              aria-label="Filter by clinical category"
-            >
-              <option value="all">All Domains</option>
-              {THEMATIC_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
             </select>
           </div>
         }

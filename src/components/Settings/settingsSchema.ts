@@ -1,32 +1,12 @@
 import { z } from "zod";
 import { zodEmail, zodPhone, zodName } from "@/lib/validators";
 
-export const REGIONS = [
-    "Addis Ababa",
-    "Afar",
-    "Amhara",
-    "Benishangul-Gumuz",
-    "Central Ethiopia",
-    "Dire Dawa",
-    "Gambela",
-    "Harari",
-    "Oromia",
-    "Sidama",
-    "Somali",
-    "South Ethiopia",
-    "South West Ethiopia",
-    "Tigray",
-] as const;
-
 export const profileSchema = z.object({
     fullName: zodName("Full name", 3),
     position: z.string().trim().min(2, "Position is required"),
     email: zodEmail,
     phone: zodPhone,
-    facilityName: z.string().trim().min(2, "Facility name is required"),
-    region: z.string().min(1, "Select a region"),
-    zone: z.string().trim().min(1, "Zone / sub-county is required"),
-    woreda: z.string().trim().min(1, "Woreda / ward is required"),
+    facilityName: z.string().trim().optional(),
 });
 
 export type ProfileFormValues = z.infer<typeof profileSchema>;

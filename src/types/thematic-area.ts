@@ -4,7 +4,7 @@ export interface ThematicArea {
   id: string;
   code: string;
   name: string;
-  category: string;
+  category?: string;
   description?: string;
   targetCadres?: string[];
   competenciesCount?: number;
@@ -17,18 +17,12 @@ export interface ThematicArea {
 export interface CreateThematicAreaInput {
   code: string;
   name: string;
-  category: string;
-  description?: string;
-  targetCadres?: string[];
   status?: ThematicAreaStatus;
 }
 
 export interface UpdateThematicAreaInput {
   code?: string;
   name?: string;
-  category?: string;
-  description?: string;
-  targetCadres?: string[];
   status?: ThematicAreaStatus;
 }
 
@@ -36,5 +30,5 @@ export interface ThematicAreaStats {
   totalAreas: number;
   activeAreas: number;
   totalCompetencies: number;
-  categoriesCount: number;
+  categoriesCount?: number;
 }

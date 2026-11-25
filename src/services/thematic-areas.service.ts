@@ -34,99 +34,11 @@ export function resolveThematicAreaName(idOrName?: number | string | null): stri
   return undefined;
 }
 
-export const THEMATIC_CATEGORIES = [
-  "Reproductive Health",
-  "Obstetric Care",
-  "Maternal Health",
-  "Neonatal Care",
-  "Infectious Diseases",
-  "Critical Care",
-  "Clinical Midwifery",
-  "Primary Healthcare",
-] as const;
-
-export const TARGET_CADRES_OPTIONS = [
-  "Midwife Mentors",
-  "Junior Midwives",
-  "Resident Midwives",
-  "Clinical Preceptors",
-  "Adolescent Health Focal Persons",
-  "Facility Supervisors",
-] as const;
-
-export function inferCategory(name: string, code: string): string {
-  const text = `${name} ${code}`.toLowerCase();
-  if (
-    text.includes("adolescent") ||
-    text.includes("youth") ||
-    text.includes("reproductive") ||
-    text.includes("abortion") ||
-    text.includes("family planning") ||
-    text.includes("contracept") ||
-    text.includes("aysrh")
-  ) {
-    return "Reproductive Health";
-  }
-  if (
-    text.includes("obstetric") ||
-    text.includes("emonc") ||
-    text.includes("labor") ||
-    text.includes("delivery") ||
-    text.includes("hemorrhage")
-  ) {
-    return "Obstetric Care";
-  }
-  if (
-    text.includes("neonatal") ||
-    text.includes("pediatric") ||
-    text.includes("newborn") ||
-    text.includes("infant") ||
-    text.includes("pnc")
-  ) {
-    return "Neonatal Care";
-  }
-  if (
-    text.includes("infection") ||
-    text.includes("pmtct") ||
-    text.includes("hiv") ||
-    text.includes("sti") ||
-    text.includes("tb")
-  ) {
-    return "Infectious Diseases";
-  }
-  if (
-    text.includes("surgery") ||
-    text.includes("critical") ||
-    text.includes("anesthesia") ||
-    text.includes("caesarean")
-  ) {
-    return "Critical Care";
-  }
-  if (
-    text.includes("maternal") ||
-    text.includes("antenatal") ||
-    text.includes("postnatal") ||
-    text.includes("child") ||
-    text.includes("mch")
-  ) {
-    return "Maternal Health";
-  }
-  return "Clinical Midwifery";
-}
-
 export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
   {
     id: "1",
     code: "AYSRH",
     name: "Adolescent & Youth Sexual Reproductive Health",
-    category: "Reproductive Health",
-    description:
-      "Comprehensive youth-friendly reproductive counseling, adolescent contraception, STI screening, and psychosocial support protocols in hospital maternity units.",
-    targetCadres: [
-      "Midwife Mentors",
-      "Junior Midwives",
-      "Adolescent Health Focal Persons",
-    ],
     competenciesCount: 18,
     modulesCount: 4,
     status: "active",
@@ -137,10 +49,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "2",
     code: "EmONC",
     name: "Emergency Obstetric & Newborn Care",
-    category: "Obstetric Care",
-    description:
-      "Protocol-driven clinical response to post-partum hemorrhage, pre-eclampsia/eclampsia, obstructed labor, sepsis, and immediate newborn resuscitation.",
-    targetCadres: ["Midwife Mentors", "Clinical Preceptors", "Resident Midwives"],
     competenciesCount: 24,
     modulesCount: 6,
     status: "active",
@@ -151,10 +59,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "3",
     code: "MCH",
     name: "Maternal & Child Health",
-    category: "Maternal Health",
-    description:
-      "Antenatal screening, labor progress monitoring with digital partographs, postpartum recovery, and community child health linkage.",
-    targetCadres: ["Junior Midwives", "Resident Midwives", "Midwife Mentors"],
     competenciesCount: 16,
     modulesCount: 4,
     status: "active",
@@ -165,10 +69,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "4",
     code: "FP-CAC",
     name: "Family Planning & Comprehensive Abortion Care",
-    category: "Reproductive Health",
-    description:
-      "Modern contraceptive methods insertion, adolescent counseling, post-abortion care, and clinical management of reproductive complications.",
-    targetCadres: ["Midwife Mentors", "Junior Midwives"],
     competenciesCount: 14,
     modulesCount: 3,
     status: "active",
@@ -179,10 +79,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "5",
     code: "PNC",
     name: "Pediatrics & Neonatal Care",
-    category: "Neonatal Care",
-    description:
-      "Essential newborn care, kangaroo mother care for preterm infants, neonatal sepsis identification, and phototherapy administration.",
-    targetCadres: ["Resident Midwives", "Clinical Preceptors"],
     competenciesCount: 15,
     modulesCount: 4,
     status: "active",
@@ -193,10 +89,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "6",
     code: "PMTCT",
     name: "Infectious Diseases & PMTCT",
-    category: "Infectious Diseases",
-    description:
-      "Prevention of mother-to-child transmission of HIV, hepatitis B and syphilis screening, universal infection prevention, and antiretroviral adherence support.",
-    targetCadres: ["Midwife Mentors", "Junior Midwives", "Adolescent Health Focal Persons"],
     competenciesCount: 12,
     modulesCount: 3,
     status: "active",
@@ -207,10 +99,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "7",
     code: "SCC",
     name: "Surgery & Critical Midwifery Care",
-    category: "Critical Care",
-    description:
-      "Surgical assistance during emergency caesarean delivery, vacuum extraction, blood transfusion protocols, and post-anesthesia patient recovery.",
-    targetCadres: ["Clinical Preceptors", "Facility Supervisors"],
     competenciesCount: 10,
     modulesCount: 2,
     status: "under_review",
@@ -221,10 +109,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
     id: "8",
     code: "IM-PC",
     name: "Internal Medicine & Perinatal Complications",
-    category: "Clinical Midwifery",
-    description:
-      "Chronic medical condition management during pregnancy including gestational diabetes, cardiac disease, and severe anemia.",
-    targetCadres: ["Clinical Preceptors", "Midwife Mentors"],
     competenciesCount: 9,
     modulesCount: 2,
     status: "inactive",
@@ -234,27 +118,6 @@ export const INITIAL_THEMATIC_AREAS: ThematicArea[] = [
 ];
 
 const LOCAL_STORAGE_KEY = "cbcm_thematic_areas_store";
-
-function getStoredMeta(): Record<string, Partial<ThematicArea>> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem("cbcm_thematic_meta_store");
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveMeta(idOrCode: string, meta: Partial<ThematicArea>): void {
-  if (typeof window === "undefined") return;
-  try {
-    const store = getStoredMeta();
-    store[idOrCode] = { ...(store[idOrCode] || {}), ...meta };
-    localStorage.setItem("cbcm_thematic_meta_store", JSON.stringify(store));
-  } catch {
-    // Ignore
-  }
-}
 
 export function getStoredAreas(): ThematicArea[] {
   if (typeof window === "undefined") return INITIAL_THEMATIC_AREAS;
@@ -288,27 +151,7 @@ export function normalizeThematicArea(raw: any): ThematicArea {
   const code = String(raw?.code || raw?.area_code || `TA-${id}`).trim();
   const name = String(raw?.name || raw?.title || "Unnamed Thematic Area").trim();
 
-  const metaStore = getStoredMeta();
-  const meta = metaStore[id] || metaStore[code] || {};
-
-  const category =
-    meta.category ||
-    raw?.category ||
-    raw?.domain ||
-    inferCategory(name, code);
-
-  const description =
-    meta.description ||
-    raw?.description ||
-    `Accredited Ministry of Health clinical mentorship domain for ${name} (${code}).`;
-
-  const targetCadres =
-    meta.targetCadres ||
-    (Array.isArray(raw?.target_cadres || raw?.targetCadres)
-      ? raw.target_cadres || raw.targetCadres
-      : ["Midwife Mentors", "Junior Midwives", "Clinical Preceptors"]);
-
-  const rawStatus = String(meta.status || raw?.status || "").toLowerCase().trim();
+  const rawStatus = String(raw?.status || "").toLowerCase().trim();
   let status: ThematicAreaStatus = "active";
   if (rawStatus === "inactive" || rawStatus === "disabled") {
     status = "inactive";
@@ -320,11 +163,8 @@ export function normalizeThematicArea(raw: any): ThematicArea {
     id,
     code,
     name,
-    category,
-    description,
-    targetCadres,
-    competenciesCount: Number(meta.competenciesCount ?? raw?.competencies_count ?? raw?.competenciesCount ?? 12),
-    modulesCount: Number(meta.modulesCount ?? raw?.modules_count ?? raw?.modulesCount ?? 3),
+    competenciesCount: Number(raw?.competencies_count ?? raw?.competenciesCount ?? 12),
+    modulesCount: Number(raw?.modules_count ?? raw?.modulesCount ?? 3),
     status,
     createdAt: raw?.created_at || raw?.createdAt || new Date().toISOString(),
     updatedAt: raw?.updated_at || raw?.updatedAt,
@@ -431,20 +271,6 @@ export async function createThematicArea(
 
       const raw = res?.data?.thematicArea || res?.data || res;
       if (raw && (raw.id || raw.code)) {
-        const createdId = String(raw.id);
-        saveMeta(createdId, {
-          category: data.category,
-          description: data.description,
-          targetCadres: data.targetCadres,
-          status: data.status || "active",
-        });
-        saveMeta(trimmedCode, {
-          category: data.category,
-          description: data.description,
-          targetCadres: data.targetCadres,
-          status: data.status || "active",
-        });
-
         const normalized = normalizeThematicArea(raw);
         const list = getStoredAreas();
         saveStoredAreas([normalized, ...list.filter((a) => a.id !== normalized.id)]);
@@ -464,31 +290,12 @@ export async function createThematicArea(
     id: `ta-${Date.now()}`,
     code: trimmedCode,
     name: trimmedName,
-    category: data.category.trim(),
-    description: data.description?.trim() || undefined,
-    targetCadres:
-      data.targetCadres && data.targetCadres.length > 0
-        ? data.targetCadres
-        : ["Midwife Mentors", "Junior Midwives"],
     competenciesCount: 12,
     modulesCount: 3,
     status: data.status || "active",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-
-  saveMeta(fallbackArea.id, {
-    category: data.category,
-    description: data.description,
-    targetCadres: data.targetCadres,
-    status: data.status || "active",
-  });
-  saveMeta(trimmedCode, {
-    category: data.category,
-    description: data.description,
-    targetCadres: data.targetCadres,
-    status: data.status || "active",
-  });
 
   const list = getStoredAreas();
   saveStoredAreas([fallbackArea, ...list.filter((a) => a.id !== fallbackArea.id)]);
@@ -537,19 +344,9 @@ export async function updateThematicArea(
     ...existing,
     code: data.code !== undefined ? data.code.trim().toUpperCase() : existing.code,
     name: data.name !== undefined ? data.name.trim() : existing.name,
-    category: data.category !== undefined ? data.category.trim() : existing.category,
-    description: data.description !== undefined ? data.description.trim() || undefined : existing.description,
-    targetCadres: data.targetCadres !== undefined ? data.targetCadres : existing.targetCadres,
     status: data.status !== undefined ? data.status : existing.status,
     updatedAt: new Date().toISOString(),
   };
-
-  saveMeta(id, {
-    category: updated.category,
-    description: updated.description,
-    targetCadres: updated.targetCadres,
-    status: updated.status,
-  });
 
   let isMockSession = false;
   if (typeof window !== "undefined") {
@@ -592,7 +389,6 @@ export async function updateThematicAreaStatus(
   status: ThematicAreaStatus
 ): Promise<{ success: boolean; status: ThematicAreaStatus; message?: string }> {
   try {
-    saveMeta(id, { status });
     const list = getStoredAreas();
     saveStoredAreas(
       list.map((a) => (a.id === id ? { ...a, status, updatedAt: new Date().toISOString() } : a))

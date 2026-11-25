@@ -32,7 +32,7 @@ export default function ThematicAreaInput({
 
     // Merge suggestions with thematicAreaItems to build a unified options array
     const allOptions = useMemo(() => {
-        const list: { id: string; name: string; code?: string; category?: string }[] = [];
+        const list: { id: string; name: string; code?: string }[] = [];
         const seenNames = new Set<string>();
 
         if (thematicAreaItems && thematicAreaItems.length > 0) {
@@ -70,8 +70,7 @@ export default function ThematicAreaInput({
         return allOptions.filter(
             (opt) =>
                 opt.name.toLowerCase().includes(q) ||
-                (opt.code && opt.code.toLowerCase().includes(q)) ||
-                (opt.category && opt.category.toLowerCase().includes(q))
+                (opt.code && opt.code.toLowerCase().includes(q))
         );
     }, [allOptions, query]);
 
@@ -226,11 +225,6 @@ export default function ThematicAreaInput({
                                                         Accredited
                                                     </span>
                                                 </div>
-                                                {opt.category && (
-                                                    <div className="text-[10px] text-gray-400 font-normal mt-0.5">
-                                                        Category: {opt.category}
-                                                    </div>
-                                                )}
                                             </div>
                                             {isSelected && (
                                                 <Check className="size-4 text-[#194611] shrink-0" />

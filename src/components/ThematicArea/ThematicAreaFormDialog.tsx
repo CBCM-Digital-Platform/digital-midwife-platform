@@ -8,13 +8,11 @@ import { Button } from "@/components/ui/button";
 import {
   createThematicArea,
   updateThematicArea,
-  THEMATIC_CATEGORIES,
-  TARGET_CADRES_OPTIONS,
 } from "@/services/thematic-areas.service";
 import type { ThematicArea, ThematicAreaStatus } from "@/types/thematic-area";
-import { Layers, Check, Loader2, AlertCircle, X } from "lucide-react";
+import { Layers, Loader2, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { validateName, validateRequired } from "@/lib/validators";
+import { validateName } from "@/lib/validators";
 
 interface ThematicAreaFormDialogProps {
   open: boolean;
@@ -37,10 +35,6 @@ export function ThematicAreaFormDialog({
   const [codeError, setCodeError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
-  const [category, setCategory] = useState("");
-  const [categoryError, setCategoryError] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [targetCadres, setTargetCadres] = useState<string[]>([]);
   const [status, setStatus] = useState<ThematicAreaStatus | "">("");
   const [statusError, setStatusError] = useState<string | null>(null);
 
@@ -51,30 +45,17 @@ export function ThematicAreaFormDialog({
     if (thematicArea) {
       setCode(thematicArea.code || "");
       setName(thematicArea.name || "");
-      setCategory(thematicArea.category || "");
-      setDescription(thematicArea.description || "");
-      setTargetCadres(thematicArea.targetCadres || []);
       setStatus(thematicArea.status || "active");
     } else {
       setCode("");
       setName("");
-      setCategory("");
-      setDescription("");
-      setTargetCadres(["Midwife Mentors", "Junior Midwives"]);
       setStatus("");
     }
     setCodeError(null);
     setNameError(null);
-    setCategoryError(null);
     setStatusError(null);
     setError(null);
   }, [thematicArea, open]);
-
-  const handleCadreToggle = (cadre: string) => {
-    setTargetCadres((prev) =>
-      prev.includes(cadre) ? prev.filter((c) => c !== cadre) : [...prev, cadre]
-    );
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,16 +77,12 @@ export function ThematicAreaFormDialog({
     const nameRes = validateName(trimmedName, "Thematic area title", 3, true);
     setNameError(nameRes.error || null);
 
-    // 3. Validate Category
-    const catErr = !category ? "Please select a clinical category/domain." : null;
-    setCategoryError(catErr);
-
-    // 4. Validate Status
+    // 3. Validate Status
     const statErr = !status ? "Please select an operational status." : null;
     setStatusError(statErr);
 
-    if (codeErr || !nameRes.valid || catErr || statErr) {
-      setError(codeErr || nameRes.error || catErr || statErr || "Please fix highlighted validation errors.");
+    if (codeErr || !nameRes.valid || statErr) {
+      setError(codeErr || nameRes.error || statErr || "Please fix highlighted validation errors.");
       return;
     }
 
@@ -142,18 +119,12 @@ export function ThematicAreaFormDialog({
         result = await updateThematicArea(thematicArea.id, {
           code: trimmedCode,
           name: trimmedName,
-          category,
-          description: description.trim() || undefined,
-          targetCadres,
           status: status as ThematicAreaStatus,
         });
       } else {
         result = await createThematicArea({
           code: trimmedCode,
           name: trimmedName,
-          category,
-          description: description.trim() || undefined,
-          targetCadres,
           status: status as ThematicAreaStatus,
         });
       }
@@ -171,7 +142,7 @@ export function ThematicAreaFormDialog({
     <ModalWrapper
       open={open}
       onOpenChange={onOpenChange}
-      maxWidth="sm:max-w-[580px]"
+      maxWidth="sm:max-w-[480px]"
       title={
         <div className="flex items-center gap-2 text-[#194611]">
           <Layers className="h-5 w-5" />
@@ -180,7 +151,7 @@ export function ThematicAreaFormDialog({
       }
       description={
         isEditing
-          ? "Update clinical competencies, scope, and accreditation status for this domain."
+          ? "Update the code, title, and operational status for this clinical domain."
           : "Define an accredited clinical health domain to organize mentorship modules and competency evaluations."
       }
     >
@@ -202,66 +173,32 @@ export function ThematicAreaFormDialog({
           </div>
         )}
 
-        {/* Code & Category Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <Label htmlFor="area-code" className="block text-xs font-semibold text-gray-700 mb-1">
-              Area Code <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="area-code"
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value.toUpperCase());
-                if (codeError) setCodeError(null);
-              }}
-              required
-              autoComplete="off"
-              placeholder="e.g. EMONC"
-              className={cn(
-                "h-9 text-sm font-mono uppercase font-semibold",
-                codeError && "border-red-500 focus-visible:ring-red-500"
-              )}
-            />
-            {codeError && (
-              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
-                <span>{codeError}</span>
-              </p>
+        {/* Code */}
+        <div className="space-y-1.5">
+          <Label htmlFor="area-code" className="block text-xs font-semibold text-gray-700">
+            Area Code <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="area-code"
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value.toUpperCase());
+              if (codeError) setCodeError(null);
+            }}
+            required
+            autoComplete="off"
+            placeholder="e.g. EMONC"
+            className={cn(
+              "h-9 text-sm font-mono uppercase font-semibold",
+              codeError && "border-red-500 focus-visible:ring-red-500"
             )}
-          </div>
-
-          <div className="sm:col-span-2">
-            <Label htmlFor="area-category" className="block text-xs font-semibold text-gray-700 mb-1">
-              Clinical Domain / Category <span className="text-red-500">*</span>
-            </Label>
-            <select
-              id="area-category"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value);
-                if (categoryError) setCategoryError(null);
-              }}
-              required
-              className={cn(
-                "w-full h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent cursor-pointer",
-                categoryError && "border-red-500 focus:ring-red-500"
-              )}
-            >
-              <option value="">Select clinical domain...</option>
-              {THEMATIC_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-            {categoryError && (
-              <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
-                <span>{categoryError}</span>
-              </p>
-            )}
-          </div>
+          />
+          {codeError && (
+            <p className="text-[11px] text-red-600 font-medium flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+              <span>{codeError}</span>
+            </p>
+          )}
         </div>
 
         {/* Thematic Area Title */}
@@ -318,47 +255,6 @@ export function ThematicAreaFormDialog({
               <span>{statusError}</span>
             </p>
           )}
-        </div>
-
-        {/* Target Midwifery Cadres */}
-        <div className="space-y-1.5 pt-2 border-t border-gray-100">
-          <Label className="text-xs font-semibold text-gray-700 block">
-            Applicable Clinician Cadres
-          </Label>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {TARGET_CADRES_OPTIONS.map((cadre) => {
-              const selected = targetCadres.includes(cadre);
-              return (
-                <button
-                  type="button"
-                  key={cadre}
-                  onClick={() => handleCadreToggle(cadre)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition cursor-pointer ${
-                    selected
-                      ? "bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs"
-                      : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-                  }`}
-                >
-                  {selected && <Check className="h-3 w-3 text-emerald-700" />}
-                  <span>{cadre}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Description / Clinical Scope */}
-        <div className="space-y-1.5 pt-2 border-t border-gray-100">
-          <Label htmlFor="area-description" className="text-xs font-semibold text-gray-700">
-            Curriculum Scope & Clinical Competencies Overview
-          </Label>
-          <textarea
-            id="area-description"
-            rows={3}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full rounded-md border border-gray-200 bg-white p-2.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#194611] focus:border-transparent leading-relaxed"
-          />
         </div>
 
         {/* Footer Actions */}

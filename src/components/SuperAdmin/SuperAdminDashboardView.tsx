@@ -422,8 +422,8 @@ export function SuperAdminDashboardView({
                     <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-800">
                       {area.code}
                     </span>
-                    <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                      {area.category}
+                    <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 capitalize">
+                      {area.status.replace("_", " ")}
                     </span>
                   </div>
                   <p className="text-xs font-semibold text-gray-900 line-clamp-1">
