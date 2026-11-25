@@ -1,5 +1,8 @@
 import { apiClient } from "@/lib/api-client";
+import { THEMATIC_AREA_ID_MAP, resolveThematicAreaName } from "@/services/thematic-areas.service";
 import type { MentorUser, MenteeUser, ClinicalUser, MentorSummaryStats, MenteeSummaryStats } from "@/types/user";
+
+export { THEMATIC_AREA_ID_MAP, resolveThematicAreaName };
 
 /**
  * Facility ID mapping for resolving backend facility_id numbers into human-readable facility names.
@@ -87,7 +90,12 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     raw.thematicAreaName ||
     raw.thematic_area_name;
 
-  const thematicArea = rawThematicAreaName || undefined;
+  const thematicArea =
+    resolveThematicAreaName(rawThematicAreaName) ||
+    (thematicAreaId !== undefined ? resolveThematicAreaName(thematicAreaId) : undefined) ||
+    (typeof rawThematicAreaName === "string" && rawThematicAreaName.trim() && !/^\d+$/.test(rawThematicAreaName.trim())
+      ? rawThematicAreaName.trim()
+      : undefined);
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -209,10 +217,17 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
 
   try {
     const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
-    const [res, assignmentsList] = await Promise.all([
+    const { getThematicAreas } = await import("@/services/thematic-areas.service");
+    const [res, assignmentsList, thematicAreasList] = await Promise.all([
       apiClient<any>(`/api/v1/users?${query.toString()}`),
       getAssignments(activeFacilityId).catch(() => []),
+      getThematicAreas().catch(() => []),
     ]);
+
+    const thematicAreaLookup = new Map<string, string>();
+    for (const ta of thematicAreasList) {
+      if (ta.id && ta.name) thematicAreaLookup.set(String(ta.id).trim(), ta.name.trim());
+    }
 
     const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
     const facilityStoredAssignments = activeFacilityId
@@ -244,6 +259,15 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
       const countByName = mentorMenteesCountMap.get(String(mentor.name).trim().toLowerCase());
       const count = countById !== undefined ? countById : countByName;
       mentor.assignedMenteesCount = count !== undefined ? count : 0;
+
+      // Ensure mentor's thematic area name is resolved to a human-readable title
+      if (mentor.thematicAreaId && (!mentor.thematicArea || /^\d+$/.test(mentor.thematicArea))) {
+        const liveName = thematicAreaLookup.get(String(mentor.thematicAreaId));
+        mentor.thematicArea = liveName || resolveThematicAreaName(mentor.thematicAreaId);
+      } else if (mentor.thematicArea) {
+        mentor.thematicArea = resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea;
+      }
+
       return mentor;
     }) as MentorUser[];
 
@@ -529,6 +553,13 @@ export async function getUserById(id: string, facilityId?: number | string): Pro
       : 0;
 
     (user as MentorUser).assignedMenteesCount = count;
+
+    const mentor = user as MentorUser;
+    if (mentor.thematicAreaId && (!mentor.thematicArea || /^\d+$/.test(mentor.thematicArea))) {
+      mentor.thematicArea = resolveThematicAreaName(mentor.thematicAreaId);
+    } else if (mentor.thematicArea) {
+      mentor.thematicArea = resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea;
+    }
   }
 
   return user;

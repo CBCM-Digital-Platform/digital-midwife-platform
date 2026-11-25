@@ -6,6 +6,34 @@ import type {
   ThematicAreaStatus,
 } from "@/types/thematic-area";
 
+export const THEMATIC_AREA_ID_MAP: Record<number | string, string> = {
+  1: "Adolescent & Youth Sexual Reproductive Health",
+  2: "Emergency Obstetric & Newborn Care",
+  3: "Maternal & Child Health",
+  4: "Family Planning & Comprehensive Abortion Care",
+  5: "Pediatrics & Neonatal Care",
+  6: "Infectious Diseases & PMTCT",
+  7: "Surgery & Critical Midwifery Care",
+  8: "Internal Medicine & Perinatal Complications",
+};
+
+/**
+ * Resolves a thematic area ID or raw identifier into a human-readable domain name.
+ */
+export function resolveThematicAreaName(idOrName?: number | string | null): string | undefined {
+  if (idOrName === undefined || idOrName === null) return undefined;
+  const str = String(idOrName).trim();
+  if (!str) return undefined;
+  if (THEMATIC_AREA_ID_MAP[str]) return THEMATIC_AREA_ID_MAP[str];
+  const num = Number(str);
+  if (!isNaN(num) && THEMATIC_AREA_ID_MAP[num]) return THEMATIC_AREA_ID_MAP[num];
+  // If it's already a descriptive text name (not a pure number or "thematic area #X")
+  if (!/^\d+$/.test(str) && !/^thematic\s*area\s*#?\d+$/i.test(str)) {
+    return str;
+  }
+  return undefined;
+}
+
 export const THEMATIC_CATEGORIES = [
   "Reproductive Health",
   "Obstetric Care",

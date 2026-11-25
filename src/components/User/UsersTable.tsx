@@ -17,7 +17,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
-import { changeUserStatus } from "@/services/users.service";
+import { changeUserStatus, resolveThematicAreaName } from "@/services/users.service";
 import { UserDetailDialog } from "@/components/User/UserDetailDialog";
 import { UsersTableToolbar } from "@/components/User/UsersTableToolbar";
 import { UsersTablePagination } from "@/components/User/UsersTablePagination";
@@ -283,27 +283,23 @@ export function UsersTable({
       cell: ({ row }) => {
         const area = row.original.thematicArea;
         const areaId = row.original.thematicAreaId;
-        if (!area && !areaId) {
+        const displayName =
+          resolveThematicAreaName(area) ||
+          (areaId !== undefined ? resolveThematicAreaName(areaId) : undefined) ||
+          (area && !/^\d+$/.test(area) ? area : undefined);
+
+        if (!displayName) {
           return (
             <span className="text-xs text-gray-400 italic">
               {role === "mentee" ? "Assigned via Cycle" : "Unassigned"}
             </span>
           );
         }
-        const badgeClass = getThematicBadgeStyle(area);
+        const badgeClass = getThematicBadgeStyle(displayName);
         return (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {area && (
-              <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
-                {area}
-              </span>
-            )}
-            {areaId && (
-              <span className="text-[10px] text-gray-400 font-mono font-medium">
-                #{areaId}
-              </span>
-            )}
-          </div>
+          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
+            {displayName}
+          </span>
         );
       },
     };
@@ -452,10 +448,12 @@ export function UsersTable({
 
       // Thematic area filter (case-insensitive + ID support)
       if (selectedThematicArea !== "all") {
-        const itemArea = (item.thematicArea || "").toLowerCase().trim();
+        const rawArea = (item.thematicArea || "").toLowerCase().trim();
+        const resolvedName = (resolveThematicAreaName(item.thematicArea) || (item.thematicAreaId !== undefined ? resolveThematicAreaName(item.thematicAreaId) : undefined) || "").toLowerCase().trim();
         const selectedArea = selectedThematicArea.toLowerCase().trim();
         const matchesThematic =
-          itemArea === selectedArea ||
+          rawArea === selectedArea ||
+          resolvedName === selectedArea ||
           (item.thematicAreaId !== undefined && String(item.thematicAreaId) === selectedThematicArea);
         if (!matchesThematic) {
           return false;
@@ -512,7 +510,11 @@ export function UsersTable({
       Array.from(
         new Set(
           usersData
-            .map((d) => d?.thematicArea)
+            .map((d) =>
+              resolveThematicAreaName(d?.thematicArea) ||
+              (d?.thematicAreaId !== undefined ? resolveThematicAreaName(d?.thematicAreaId) : undefined) ||
+              (d?.thematicArea && !/^\d+$/.test(d.thematicArea) ? d.thematicArea : undefined)
+            )
             .filter((t): t is NonNullable<typeof t> => Boolean(t))
         )
       ),
@@ -532,7 +534,16 @@ export function UsersTable({
 
   const handleExportCsv = () => {
     const headers = ["Name", "ID", "Facility", "Thematic Area", "Status"];
-    const rows = filteredData.map((d) => [d.name, d.systemId, d.facility, d.thematicArea, d.status]);
+    const rows = filteredData.map((d) => [
+      d.name,
+      d.systemId,
+      d.facility,
+      resolveThematicAreaName(d.thematicArea) ||
+        (d.thematicAreaId !== undefined ? resolveThematicAreaName(d.thematicAreaId) : undefined) ||
+        d.thematicArea ||
+        "",
+      d.status,
+    ]);
     const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

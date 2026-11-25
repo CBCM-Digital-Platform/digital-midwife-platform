@@ -27,7 +27,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
-import { getUserById, changeUserStatus } from "@/services/users.service";
+import { getUserById, changeUserStatus, resolveThematicAreaName } from "@/services/users.service";
 
 interface UserDetailDialogProps {
   user: ClinicalUser | null;
@@ -339,15 +339,14 @@ export function UserDetailDialog({
                 <div>
                   <span className="text-gray-400 block text-[11px]">Primary Thematic Area</span>
                   <span className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
-                    {currentUser.thematicArea ? (
-                      currentUser.thematicArea
-                    ) : (
+                    {resolveThematicAreaName(currentUser.thematicArea) ||
+                    (currentUser.thematicAreaId !== undefined
+                      ? resolveThematicAreaName(currentUser.thematicAreaId)
+                      : undefined) ||
+                    (currentUser.thematicArea && !/^\d+$/.test(currentUser.thematicArea)
+                      ? currentUser.thematicArea
+                      : undefined) || (
                       <span className="text-gray-400 italic font-normal">Unassigned</span>
-                    )}
-                    {currentUser.thematicAreaId && (
-                      <span className="text-[10px] text-gray-400 font-mono font-medium">
-                        (ID #{currentUser.thematicAreaId})
-                      </span>
                     )}
                   </span>
                 </div>

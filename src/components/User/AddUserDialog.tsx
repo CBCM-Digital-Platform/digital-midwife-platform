@@ -24,7 +24,7 @@ import {
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
-import { getThematicAreas, INITIAL_THEMATIC_AREAS } from "@/services/thematic-areas.service";
+import { getThematicAreas, INITIAL_THEMATIC_AREAS, resolveThematicAreaName } from "@/services/thematic-areas.service";
 import type { ThematicArea } from "@/types/thematic-area";
 import { FACILITY_ID_MAP } from "@/services/users.service";
 import {
@@ -130,7 +130,8 @@ function createNewUserFromForm(
   formData: UserFormData,
   role: "mentor" | "mentee",
   activeFacilityId?: number | string,
-  thematicAreaId?: number | string
+  thematicAreaId?: number | string,
+  thematicAreaName?: string
 ): ClinicalUser {
   const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`.trim();
   const initials =
@@ -147,6 +148,13 @@ function createNewUserFromForm(
     "Regional Health Facility";
 
   if (role === "mentor") {
+    const resolvedName =
+      thematicAreaName ||
+      resolveThematicAreaName(thematicAreaId) ||
+      resolveThematicAreaName(formData.thematic_area) ||
+      formData.thematic_area ||
+      "General Practice";
+
     const newMentor: MentorUser = {
       id: `mentor-${timestamp}`,
       systemId,
@@ -157,10 +165,10 @@ function createNewUserFromForm(
       avatarInitials: initials,
       avatarBgColor: "bg-emerald-100 text-emerald-800",
       profession: formData.profession,
-      department: formData.thematic_area || "Clinical Unit",
+      department: resolvedName || "Clinical Unit",
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
-      thematicArea: formData.thematic_area || "General Practice",
+      thematicArea: resolvedName,
       thematicAreaId,
       assignedMenteesCount: 0,
       status: "active",
@@ -393,7 +401,19 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
           ? Number(rawUser.thematic_area_id)
           : numericThematicAreaId;
 
-      const newUser = createNewUserFromForm(formData, role, assignedFacilityId, createdThematicAreaId);
+      const resolvedThematicName =
+        matchedArea?.name ||
+        resolveThematicAreaName(createdThematicAreaId) ||
+        resolveThematicAreaName(formData.thematic_area) ||
+        formData.thematic_area;
+
+      const newUser = createNewUserFromForm(
+        formData,
+        role,
+        assignedFacilityId,
+        createdThematicAreaId,
+        resolvedThematicName
+      );
 
       onUserCreated?.(newUser);
       reset();
