@@ -136,6 +136,11 @@ export async function addContent(
   }
 
   try {
+    // If category is PRACTICAL_ASSESSMENT, map to FACILITATOR_GUIDE for the resources table so backend enum doesn't reject
+    const backendCategory = payload.category === "PRACTICAL_ASSESSMENT"
+      ? "FACILITATOR_GUIDE"
+      : payload.category;
+
     const rawData = await createResource({
       title: payload.title.trim(),
       type: payload.type === "audio" || payload.type === "video" || payload.type === "presentation"
@@ -147,7 +152,7 @@ export async function addContent(
       fileId: payload.fileId,
       moduleId,
       thematicAreaId: payload.thematicAreaId,
-      category: payload.category,
+      category: backendCategory,
       examinationStage: payload.examinationStage,
       isRequired: payload.isRequired,
     });
@@ -164,6 +169,7 @@ export async function addContent(
         url: payload.url,
         fileName: payload.file?.name,
         fileSizeMb: payload.file ? payload.file.size / (1024 * 1024) : undefined,
+        category: payload.category,
       },
       moduleId
     );

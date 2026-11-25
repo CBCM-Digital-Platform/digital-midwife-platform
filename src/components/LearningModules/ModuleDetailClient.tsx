@@ -52,6 +52,7 @@ import {
   Download,
   ExternalLink,
   ShieldCheck,
+  ShieldAlert,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
@@ -641,7 +642,11 @@ export function ModuleDetailClient({
   // C. Add Learning Material Modal
   const [isAddMaterialOpen, setIsAddMaterialOpen] = useState(false);
   const [newMaterialType, setNewMaterialType] = useState<"pdf" | "video" | "audio" | "presentation" | "link">("pdf");
-  const [newMaterialCategory, setNewMaterialCategory] = useState<"PARTICIPANT_MANUAL" | "POWERPOINT_PRESENTATION" | "FACILITATOR_GUIDE" | "EXAMINATION" | "ANSWER_KEY">("PARTICIPANT_MANUAL");
+  const [newMaterialCategory, setNewMaterialCategory] = useState<
+    "PARTICIPANT_MANUAL" | "POWERPOINT_PRESENTATION" | "FACILITATOR_GUIDE" | "EXAMINATION" | "ANSWER_KEY" | "PRACTICAL_ASSESSMENT"
+  >("PARTICIPANT_MANUAL");
+  const [newExamSubcategory, setNewExamSubcategory] = useState<"EXAM_QUESTIONS" | "ANSWER_KEY">("EXAM_QUESTIONS");
+  const [newExamStage, setNewExamStage] = useState<"PRETEST" | "POST_TEST">("PRETEST");
   const [newMaterialTitle, setNewMaterialTitle] = useState("");
   const [newMaterialDesc, setNewMaterialDesc] = useState("");
   const [newMaterialUrl, setNewMaterialUrl] = useState("");
@@ -788,6 +793,11 @@ export function ModuleDetailClient({
     setMaterialModalError(null);
 
     try {
+      const targetCategory =
+        newMaterialCategory === "EXAMINATION" && newExamSubcategory === "ANSWER_KEY"
+          ? "ANSWER_KEY"
+          : newMaterialCategory;
+
       const payload: AddContentPayload = {
         title: newMaterialTitle.trim(),
         type: newMaterialType,
@@ -797,9 +807,9 @@ export function ModuleDetailClient({
         order: contents.length + 1,
         // Facilitator guides and answer keys are mentor-only materials and
         // cannot be required for mentee completion by the backend rules.
-        isRequired: !["FACILITATOR_GUIDE", "ANSWER_KEY"].includes(newMaterialCategory),
-        category: newMaterialCategory,
-        examinationStage: newMaterialCategory === "EXAMINATION" ? "PRETEST" : undefined,
+        isRequired: !["FACILITATOR_GUIDE", "ANSWER_KEY"].includes(targetCategory),
+        category: targetCategory,
+        examinationStage: newMaterialCategory === "EXAMINATION" ? newExamStage : undefined,
         thematicAreaId: currentModule.thematicAreaId,
         isPublished: newMaterialIsPublished,
         isAuthorized: newMaterialIsAuthorized,
@@ -2790,6 +2800,78 @@ export function ModuleDetailClient({
                 </div>
               )}
 
+              {/* Category Selector Placed Right At Top */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-800">
+                  Resource Category <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newMaterialCategory}
+                  onChange={(e) => {
+                    const next = e.target.value as typeof newMaterialCategory;
+                    setNewMaterialCategory(next);
+                    if (next === "POWERPOINT_PRESENTATION") setNewMaterialType("presentation");
+                  }}
+                  className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[#194611]"
+                >
+                  <option value="PARTICIPANT_MANUAL">Participant Manual</option>
+                  <option value="POWERPOINT_PRESENTATION">PowerPoint Presentation (Course Training)</option>
+                  <option value="FACILITATOR_GUIDE">Facilitator Guide (Mentor Only)</option>
+                  <option value="EXAMINATION">Examination</option>
+                  <option value="PRACTICAL_ASSESSMENT">Practical Assessment (OSCE)</option>
+                </select>
+              </div>
+
+              {/* Conditional Subcategory & Stage for EXAMINATION */}
+              {newMaterialCategory === "EXAMINATION" && (
+                <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200 space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-1">
+                        Subcategory
+                      </label>
+                      <select
+                        value={newExamSubcategory}
+                        onChange={(e) => setNewExamSubcategory(e.target.value as any)}
+                        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
+                      >
+                        <option value="EXAM_QUESTIONS">Questions (EXAM_QUESTIONS)</option>
+                        <option value="ANSWER_KEY">Answer Key (ANSWER_KEY)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-1">
+                        Exam Stage
+                      </label>
+                      <select
+                        value={newExamStage}
+                        onChange={(e) => setNewExamStage(e.target.value as any)}
+                        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
+                      >
+                        <option value="PRETEST">Pre-Test (PRETEST)</option>
+                        <option value="POST_TEST">Post-Test (POST_TEST)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {newExamSubcategory === "ANSWER_KEY" && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-100/80 p-2 rounded border border-amber-300">
+                      <Lock className="w-3.5 h-3.5 shrink-0 text-amber-700" />
+                      <span>Locked until post-exam completion (Mentor/Admin view only).</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Warning badge for FACILITATOR_GUIDE */}
+              {newMaterialCategory === "FACILITATOR_GUIDE" && (
+                <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-amber-700" />
+                  <span>Mentor Only — Hidden from Mentees</span>
+                </div>
+              )}
+
               {/* Material Type Selection */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-800">
@@ -2852,21 +2934,6 @@ export function ModuleDetailClient({
                   onChange={(e) => setNewMaterialDesc(e.target.value)}
                   className="text-xs bg-white"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-800">Material Category</label>
-                <select
-                  value={newMaterialCategory}
-                  onChange={(e) => setNewMaterialCategory(e.target.value as typeof newMaterialCategory)}
-                  className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs"
-                >
-                  <option value="PARTICIPANT_MANUAL">Participant Manual</option>
-                  <option value="POWERPOINT_PRESENTATION">PowerPoint Presentation</option>
-                  <option value="FACILITATOR_GUIDE">Facilitator Guide</option>
-                  <option value="EXAMINATION">Examination</option>
-                  <option value="ANSWER_KEY">Answer Key</option>
-                </select>
               </div>
 
               {/* File Upload or URL */}

@@ -27,7 +27,8 @@ export type LearningMaterialCategory =
   | "POWERPOINT_PRESENTATION"
   | "FACILITATOR_GUIDE"
   | "EXAMINATION"
-  | "ANSWER_KEY";
+  | "ANSWER_KEY"
+  | "PRACTICAL_ASSESSMENT";
 
 export type LearningExaminationStage = "PRETEST" | "POST_TEST";
 

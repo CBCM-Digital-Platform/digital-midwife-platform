@@ -39,6 +39,10 @@ export const ENDPOINTS = {
     PASSING_RULES: "/api/v1/assessment-passing-rules",
     PASSING_RULE: (id: string | number) => `/api/v1/assessment-passing-rules/${id}`,
   },
+  PRACTICAL_CHECKLISTS: {
+    BASE: "/api/v1/practical-checklists",
+    DETAIL: (id: string | number) => `/api/v1/practical-checklists/${id}`,
+  },
   MESSAGES: {
     CONVERSATIONS: "/api/v1/messages/conversations",
     CONVERSATION_DETAIL: (id: string | number) => `/api/v1/messages/conversations/${id}`,
