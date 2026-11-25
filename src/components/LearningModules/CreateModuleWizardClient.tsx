@@ -153,6 +153,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
   const [examinationStage, setExaminationStage] = useState<"PRETEST" | "POST_TEST">("PRETEST");
 
   // Practical Assessment Fields
+  const [moduleTopicName, setModuleTopicName] = useState("");
   const [procedureName, setProcedureName] = useState("");
   const [practicalBenchmark, setPracticalBenchmark] = useState("Level 3 (Competent Benchmark)");
   const [checklistItems, setChecklistItems] = useState<ChecklistRowItem[]>(DEFAULT_OSCE_PRESETS);
@@ -488,12 +489,14 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
 
     try {
       if (materialCategory === "PRACTICAL_ASSESSMENT") {
+        const effectiveTopic = moduleTopicName.trim() || procedureName.trim();
+
         // 1. Create the versioned practical assessment checklist on the backend
         const checklistPayload = {
           thematic_area_id: Number(thematicAreaId) || 1,
-          procedure: procedureName.trim(),
+          procedure: effectiveTopic,
           title: materialTitle.trim(),
-          description: materialDescription.trim() || undefined,
+          description: `Topic/Resource: ${effectiveTopic}. Benchmark: ${practicalBenchmark}. ${materialDescription.trim()}`.trim(),
           items: checklistItems.map((item) => ({
             item_text: item.item_text.trim(),
             is_required: true,
@@ -508,7 +511,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
         const contentPayload: AddContentPayload = {
           title: `[OSCE] ${materialTitle.trim()}`,
           type: "document",
-          description: `Procedure: ${procedureName.trim()}. ${checklistItems.length} clinical observation steps (${checklistItems.filter((i) => i.is_critical).length} critical steps). Benchmark: ${practicalBenchmark}. ${materialDescription.trim()}`,
+          description: `Topic/Skill: ${effectiveTopic}. ${checklistItems.length} clinical observation steps (${checklistItems.filter((i) => i.is_critical).length} critical steps). Benchmark: ${practicalBenchmark}. ${materialDescription.trim()}`,
           order: 1,
           isRequired: true,
           category: "PRACTICAL_ASSESSMENT",
@@ -1190,6 +1193,26 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                             <span>Practical OSCE Procedure Configuration</span>
                           </div>
                           <Badge className="bg-rose-600 text-white text-[10px]">OSCE Template</Badge>
+                        </div>
+
+                        {/* Module Topic / Evaluated Resource */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-gray-800">
+                            Module Topic / Curriculum Resource Evaluated <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            type="text"
+                            placeholder="e.g., Topic 1: AMTSL & Third Stage Active Management"
+                            value={moduleTopicName}
+                            onChange={(e) => {
+                              setModuleTopicName(e.target.value);
+                              if (!procedureName) setProcedureName(e.target.value);
+                            }}
+                            className="h-10 text-sm bg-white border-gray-200 focus-visible:ring-[#194611]"
+                          />
+                          <p className="text-[11px] text-gray-500">
+                            Defines the clinical topic or practical learning resource under this module evaluated by this checklist.
+                          </p>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -270,6 +270,7 @@ export async function createResource(
   const parsedModuleId = input.moduleId ? parsePositiveInt(input.moduleId) : null;
   const backendType = input.type === "document" || input.type === "link" ? "pdf" : input.type;
   const category = input.category || "PARTICIPANT_MANUAL";
+  const backendCategory = category === "PRACTICAL_ASSESSMENT" ? "FACILITATOR_GUIDE" : category;
   const payload: Record<string, any> = {
     title: input.title.trim(),
     description: input.description?.trim() || null,
@@ -277,7 +278,7 @@ export async function createResource(
     file_id: fileId || null,
     url: input.url?.trim() || null,
     thematic_area_id: input.thematicAreaId || null,
-    category,
+    category: backendCategory,
     examination_stage: input.examinationStage || null,
     is_required: input.isRequired ?? !["FACILITATOR_GUIDE", "ANSWER_KEY"].includes(category),
   };
@@ -359,7 +360,9 @@ export async function updateResource(
   if (fileId !== undefined) payload.file_id = fileId;
   if (input.url !== undefined) payload.url = input.url?.trim() || null;
   if (input.thematicAreaId !== undefined) payload.thematic_area_id = input.thematicAreaId;
-  if (input.category !== undefined) payload.category = input.category;
+  if (input.category !== undefined) {
+    payload.category = input.category === "PRACTICAL_ASSESSMENT" ? "FACILITATOR_GUIDE" : input.category;
+  }
   if (input.examinationStage !== undefined) payload.examination_stage = input.examinationStage;
   if (input.isRequired !== undefined) payload.is_required = input.isRequired;
   if (input.moduleId !== undefined) {

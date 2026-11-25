@@ -33,6 +33,10 @@ import {
   resolveThematicAreaTitle,
   getModuleContents,
 } from "@/services/learning.service";
+import {
+  createPracticalChecklist,
+  type PracticalChecklistItem,
+} from "@/services/practical-checklists.service";
 import { getMyMentees } from "@/services/my-mentees.service";
 import type { MyMentee } from "@/types/my-mentee";
 import {
@@ -59,6 +63,7 @@ import {
   Loader2,
   Layers,
   Sparkles,
+  ListChecks,
   Info,
   Plus,
   Check,
@@ -79,6 +84,51 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENDPOINTS } from "@/services/endpoints";
+
+interface ChecklistRowItem {
+  id: string;
+  item_text: string;
+  weight: number;
+  is_critical: boolean;
+}
+
+const DEFAULT_OSCE_PRESETS: ChecklistRowItem[] = [
+  {
+    id: "preset-1",
+    item_text:
+      "Verifies patient identity, reviews clinical history, and explains the procedure to obtain verbal/written informed consent.",
+    weight: 10,
+    is_critical: false,
+  },
+  {
+    id: "preset-2",
+    item_text:
+      "Performs hand hygiene according to WHO protocol and dons sterile gloves and appropriate personal protective equipment (PPE).",
+    weight: 15,
+    is_critical: true,
+  },
+  {
+    id: "preset-3",
+    item_text:
+      "Prepares all required sterile instruments, uterotonics, and resuscitation equipment in advance of the clinical intervention.",
+    weight: 15,
+    is_critical: true,
+  },
+  {
+    id: "preset-4",
+    item_text:
+      "Executes the standardized clinical intervention according to national guidelines while actively communicating with the patient.",
+    weight: 40,
+    is_critical: true,
+  },
+  {
+    id: "preset-5",
+    item_text:
+      "Safely disposes of sharps and biohazardous waste, cleans instruments, washes hands, and documents findings in the patient chart.",
+    weight: 20,
+    is_critical: false,
+  },
+];
 
 interface ModuleDetailClientProps {
   module: LearningModule;
@@ -655,6 +705,46 @@ export function ModuleDetailClient({
   const [materialModalError, setMaterialModalError] = useState<string | null>(null);
   const modalFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Practical Assessment Topic & Checklist State
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
+  const [customTopicName, setCustomTopicName] = useState<string>("");
+  const [procedureName, setProcedureName] = useState<string>("");
+  const [practicalChecklistItems, setPracticalChecklistItems] =
+    useState<ChecklistRowItem[]>(DEFAULT_OSCE_PRESETS);
+
+  const handleAddChecklistStep = () => {
+    setPracticalChecklistItems((prev) => [
+      ...prev,
+      {
+        id: `step-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        item_text: "",
+        weight: 10,
+        is_critical: false,
+      },
+    ]);
+  };
+
+  const handleRemoveChecklistStep = (id: string) => {
+    setPracticalChecklistItems((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((item) => item.id !== id);
+    });
+  };
+
+  const handleUpdateChecklistStep = (
+    id: string,
+    field: keyof ChecklistRowItem,
+    val: any
+  ) => {
+    setPracticalChecklistItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: val } : item))
+    );
+  };
+
+  const handleLoadPresets = () => {
+    setPracticalChecklistItems(DEFAULT_OSCE_PRESETS);
+  };
+
   // D. Edit Resource Modal
   const [editingContent, setEditingContent] = useState<ModuleContent | null>(null);
   const [editContentTitle, setEditContentTitle] = useState("");
@@ -780,6 +870,76 @@ export function ModuleDetailClient({
       setMaterialModalError("Material title is required.");
       return;
     }
+
+    if (newMaterialCategory === "PRACTICAL_ASSESSMENT") {
+      const effectiveProcedure =
+        procedureName.trim() ||
+        (selectedTopicId && selectedTopicId !== "__custom__"
+          ? selectedTopicId
+          : customTopicName.trim()) ||
+        currentModule.title;
+
+      const validItems = practicalChecklistItems.filter((i) => i.item_text.trim());
+      if (validItems.length === 0) {
+        setMaterialModalError("Please include at least one checklist step/procedure task.");
+        return;
+      }
+
+      setIsSubmittingMaterial(true);
+      setMaterialModalError(null);
+
+      try {
+        // 1. Create practical checklist on backend
+        await createPracticalChecklist({
+          thematic_area_id: Number(currentModule.thematicAreaId) || 1,
+          procedure: effectiveProcedure,
+          title: newMaterialTitle.trim(),
+          description: newMaterialDesc.trim() || undefined,
+          items: validItems.map((item) => ({
+            item_text: item.item_text.trim(),
+            is_required: item.is_critical,
+            is_critical: item.is_critical,
+          })),
+        });
+
+        // 2. Add as module content
+        const res = await addContent(currentModule.id, {
+          title: newMaterialTitle.trim(),
+          type: "document",
+          description: `OSCE Practical Checklist: ${effectiveProcedure}. ${newMaterialDesc.trim()}`,
+          category: "PRACTICAL_ASSESSMENT",
+          thematicAreaId: currentModule.thematicAreaId,
+          isRequired: false,
+          isPublished: newMaterialIsPublished,
+          isAuthorized: newMaterialIsAuthorized,
+        });
+
+        if (res.success && res.content) {
+          setContents((prev) => [...prev, res.content]);
+          setIsAddMaterialOpen(false);
+          setNewMaterialTitle("");
+          setNewMaterialDesc("");
+          setNewMaterialUrl("");
+          setNewMaterialFile(null);
+          setPracticalChecklistItems(DEFAULT_OSCE_PRESETS);
+          setSelectedTopicId("");
+          setCustomTopicName("");
+          setProcedureName("");
+          setFeedbackMessage({
+            type: "success",
+            text: `Practical Assessment "${newMaterialTitle}" and OSCE checklist created successfully!`,
+          });
+        } else {
+          throw new Error(res.message || "Failed to attach practical assessment to module.");
+        }
+      } catch (err: any) {
+        setMaterialModalError(err?.message || "An error occurred while saving the practical assessment.");
+      } finally {
+        setIsSubmittingMaterial(false);
+      }
+      return;
+    }
+
     if (String(newMaterialType) === "link") {
       setMaterialModalError("External links are not supported by the backend resource model. Upload a file instead.");
       return;
@@ -2782,13 +2942,17 @@ export function ModuleDetailClient({
       {/* Modal 3: Add Learning Material */}
       {isSuperAdmin && (
         <Dialog open={isAddMaterialOpen} onOpenChange={setIsAddMaterialOpen}>
-          <DialogContent className="max-w-xl bg-white p-6 rounded-2xl shadow-xl">
+          <DialogContent className={cn("bg-white p-6 rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto", newMaterialCategory === "PRACTICAL_ASSESSMENT" ? "max-w-3xl" : "max-w-xl")}>
             <DialogHeader className="pb-3 border-b border-gray-100">
               <DialogTitle className="text-lg font-bold text-[#194611]">
-                Add Learning Material to Module
+                {newMaterialCategory === "PRACTICAL_ASSESSMENT"
+                  ? "Add Practical Assessment & OSCE Checklist"
+                  : "Add Learning Material to Module"}
               </DialogTitle>
               <DialogDescription className="text-xs text-gray-500 mt-1">
-                Attach a PDF guide, procedural video, audio debrief, or PowerPoint presentation to #{currentModule.id} - {currentModule.title}.
+                {newMaterialCategory === "PRACTICAL_ASSESSMENT"
+                  ? `Configure clinical procedure checklist for a topic under #${currentModule.id} - ${currentModule.title}.`
+                  : `Attach a PDF guide, procedural video, audio debrief, or PowerPoint presentation to #${currentModule.id} - ${currentModule.title}.`}
               </DialogDescription>
             </DialogHeader>
 
@@ -2872,132 +3036,356 @@ export function ModuleDetailClient({
                 </div>
               )}
 
-              {/* Material Type Selection */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-800">
-                  Material Type <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { id: "pdf", label: "PDF", icon: FileText },
-                    { id: "video", label: "Video", icon: Video },
-                    { id: "audio", label: "Audio", icon: Headphones },
-                    { id: "presentation", label: "PowerPoint", icon: FileText },
-                  ].map((t) => {
-                    const IconComp = t.icon;
-                    const isSelected = newMaterialType === t.id;
-                    return (
-                      <div
-                        key={t.id}
-                        onClick={() => {
-                          setNewMaterialType(t.id as any);
-                          setNewMaterialFile(null);
-                        }}
-                        className={cn(
-                          "p-2.5 rounded-lg border text-center transition cursor-pointer flex flex-col items-center justify-center gap-1 select-none",
-                          isSelected
-                            ? "bg-emerald-50 border-[#194611] text-[#194611] font-bold"
-                            : "bg-white border-gray-200 hover:bg-gray-50 text-gray-600"
-                        )}
-                      >
-                        <IconComp className="w-4 h-4" />
-                        <span className="text-[11px]">{t.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Material Title */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-800">
-                  Material Title <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="text"
-                  placeholder="e.g., Pre-operative Checklists & Protocol"
-                  value={newMaterialTitle}
-                  onChange={(e) => setNewMaterialTitle(e.target.value)}
-                  className="h-9 text-xs bg-white"
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-800">
-                  Instructions / Description (Optional)
-                </label>
-                <Textarea
-                  rows={2}
-                  placeholder="Instructions for preceptors and mentees..."
-                  value={newMaterialDesc}
-                  onChange={(e) => setNewMaterialDesc(e.target.value)}
-                  className="text-xs bg-white"
-                />
-              </div>
-
-              {/* File Upload or URL */}
-              {newMaterialType === "link" ? (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-800">
-                    Resource URL <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="url"
-                    placeholder="https://moh.gov.et/manuals/sample.pdf"
-                    value={newMaterialUrl}
-                    onChange={(e) => setNewMaterialUrl(e.target.value)}
-                    className="h-9 text-xs bg-white"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-800">
-                    Upload {newMaterialType.toUpperCase()} File <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    ref={modalFileInputRef}
-                    accept={
-                      newMaterialType === "pdf"
-                        ? ".pdf,application/pdf"
-                        : newMaterialType === "video"
-                        ? ".mp4,.webm,.mov"
-                        : ".mp3,.wav"
-                    }
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setNewMaterialFile(e.target.files[0]);
-                        if (!newMaterialTitle) {
-                          setNewMaterialTitle(e.target.files[0].name.replace(/\.[^/.]+$/, ""));
-                        }
-                      }
-                    }}
-                    className="hidden"
-                  />
-                  {!newMaterialFile ? (
-                    <div
-                      onClick={() => modalFileInputRef.current?.click()}
-                      className="border border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:bg-gray-50 flex flex-col items-center justify-center gap-1.5"
-                    >
-                      <UploadCloud className="w-5 h-5 text-gray-400" />
-                      <p className="text-xs font-semibold text-gray-700">Click to select {newMaterialType.toUpperCase()}</p>
+              {/* PRACTICAL ASSESSMENT: Topic Selection & OSCE Checklist Builder */}
+              {newMaterialCategory === "PRACTICAL_ASSESSMENT" ? (
+                <div className="space-y-4 pt-1">
+                  {/* Topic / Resource Dropdown */}
+                  <div className="p-3.5 rounded-xl bg-rose-50/50 border border-rose-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-gray-800">
+                        Evaluate Topic / Resource under this Module <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-gray-500 font-medium">Link checklist to clinical topic</span>
                     </div>
-                  ) : (
-                    <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 flex items-center justify-between text-xs">
-                      <span className="font-semibold text-gray-800 truncate max-w-xs">{newMaterialFile.name}</span>
+                    <select
+                      value={selectedTopicId}
+                      onChange={(e) => {
+                        const topicVal = e.target.value;
+                        setSelectedTopicId(topicVal);
+                        if (topicVal && topicVal !== "__custom__") {
+                          setProcedureName(topicVal);
+                          if (!newMaterialTitle) {
+                            setNewMaterialTitle(`${topicVal} - OSCE Practical Checklist`);
+                          }
+                        } else if (topicVal === "__custom__") {
+                          setProcedureName(customTopicName);
+                        }
+                      }}
+                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[#194611]"
+                    >
+                      <option value="">Select topic/resource under this module...</option>
+                      {contents.map((topic) => (
+                        <option key={topic.id} value={topic.title}>
+                          Topic: {topic.title}
+                        </option>
+                      ))}
+                      <option value="__custom__">+ Custom Clinical Topic / Procedure...</option>
+                    </select>
+
+                    {(selectedTopicId === "__custom__" || contents.length === 0) && (
+                      <div className="pt-2">
+                        <label className="text-[11px] font-bold text-gray-700 block mb-1">
+                          Clinical Procedure / Skill Name <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          placeholder="e.g., Neonatal Resuscitation & Bag-Mask Ventilation"
+                          value={customTopicName}
+                          onChange={(e) => {
+                            setCustomTopicName(e.target.value);
+                            setProcedureName(e.target.value);
+                            if (!newMaterialTitle) {
+                              setNewMaterialTitle(`${e.target.value} - OSCE Practical Checklist`);
+                            }
+                          }}
+                          className="h-8 text-xs bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Checklist Title */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-800">
+                      Checklist / Assessment Title <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g., Active Management of Third Stage of Labor (AMTSL) OSCE"
+                      value={newMaterialTitle}
+                      onChange={(e) => setNewMaterialTitle(e.target.value)}
+                      className="h-9 text-xs bg-white"
+                    />
+                  </div>
+
+                  {/* Description / Clinical Instructions */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-800">
+                      Clinical Instructions & Objective (Optional)
+                    </label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Instructions for preceptors scoring this bedside clinical observation..."
+                      value={newMaterialDesc}
+                      onChange={(e) => setNewMaterialDesc(e.target.value)}
+                      className="text-xs bg-white"
+                    />
+                  </div>
+
+                  {/* Dynamic OSCE Practical Checklist Builder */}
+                  <div className="space-y-3 pt-2">
+                    <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                          <ListChecks className="w-4 h-4 text-rose-600" />
+                          <span>OSCE Practical Checklist Builder</span>
+                          <span className="text-gray-400">|</span>
+                          <span className="text-[11px] text-gray-600 font-medium">
+                            {practicalChecklistItems.length} Steps
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-0.5">
+                          <span>
+                            Total Weight:{" "}
+                            <strong className="text-gray-900 font-bold">
+                              {practicalChecklistItems.reduce((acc, curr) => acc + (Number(curr.weight) || 0), 0)} pts
+                            </strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Critical Steps:{" "}
+                            <strong className="text-amber-700 font-bold">
+                              {practicalChecklistItems.filter((i) => i.is_critical).length} required
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setNewMaterialFile(null)}
-                        className="h-6 w-6 text-gray-400 hover:text-red-600"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleLoadPresets}
+                        className="text-xs h-7 border-rose-300 text-rose-800 hover:bg-rose-50"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3 h-3 mr-1 text-rose-600" />
+                        Load Standard Steps
                       </Button>
                     </div>
-                  )}
+
+                    {/* Step Rows */}
+                    <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                      {practicalChecklistItems.map((item, index) => (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "p-3 rounded-xl border transition-all space-y-2",
+                            item.is_critical
+                              ? "bg-amber-50/40 border-amber-300 shadow-2xs"
+                              : "bg-white border-gray-200 shadow-2xs"
+                          )}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-800 text-[10px] font-bold flex items-center justify-center shrink-0 mt-1">
+                              {index + 1}
+                            </span>
+                            <div className="flex-1 space-y-2">
+                              <Textarea
+                                rows={2}
+                                value={item.item_text}
+                                onChange={(e) =>
+                                  handleUpdateChecklistStep(item.id, "item_text", e.target.value)
+                                }
+                                placeholder={`Step ${index + 1} observable clinical task description...`}
+                                className="text-xs bg-white resize-y"
+                              />
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[11px] font-bold text-gray-600">Points:</label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={item.weight}
+                                    onChange={(e) =>
+                                      handleUpdateChecklistStep(
+                                        item.id,
+                                        "weight",
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    }
+                                    className="w-16 h-7 text-xs bg-white"
+                                  />
+                                </div>
+
+                                <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.is_critical}
+                                    onChange={(e) =>
+                                      handleUpdateChecklistStep(item.id, "is_critical", e.target.checked)
+                                    }
+                                    className="h-3.5 w-3.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                  />
+                                  <span
+                                    className={cn(
+                                      "text-[11px]",
+                                      item.is_critical ? "text-amber-900 font-bold" : "text-gray-600"
+                                    )}
+                                  >
+                                    Critical Step (Must Pass)
+                                  </span>
+                                </label>
+
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={practicalChecklistItems.length <= 1}
+                                  onClick={() => handleRemoveChecklistStep(item.id)}
+                                  className="text-gray-400 hover:text-red-600 h-7 px-2 text-xs"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddChecklistStep}
+                      className="w-full border-dashed border-gray-300 hover:border-gray-400 text-xs text-gray-700 h-8"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1 text-gray-500" />
+                      Add Step to Checklist
+                    </Button>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {/* Material Type Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-800">
+                      Material Type <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { id: "pdf", label: "PDF", icon: FileText },
+                        { id: "video", label: "Video", icon: Video },
+                        { id: "audio", label: "Audio", icon: Headphones },
+                        { id: "presentation", label: "PowerPoint", icon: FileText },
+                      ].map((t) => {
+                        const IconComp = t.icon;
+                        const isSelected = newMaterialType === t.id;
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => {
+                              setNewMaterialType(t.id as any);
+                              setNewMaterialFile(null);
+                            }}
+                            className={cn(
+                              "p-2.5 rounded-lg border text-center transition cursor-pointer flex flex-col items-center justify-center gap-1 select-none",
+                              isSelected
+                                ? "bg-emerald-50 border-[#194611] text-[#194611] font-bold"
+                                : "bg-white border-gray-200 hover:bg-gray-50 text-gray-600"
+                            )}
+                          >
+                            <IconComp className="w-4 h-4" />
+                            <span className="text-[11px]">{t.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Material Title */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-800">
+                      Material Title <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g., Pre-operative Checklists & Protocol"
+                      value={newMaterialTitle}
+                      onChange={(e) => setNewMaterialTitle(e.target.value)}
+                      className="h-9 text-xs bg-white"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-800">
+                      Instructions / Description (Optional)
+                    </label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Instructions for preceptors and mentees..."
+                      value={newMaterialDesc}
+                      onChange={(e) => setNewMaterialDesc(e.target.value)}
+                      className="text-xs bg-white"
+                    />
+                  </div>
+
+                  {/* File Upload or URL */}
+                  {newMaterialType === "link" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-800">
+                        Resource URL <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        type="url"
+                        placeholder="https://moh.gov.et/manuals/sample.pdf"
+                        value={newMaterialUrl}
+                        onChange={(e) => setNewMaterialUrl(e.target.value)}
+                        className="h-9 text-xs bg-white"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-800">
+                        Upload {newMaterialType.toUpperCase()} File <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="file"
+                        ref={modalFileInputRef}
+                        accept={
+                          newMaterialType === "pdf"
+                            ? ".pdf,application/pdf"
+                            : newMaterialType === "video"
+                            ? ".mp4,.webm,.mov"
+                            : ".mp3,.wav"
+                        }
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setNewMaterialFile(e.target.files[0]);
+                            if (!newMaterialTitle) {
+                              setNewMaterialTitle(e.target.files[0].name.replace(/\.[^/.]+$/, ""));
+                            }
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      {!newMaterialFile ? (
+                        <div
+                          onClick={() => modalFileInputRef.current?.click()}
+                          className="border border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:bg-gray-50 flex flex-col items-center justify-center gap-1.5"
+                        >
+                          <UploadCloud className="w-5 h-5 text-gray-400" />
+                          <p className="text-xs font-semibold text-gray-700">Click to select {newMaterialType.toUpperCase()}</p>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 flex items-center justify-between text-xs">
+                          <span className="font-semibold text-gray-800 truncate max-w-xs">{newMaterialFile.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setNewMaterialFile(null)}
+                            className="h-6 w-6 text-gray-400 hover:text-red-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
 
               <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
@@ -3019,6 +3407,8 @@ export function ModuleDetailClient({
                       <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
                       Saving...
                     </>
+                  ) : newMaterialCategory === "PRACTICAL_ASSESSMENT" ? (
+                    "Save Checklist & Material"
                   ) : (
                     "Save Material"
                   )}
