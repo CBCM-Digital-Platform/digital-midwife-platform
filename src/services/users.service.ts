@@ -16,6 +16,42 @@ export const FACILITY_ID_MAP: Record<number | string, string> = {
   6: "Yekatit 12 Hospital Medical College",
 };
 
+export const USER_META_STORAGE_KEY = "cbcm_user_meta_store";
+
+export interface StoredUserMeta {
+  phone?: string;
+  highestQualification?: string;
+  thematicArea?: string;
+  thematicAreaId?: number | string;
+}
+
+export function getStoredUserMeta(key?: string): StoredUserMeta | undefined {
+  if (typeof window === "undefined" || !key || !key.trim()) return undefined;
+  try {
+    const raw = localStorage.getItem(USER_META_STORAGE_KEY);
+    if (!raw) return undefined;
+    const store = JSON.parse(raw);
+    const cleanKey = key.trim().toLowerCase();
+    return store[cleanKey] || store[key.trim()];
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveUserMeta(key: string, meta: StoredUserMeta): void {
+  if (typeof window === "undefined" || !key || !key.trim()) return;
+  try {
+    const raw = localStorage.getItem(USER_META_STORAGE_KEY);
+    const store = raw ? JSON.parse(raw) : {};
+    const cleanKey = key.trim().toLowerCase();
+    store[cleanKey] = { ...(store[cleanKey] || {}), ...meta };
+    store[key.trim()] = { ...(store[key.trim()] || {}), ...meta };
+    localStorage.setItem(USER_META_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
 /**
  * Normalizes raw backend user models (snake_case full_name, facility_id, highest_qualification, etc.)
  * into strongly-typed frontend ClinicalUser (MentorUser | MenteeUser) domain models.
@@ -68,22 +104,98 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     (facilityId !== undefined && FACILITY_ID_MAP[facilityId]) ||
     (facilityId !== undefined ? `Facility #${facilityId}` : "Unassigned Facility");
 
+  // Deep extractor searching raw root and nested objects (user, profile, mentor, details, etc.)
+  const extractValue = (...keys: string[]): string | undefined => {
+    const sources = [
+      raw,
+      raw?.user,
+      raw?.profile,
+      raw?.user_profile,
+      raw?.userProfile,
+      raw?.mentor,
+      raw?.mentor_profile,
+      raw?.mentorProfile,
+      raw?.mentee,
+      raw?.mentee_profile,
+      raw?.menteeProfile,
+      raw?.details,
+      raw?.meta,
+      raw?.metadata,
+      raw?.attributes,
+    ];
+
+    for (const src of sources) {
+      if (!src || typeof src !== "object") continue;
+      for (const k of keys) {
+        const val = src[k];
+        if (
+          val !== undefined &&
+          val !== null &&
+          typeof val === "string" &&
+          val.trim() !== "" &&
+          val.trim().toLowerCase() !== "null" &&
+          val.trim().toLowerCase() !== "undefined" &&
+          val.trim().toLowerCase() !== "not specified" &&
+          val.trim().toLowerCase() !== "notspecified"
+        ) {
+          return val.trim();
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const storedMeta =
+    getStoredUserMeta(String(raw.id ?? raw._id ?? "")) ||
+    getStoredUserMeta(String(raw.email ?? "")) ||
+    getStoredUserMeta(rawName || "");
+
   const highestQualification =
-    raw.highest_qualification ||
-    raw.highestQualification ||
-    raw.qualification ||
-    raw.highest_degree ||
-    raw.degree ||
+    extractValue(
+      "highest_qualification",
+      "highestQualification",
+      "qualification",
+      "qualifications",
+      "degree",
+      "highest_degree",
+      "highestDegree",
+      "education",
+      "education_level",
+      "educationLevel",
+      "educational_level",
+      "educationalLevel",
+      "academic_qualification",
+      "academicQualification",
+      "credentials",
+      "credential",
+      "specialty",
+      "specialization",
+      "title",
+      "role_title",
+      "cadre",
+      "cadre_level"
+    ) ||
+    storedMeta?.highestQualification ||
     undefined;
 
   const phone =
-    raw.phone ||
-    raw.phone_number ||
-    raw.phoneNumber ||
-    raw.contact_phone ||
-    raw.contactPhone ||
-    raw.telephone ||
-    raw.mobile ||
+    extractValue(
+      "phone",
+      "phone_number",
+      "phoneNumber",
+      "telephone",
+      "mobile",
+      "mobile_phone",
+      "contact_phone",
+      "contactPhone",
+      "contact_number",
+      "contactNumber",
+      "phone_no",
+      "phoneNo",
+      "tel",
+      "cell"
+    ) ||
+    storedMeta?.phone ||
     "";
 
   const thematicAreaId =
@@ -95,20 +207,24 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       ? Number(raw.thematic_area.id)
       : raw.thematicArea?.id !== undefined && raw.thematicArea?.id !== null
       ? Number(raw.thematicArea.id)
+      : storedMeta?.thematicAreaId !== undefined
+      ? Number(storedMeta.thematicAreaId)
       : undefined;
 
   const rawThematicAreaName =
     (typeof raw.thematic_area === "object" ? raw.thematic_area?.name : raw.thematic_area) ||
     (typeof raw.thematicArea === "object" ? raw.thematicArea?.name : raw.thematicArea) ||
     raw.thematicAreaName ||
-    raw.thematic_area_name;
+    raw.thematic_area_name ||
+    storedMeta?.thematicArea;
 
   const thematicArea =
     resolveThematicAreaName(rawThematicAreaName) ||
     (thematicAreaId !== undefined ? resolveThematicAreaName(thematicAreaId) : undefined) ||
     (typeof rawThematicAreaName === "string" && rawThematicAreaName.trim() && !/^\d+$/.test(rawThematicAreaName.trim())
       ? rawThematicAreaName.trim()
-      : undefined);
+      : undefined) ||
+    storedMeta?.thematicArea;
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -486,9 +602,28 @@ export async function createUser(data: Partial<ClinicalUser>): Promise<ClinicalU
  */
 export async function getUserById(id: string, facilityId?: number | string): Promise<ClinicalUser> {
   const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
-  const res = await apiClient.get<any>(`/api/v1/users/${id}`);
-  const raw = res?.data?.user || res?.data || res?.user || res;
-  const user = normalizeUser(raw, raw?.role || "mentee");
+  const res = await apiClient.get<any>(`/api/v1/users/${id}`).catch(() => null);
+  const rawData = res?.data?.user || res?.data?.users?.[0] || res?.data || res?.user || res;
+  const raw = Array.isArray(rawData) ? rawData[0] : rawData;
+  const user = raw ? normalizeUser(raw, raw?.role || "mentee") : ({ id, role: "mentor" } as any);
+
+  const storedMeta =
+    getStoredUserMeta(String(id)) ||
+    getStoredUserMeta(String(user.id)) ||
+    getStoredUserMeta(String(user.email)) ||
+    getStoredUserMeta(user.name);
+
+  if (storedMeta) {
+    if ((!user.phone || user.phone === "Not specified") && storedMeta.phone) {
+      user.phone = storedMeta.phone;
+    }
+    if ((!user.highestQualification || user.highestQualification === "Not specified") && storedMeta.highestQualification) {
+      user.highestQualification = storedMeta.highestQualification;
+    }
+    if ((!user.thematicArea || /^\d+$/.test(user.thematicArea)) && storedMeta.thematicArea) {
+      user.thematicArea = storedMeta.thematicArea;
+    }
+  }
 
   let targetFacilityId = facilityId ?? user.facilityId;
   if (!targetFacilityId && typeof window === "undefined") {

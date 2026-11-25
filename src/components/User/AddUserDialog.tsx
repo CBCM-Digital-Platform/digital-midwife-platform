@@ -25,7 +25,7 @@ import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { getThematicAreas, INITIAL_THEMATIC_AREAS, resolveThematicAreaName } from "@/services/thematic-areas.service";
 import type { ThematicArea } from "@/types/thematic-area";
-import { FACILITY_ID_MAP } from "@/services/users.service";
+import { FACILITY_ID_MAP, saveUserMeta } from "@/services/users.service";
 import {
   Dialog,
   DialogContent,
@@ -409,6 +409,21 @@ export function AddUserDialog({ role, facilityId, facilityName, onUserCreated, t
         createdThematicAreaId,
         resolvedThematicName
       );
+      if (rawUser?.id) {
+        newUser.id = String(rawUser.id);
+      }
+
+      // Persist metadata locally so phone and qualification are instantly reliable across views
+      const userMeta = {
+        phone: formData.phone.trim(),
+        highestQualification: formData.highest_qualification,
+        thematicArea: resolvedThematicName,
+        thematicAreaId: createdThematicAreaId,
+      };
+      if (rawUser?.id) saveUserMeta(String(rawUser.id), userMeta);
+      if (newUser.id) saveUserMeta(String(newUser.id), userMeta);
+      if (formData.email) saveUserMeta(formData.email.trim().toLowerCase(), userMeta);
+      if (fullName) saveUserMeta(fullName.toLowerCase(), userMeta);
 
       onUserCreated?.(newUser);
       reset();

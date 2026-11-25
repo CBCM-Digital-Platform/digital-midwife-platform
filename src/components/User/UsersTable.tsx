@@ -17,7 +17,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
-import { changeUserStatus, resolveThematicAreaName } from "@/services/users.service";
+import { changeUserStatus, resolveThematicAreaName, getStoredUserMeta } from "@/services/users.service";
 import { UserDetailDialog } from "@/components/User/UserDetailDialog";
 import { UsersTableToolbar } from "@/components/User/UsersTableToolbar";
 import { UsersTablePagination } from "@/components/User/UsersTablePagination";
@@ -190,16 +190,30 @@ export function UsersTable({
       },
     };
 
+    const isInvalid = (val?: string) =>
+      !val ||
+      val.trim() === "" ||
+      val.toLowerCase() === "not specified" ||
+      val.toLowerCase() === "notspecified" ||
+      val.toLowerCase() === "undefined" ||
+      val.toLowerCase() === "null";
+
     // Qualification Column (Backend: highest_qualification)
     const qualificationCol: ColumnDef<ClinicalUser> = {
       id: "qualification",
       header: "QUALIFICATION",
       cell: ({ row }) => {
         const user = row.original;
+        const storedMeta =
+          getStoredUserMeta(String(user.id)) ||
+          getStoredUserMeta(String(user.email)) ||
+          getStoredUserMeta(String(user.name));
+
         const qualification =
-          user.highestQualification ||
-          (user as any).highest_qualification ||
-          (user as any).qualification ||
+          (!isInvalid(user.highestQualification) && user.highestQualification) ||
+          (!isInvalid((user as any).highest_qualification) && (user as any).highest_qualification) ||
+          (!isInvalid((user as any).qualification) && (user as any).qualification) ||
+          (!isInvalid(storedMeta?.highestQualification) && storedMeta?.highestQualification) ||
           "Not specified";
         return (
           <span className="text-sm font-semibold text-gray-900 leading-tight">
@@ -425,7 +439,7 @@ export function UsersTable({
         const matchesName = (item.name || "").toLowerCase().includes(query);
         const matchesId = (item.systemId || "").toLowerCase().includes(query);
         const matchesFacility = (item.facility || "").toLowerCase().includes(query);
-        const matchesQualification = (item.highestQualification || (item as any).highest_qualification || "").toLowerCase().includes(query);
+        const matchesQualification = (item.highestQualification || (item as any).highest_qualification || getStoredUserMeta(String(item.id))?.highestQualification || getStoredUserMeta(String(item.email))?.highestQualification || "").toLowerCase().includes(query);
         const matchesThematic = (item.thematicArea || "").toLowerCase().includes(query);
         if (!matchesName && !matchesId && !matchesFacility && !matchesQualification && !matchesThematic) {
           return false;
