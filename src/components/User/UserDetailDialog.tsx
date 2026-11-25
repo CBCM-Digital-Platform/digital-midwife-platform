@@ -72,6 +72,22 @@ export function UserDetailDialog({
           ) {
             (freshUser as MentorUser).assignedMenteesCount = (user as MentorUser).assignedMenteesCount;
           }
+          if (!freshUser.phone && user.phone) {
+            freshUser.phone = user.phone;
+          }
+          if (!(freshUser as MentorUser).department && (user as MentorUser)?.department) {
+            (freshUser as MentorUser).department = (user as MentorUser).department;
+          }
+          if (
+            (!freshUser.profession || freshUser.profession === "Midwifery Preceptor") &&
+            user.profession &&
+            user.profession !== "Midwifery Preceptor"
+          ) {
+            freshUser.profession = user.profession;
+          }
+          if (!freshUser.highestQualification && user.highestQualification) {
+            freshUser.highestQualification = user.highestQualification;
+          }
           setCurrentUser(freshUser);
           setTargetStatus(freshUser.status || "active");
         }
@@ -300,7 +316,7 @@ export function UserDetailDialog({
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-700">
                 <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                <span>{currentUser.phone || "Not provided"}</span>
+                <span>{currentUser.phone || (currentUser as any).phone_number || (currentUser as any).phoneNumber || "Not specified"}</span>
               </div>
             </div>
 
@@ -331,7 +347,9 @@ export function UserDetailDialog({
               <div>
                 <span className="text-gray-400 block text-[11px]">Profession / Qualification</span>
                 <span className="font-bold text-gray-900">
-                  {currentUser.profession || (currentUser as any).highest_qualification || "Clinician"}
+                  {currentUser.profession && currentUser.highestQualification && currentUser.profession !== currentUser.highestQualification
+                    ? `${currentUser.profession} (${currentUser.highestQualification})`
+                    : currentUser.highestQualification || currentUser.profession || (currentUser as any).highest_qualification || "Clinical Midwife"}
                 </span>
               </div>
 
@@ -363,7 +381,10 @@ export function UserDetailDialog({
                 <div>
                   <span className="text-gray-400 block text-[11px]">Clinical Department</span>
                   <span className="font-bold text-gray-900">
-                    {(currentUser as MentorUser).department || "Not specified"}
+                    {(currentUser as MentorUser).department ||
+                      (currentUser.thematicArea
+                        ? `${resolveThematicAreaName(currentUser.thematicArea) || currentUser.thematicArea} Unit`
+                        : "Maternal & Child Health Department")}
                   </span>
                 </div>
               ) : (

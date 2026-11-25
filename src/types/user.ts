@@ -36,6 +36,7 @@ export interface BaseUser {
   avatarInitials: string;
   avatarBgColor?: string;
   avatarUrl?: string;
+  highestQualification?: string;
 }
 
 export interface MentorUser extends BaseUser {

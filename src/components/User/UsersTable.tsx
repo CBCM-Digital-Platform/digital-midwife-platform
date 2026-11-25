@@ -197,16 +197,24 @@ export function UsersTable({
       cell: ({ row }) => {
         const user = row.original;
         const profession =
-          user.profession ||
-          (user as any).highest_qualification ||
-          (user.role === "mentor" ? "Midwifery Preceptor" : "Resident Midwife");
+          user.profession && user.profession !== "Midwifery Preceptor"
+            ? user.profession
+            : user.highestQualification ||
+              user.profession ||
+              (user as any).highest_qualification ||
+              (user.role === "mentor" ? "Midwifery Preceptor" : "Resident Midwife");
         if (user.role === "mentor") {
           const mentor = user as MentorUser;
+          const department =
+            mentor.department ||
+            (mentor.thematicArea
+              ? `${resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea} Unit`
+              : undefined);
           return (
             <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession || "Mentor"}</span>
-              {mentor.department && (
-                <span className="text-xs text-gray-500 truncate mt-0.5">{mentor.department}</span>
+              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
+              {department && (
+                <span className="text-xs text-gray-500 truncate mt-0.5">{department}</span>
               )}
             </div>
           );
@@ -214,7 +222,7 @@ export function UsersTable({
           const mentee = user as MenteeUser;
           return (
             <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession || "Mentee"}</span>
+              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
               {mentee.cadreLevel && (
                 <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel}</span>
               )}

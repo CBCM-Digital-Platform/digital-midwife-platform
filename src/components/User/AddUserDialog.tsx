@@ -155,6 +155,13 @@ function createNewUserFromForm(
       formData.thematic_area ||
       "General Practice";
 
+    const resolvedDepartment =
+      resolvedName && resolvedName !== "General Practice"
+        ? (resolvedName.toLowerCase().endsWith("unit") || resolvedName.toLowerCase().endsWith("department")
+            ? resolvedName
+            : `${resolvedName} Unit`)
+        : "Maternal & Child Health Department";
+
     const newMentor: MentorUser = {
       id: `mentor-${timestamp}`,
       systemId,
@@ -164,8 +171,9 @@ function createNewUserFromForm(
       role: "mentor",
       avatarInitials: initials,
       avatarBgColor: "bg-emerald-100 text-emerald-800",
-      profession: formData.profession,
-      department: resolvedName || "Clinical Unit",
+      profession: formData.profession || formData.highest_qualification || "Clinical Midwife Preceptor",
+      highestQualification: formData.highest_qualification,
+      department: resolvedDepartment,
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
       thematicArea: resolvedName,
@@ -184,7 +192,8 @@ function createNewUserFromForm(
       role: "mentee",
       avatarInitials: initials,
       avatarBgColor: "bg-blue-100 text-blue-800",
-      profession: formData.profession,
+      profession: formData.profession || formData.highest_qualification || "Resident Midwife",
+      highestQualification: formData.highest_qualification,
       cadreLevel: formData.highest_qualification,
       facility: facilityName,
       facilityId: activeFacilityId !== undefined ? Number(activeFacilityId) : undefined,
