@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   createResource,
   updateResource,
+  createDocumentPdfFile,
 } from "@/services/resources.service";
 import { getModules, getModuleContents } from "@/services/learning.service";
 import {
@@ -463,12 +464,23 @@ export function ResourceFormDialog({
           })),
         });
 
+        const checklistLines = [
+          `Topic/Procedure: ${effectiveProcedure}`,
+          `Target Benchmark: ${practicalBenchmark}`,
+          `Total Steps: ${checklistItems.length} (${checklistItems.filter((i) => i.is_critical).length} Critical)`,
+          ...checklistItems.map(
+            (item, idx) =>
+              `${idx + 1}. ${item.item_text} [${item.is_critical ? "CRITICAL - " : ""}${item.weight || 10} pts]`
+          ),
+        ];
+        const osceFile = selectedFile || createDocumentPdfFile(`OSCE_${effectiveProcedure}`, checklistLines);
+
         // 2. Create resource entry linked to the module
         const created = await createResource({
           title: `[OSCE] ${title.trim()}`,
           description: `Topic/Skill: ${effectiveProcedure}. ${checklistItems.length} checklist steps (${checklistItems.filter((i) => i.is_critical).length} critical). Benchmark: ${practicalBenchmark}. ${description.trim()}`,
           type: "document",
-          file: selectedFile || undefined,
+          file: osceFile,
           moduleId: selectedModuleId ? Number(selectedModuleId) : undefined,
           thematicAreaId: effectiveThematicAreaId,
           category: "PRACTICAL_ASSESSMENT",

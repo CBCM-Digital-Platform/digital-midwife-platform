@@ -49,6 +49,7 @@ import {
   downloadAssignedResource,
   openResourceInNewTab,
   detectBackendResourceType,
+  createDocumentPdfFile,
 } from "@/services/resources.service";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -894,6 +895,16 @@ export function ModuleDetailClient({
       setMaterialModalError(null);
 
       try {
+        const checklistLines = [
+          `Clinical Procedure: ${effectiveProcedure}`,
+          `Total Observation Steps: ${validItems.length} (${validItems.filter((i) => i.is_critical).length} Critical)`,
+          ...validItems.map(
+            (item, idx) =>
+              `${idx + 1}. ${item.item_text} [${item.is_critical ? "CRITICAL - " : ""}${item.weight || 10} pts]`
+          ),
+        ];
+        const osceFile = newMaterialFile || createDocumentPdfFile(`OSCE_${effectiveProcedure}`, checklistLines);
+
         // 1. Create practical checklist on backend
         await createPracticalChecklist({
           thematic_area_id: Number(currentModule.thematicAreaId) || 1,
@@ -911,6 +922,7 @@ export function ModuleDetailClient({
         const res = await addContent(currentModule.id, {
           title: newMaterialTitle.trim(),
           type: "document",
+          file: osceFile,
           description: `OSCE Practical Checklist: ${effectiveProcedure}. ${newMaterialDesc.trim()}`,
           category: "PRACTICAL_ASSESSMENT",
           thematicAreaId: currentModule.thematicAreaId,

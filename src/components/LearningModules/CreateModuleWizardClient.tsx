@@ -26,7 +26,10 @@ import {
   createPracticalChecklist,
   type PracticalChecklistItem,
 } from "@/services/practical-checklists.service";
-import { detectBackendResourceType } from "@/services/resources.service";
+import {
+  detectBackendResourceType,
+  createDocumentPdfFile,
+} from "@/services/resources.service";
 import {
   importUnifiedCourseExam,
   downloadSampleExamCsv,
@@ -512,6 +515,17 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
 
         await createPracticalChecklist(checklistPayload);
 
+        const checklistLines = [
+          `Topic/Procedure: ${effectiveTopic}`,
+          `Target Benchmark: ${practicalBenchmark}`,
+          `Total Steps: ${checklistItems.length} (${checklistItems.filter((i) => i.is_critical).length} Critical)`,
+          ...checklistItems.map(
+            (item, idx) =>
+              `${idx + 1}. ${item.item_text} [${item.is_critical ? "CRITICAL - " : ""}${item.weight || 10} pts]`
+          ),
+        ];
+        const osceFile = selectedFile || createDocumentPdfFile(`OSCE_${effectiveTopic}`, checklistLines);
+
         // 2. Attach content entry to the module so it appears in the curriculum syllabus
         const contentPayload: AddContentPayload = {
           title: `[OSCE] ${materialTitle.trim()}`,
@@ -521,7 +535,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
           isRequired: true,
           category: "PRACTICAL_ASSESSMENT",
           thematicAreaId,
-          file: selectedFile || undefined,
+          file: osceFile,
         };
 
         await addContent(createdModuleId, contentPayload);
