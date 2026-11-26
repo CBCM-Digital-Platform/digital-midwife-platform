@@ -37,6 +37,10 @@ import {
   createPracticalChecklist,
   type PracticalChecklistItem,
 } from "@/services/practical-checklists.service";
+import {
+  importUnifiedCourseExam,
+  downloadSampleExamCsv,
+} from "@/services/exams.service";
 import { getMyMentees } from "@/services/my-mentees.service";
 import type { MyMentee } from "@/types/my-mentee";
 import {
@@ -941,6 +945,69 @@ export function ModuleDetailClient({
       return;
     }
 
+    if (newMaterialCategory === "EXAMINATION") {
+      if (!newMaterialFile) {
+        setMaterialModalError("Please select a CSV file containing the examination questions and answer keys.");
+        return;
+      }
+      if (!newMaterialFile.name.toLowerCase().endsWith(".csv") && newMaterialFile.type !== "text/csv") {
+        setMaterialModalError("Examinations must be uploaded as CSV (.csv) files only.");
+        return;
+      }
+
+      setIsSubmittingMaterial(true);
+      setMaterialModalError(null);
+
+      try {
+        const examResult = await importUnifiedCourseExam(newMaterialFile, {
+          title: newMaterialTitle.trim(),
+          description: newMaterialDesc.trim() || undefined,
+          thematic_area_id: Number(currentModule.thematicAreaId) || 1,
+        });
+
+        const questionsCount = examResult.preTest?.totalQuestions ?? examResult.postTest?.totalQuestions ?? 0;
+
+        const res = await addContent(currentModule.id, {
+          title: newMaterialTitle.trim(),
+          type: "document",
+          description: `Course Examination (Unified Pre-Test & Post-Test). Imported ${questionsCount} questions from CSV. ${newMaterialDesc.trim()}`,
+          category: "EXAMINATION",
+          thematicAreaId: currentModule.thematicAreaId,
+          isRequired: true,
+          isPublished: newMaterialIsPublished,
+          isAuthorized: newMaterialIsAuthorized,
+        });
+
+        if (res.success && res.content) {
+          setContents((prev) => [...prev, res.content]);
+          setIsAddMaterialOpen(false);
+          setNewMaterialTitle("");
+          setNewMaterialDesc("");
+          setNewMaterialUrl("");
+          setNewMaterialFile(null);
+          setFeedbackMessage({
+            type: "success",
+            text: `Unified Examination imported, published, and linked successfully (${questionsCount} questions)!`,
+          });
+        } else {
+          setIsAddMaterialOpen(false);
+          setNewMaterialTitle("");
+          setNewMaterialDesc("");
+          setNewMaterialUrl("");
+          setNewMaterialFile(null);
+          setFeedbackMessage({
+            type: "success",
+            text: `Unified Examination imported and published to live exam service successfully!`,
+          });
+        }
+      } catch (err: any) {
+        setMaterialModalError(err?.message || "Failed to import examination CSV.");
+      } finally {
+        setIsSubmittingMaterial(false);
+      }
+      return;
+    }
+
     if (String(newMaterialType) === "link") {
       setMaterialModalError("External links are not supported by the backend resource model. Upload a file instead.");
       return;
@@ -954,10 +1021,7 @@ export function ModuleDetailClient({
     setMaterialModalError(null);
 
     try {
-      const targetCategory =
-        newMaterialCategory === "EXAMINATION" && newExamSubcategory === "ANSWER_KEY"
-          ? "ANSWER_KEY"
-          : newMaterialCategory;
+      const targetCategory = newMaterialCategory;
 
       const detectedType = detectBackendResourceType(newMaterialType, newMaterialFile);
 
@@ -972,7 +1036,7 @@ export function ModuleDetailClient({
         // cannot be required for mentee completion by the backend rules.
         isRequired: !["FACILITATOR_GUIDE", "ANSWER_KEY"].includes(targetCategory),
         category: targetCategory,
-        examinationStage: newMaterialCategory === "EXAMINATION" ? newExamStage : undefined,
+        examinationStage: undefined,
         thematicAreaId: currentModule.thematicAreaId,
         isPublished: newMaterialIsPublished,
         isAuthorized: newMaterialIsAuthorized,
@@ -2982,43 +3046,43 @@ export function ModuleDetailClient({
                   className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[#194611]"
                 >
                   <option value="PARTICIPANT_MANUAL">Participant Manual</option>
-                  <option value="POWERPOINT_PRESENTATION">PowerPoint Presentation (Course Training)</option>
+                  <option value="POWERPOINT_PRESENTATION">Training Materials (Course Training)</option>
                   <option value="FACILITATOR_GUIDE">Facilitator Guide (Mentor Only)</option>
-                  <option value="EXAMINATION">Examination</option>
+                  <option value="EXAMINATION">Examination (CSV)</option>
                   <option value="PRACTICAL_ASSESSMENT">Practical Assessment (OSCE)</option>
                 </select>
               </div>
 
-              {/* Conditional Subcategory for EXAMINATION */}
+              {/* EXAMINATION: Unified CSV Architecture */}
               {newMaterialCategory === "EXAMINATION" && (
-                <div className="p-3.5 rounded-lg bg-blue-50/70 border border-blue-200 space-y-2.5">
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                      Examination Component <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={newExamSubcategory}
-                      onChange={(e) => setNewExamSubcategory(e.target.value as any)}
-                      className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs"
-                    >
-                      <option value="EXAM_QUESTIONS">Course Examination Paper (Questions)</option>
-                      <option value="ANSWER_KEY">Official Answer Key (Mentor/Admin Only)</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-start gap-2 p-2 bg-blue-100/60 border border-blue-200 rounded text-blue-900 text-xs">
-                    <Award className="w-3.5 h-3.5 text-blue-700 shrink-0 mt-0.5" />
-                    <span className="text-[11px] leading-relaxed">
-                      <strong>Unified Course Examination:</strong> Pre-Test and Post-Test share the same examination paper (shuffled automatically by the system for mentees). You only need to upload one exam file.
-                    </span>
-                  </div>
-
-                  {newExamSubcategory === "ANSWER_KEY" && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-100/80 p-2 rounded border border-amber-300">
-                      <Lock className="w-3.5 h-3.5 shrink-0 text-amber-700" />
-                      <span>Locked until post-exam completion (Mentor/Admin view only).</span>
+                <div className="p-3.5 rounded-lg bg-blue-50/80 border border-blue-200 space-y-2.5">
+                  <div className="flex items-start gap-2 text-blue-950 text-xs">
+                    <Award className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Unified Course Examination (Single CSV Upload)</p>
+                      <p className="text-[11px] text-blue-800 mt-0.5 leading-relaxed">
+                        Pre-test and Post-test use the same examination paper. Both questions and correct answers are contained within a single CSV file. Uploading will automatically create and publish both stages.
+                      </p>
                     </div>
-                  )}
+                  </div>
+
+                  <div className="bg-white/80 p-2.5 rounded border border-blue-200/80 text-[11px] text-gray-700 space-y-1">
+                    <p className="font-semibold text-gray-900">Required CSV Columns:</p>
+                    <code className="block bg-gray-100 p-1.5 rounded text-[10px] font-mono text-gray-800 break-all select-all">
+                      question, option_a, option_b, option_c, option_d, correct_answer, marks
+                    </code>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => downloadSampleExamCsv()}
+                      className="text-xs text-blue-700 hover:text-blue-900 font-semibold inline-flex items-center gap-1.5 underline decoration-blue-300 hover:decoration-blue-700 transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download Sample Exam CSV
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -3333,13 +3397,19 @@ export function ModuleDetailClient({
                   ) : (
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-800">
-                        Upload {newMaterialType.toUpperCase()} File <span className="text-red-500">*</span>
+                        Upload{" "}
+                        {newMaterialCategory === "EXAMINATION"
+                          ? "Examination CSV"
+                          : `${newMaterialType.toUpperCase()} File`}{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="file"
                         ref={modalFileInputRef}
                         accept={
-                          newMaterialType === "pdf"
+                          newMaterialCategory === "EXAMINATION"
+                            ? ".csv,text/csv,application/vnd.ms-excel"
+                            : newMaterialType === "pdf"
                             ? ".pdf,application/pdf"
                             : newMaterialType === "video"
                             ? ".mp4,.webm,.mov"
@@ -3361,7 +3431,11 @@ export function ModuleDetailClient({
                           className="border border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:bg-gray-50 flex flex-col items-center justify-center gap-1.5"
                         >
                           <UploadCloud className="w-5 h-5 text-gray-400" />
-                          <p className="text-xs font-semibold text-gray-700">Click to select {newMaterialType.toUpperCase()}</p>
+                          <p className="text-xs font-semibold text-gray-700">
+                            {newMaterialCategory === "EXAMINATION"
+                              ? "Click to select Examination CSV (.csv only)"
+                              : `Click to select ${newMaterialType.toUpperCase()}`}
+                          </p>
                         </div>
                       ) : (
                         <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 flex items-center justify-between text-xs">

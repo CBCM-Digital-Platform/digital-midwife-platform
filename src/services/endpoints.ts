@@ -43,6 +43,14 @@ export const ENDPOINTS = {
     BASE: "/api/v1/practical-checklists",
     DETAIL: (id: string | number) => `/api/v1/practical-checklists/${id}`,
   },
+  EXAMS: {
+    BASE: "/api/v1/exams",
+    IMPORT: "/api/v1/exams/import",
+    DETAIL: (id: string | number) => `/api/v1/exams/${id}`,
+    PUBLISH: (id: string | number) => `/api/v1/exams/${id}/publish`,
+    AUTHORIZE: (id: string | number) => `/api/v1/exams/${id}/authorize`,
+    QUESTIONS: "/api/v1/exams/questions",
+  },
   MESSAGES: {
     CONVERSATIONS: "/api/v1/messages/conversations",
     CONVERSATION_DETAIL: (id: string | number) => `/api/v1/messages/conversations/${id}`,

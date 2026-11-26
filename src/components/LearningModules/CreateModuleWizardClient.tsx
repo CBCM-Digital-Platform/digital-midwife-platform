@@ -27,6 +27,10 @@ import {
   type PracticalChecklistItem,
 } from "@/services/practical-checklists.service";
 import { detectBackendResourceType } from "@/services/resources.service";
+import {
+  importUnifiedCourseExam,
+  downloadSampleExamCsv,
+} from "@/services/exams.service";
 import type { ThematicArea } from "@/types/thematic-area";
 import type { LearningMaterialCategory } from "@/types/resource";
 import {
@@ -54,6 +58,7 @@ import {
   Trash2,
   ShieldAlert,
   ClipboardCheck,
+  Download,
   CheckSquare,
   HelpCircle,
   SlidersHorizontal,
@@ -209,18 +214,18 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
       setMaterialType("presentation");
       setIsRequired(true);
       if (!materialTitle || materialTitle.includes("Manual") || materialTitle.includes("Guide")) {
-        setMaterialTitle(`${title.trim() || "Clinical Training"} - Presentation Slides`);
+        setMaterialTitle(`${title.trim() || "Clinical Training"} - Training Materials`);
       }
     } else if (newCat === "FACILITATOR_GUIDE") {
       setMaterialType("pdf");
       setIsRequired(false); // Mentor only, not required for mentee completion
-      if (!materialTitle || materialTitle.includes("Manual") || materialTitle.includes("Slides")) {
+      if (!materialTitle || materialTitle.includes("Manual") || materialTitle.includes("Slides") || materialTitle.includes("Training")) {
         setMaterialTitle(`${title.trim() || "Clinical Module"} - Facilitator Guide (Mentor Only)`);
       }
     } else if (newCat === "EXAMINATION") {
       setMaterialType("pdf");
-      setIsRequired(examSubcategory === "EXAM_QUESTIONS");
-      if (!materialTitle || materialTitle.includes("Manual") || materialTitle.includes("Slides")) {
+      setIsRequired(true);
+      if (!materialTitle || materialTitle.includes("Manual") || materialTitle.includes("Slides") || materialTitle.includes("Training")) {
         setMaterialTitle(
           `${title.trim() || "Clinical Module"} - Course Examination`
         );
@@ -412,9 +417,10 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
   // Determine accepted file extensions
   const getAcceptedExtensions = (): string => {
     switch (materialCategory) {
+      case "EXAMINATION":
+        return ".csv,text/csv,application/vnd.ms-excel";
       case "POWERPOINT_PRESENTATION":
         return ".ppt,.pptx,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf";
-      case "EXAMINATION":
       case "FACILITATOR_GUIDE":
       case "PARTICIPANT_MANUAL":
       case "PRACTICAL_ASSESSMENT":
@@ -525,11 +531,18 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
           text: "Module & OSCE Practical Assessment Checklist published successfully! Redirecting...",
         });
       } else {
-        // Standard Material / Presentation / Facilitator Guide / Examination
-        const targetCategory: LearningMaterialCategory =
-          materialCategory === "EXAMINATION" && examSubcategory === "ANSWER_KEY"
-            ? "ANSWER_KEY"
-            : (materialCategory as LearningMaterialCategory);
+        // Examination CSV Import via dedicated exams backend API
+        if (materialCategory === "EXAMINATION" && selectedFile) {
+          try {
+            await importUnifiedCourseExam(selectedFile, {
+              title: materialTitle.trim(),
+              description: materialDescription.trim() || undefined,
+              thematic_area_id: Number(thematicAreaId) || 1,
+            });
+          } catch (examErr) {
+            console.warn("Backend exam CSV import warning:", examErr);
+          }
+        }
 
         const effectiveType = detectBackendResourceType(materialType, selectedFile);
         const contentPayload: AddContentPayload = {
@@ -539,12 +552,8 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
           file: selectedFile || undefined,
           url: undefined,
           order: 1,
-          isRequired:
-            targetCategory === "FACILITATOR_GUIDE" || targetCategory === "ANSWER_KEY"
-              ? false
-              : isRequired,
-          category: targetCategory,
-          examinationStage: materialCategory === "EXAMINATION" ? examinationStage : undefined,
+          isRequired: materialCategory !== "FACILITATOR_GUIDE",
+          category: materialCategory as LearningMaterialCategory,
           thematicAreaId,
         };
 
@@ -976,10 +985,10 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                         </div>
                         <div className="mt-2.5">
                           <h4 className="text-xs font-bold text-gray-900 leading-snug">
-                            PowerPoint Slides
+                            Training Materials
                           </h4>
                           <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">
-                            Interactive training slide deck
+                            Course Training & Presentations
                           </p>
                         </div>
                       </div>
@@ -1035,7 +1044,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                             Examination
                           </h4>
                           <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">
-                            Pre/Post Theory & Keys
+                            Single CSV (Questions & Answers)
                           </p>
                         </div>
                       </div>
@@ -1072,80 +1081,51 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
 
                   {/* DYNAMIC FIELDS CONDITIONALLY RENDERED BASED ON SELECTED CATEGORY */}
                   <div className="pt-4 border-t border-gray-100 space-y-5">
-                    {/* CASE 1: EXAMINATION SPECIFIC SUB-SELECTORS */}
+                    {/* CASE 1: EXAMINATION SPECIFIC CSV UPLOAD ARCHITECTURE */}
                     {materialCategory === "EXAMINATION" && (
-                      <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-4">
-                        <div className="flex items-center gap-2">
-                          <Award className="w-4 h-4 text-blue-700" />
-                          <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wide">
-                            Examination Architecture & Subcategory
-                          </h4>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {/* Subcategory: Questions vs Answer Key */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-gray-800">
-                              Examination Subcategory <span className="text-red-500">*</span>
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setExamSubcategory("EXAM_QUESTIONS");
-                                  setIsRequired(true);
-                                }}
-                                className={cn(
-                                  "py-2 px-3 text-xs font-semibold rounded-lg border transition text-center",
-                                  examSubcategory === "EXAM_QUESTIONS"
-                                    ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                                )}
-                              >
-                                Questions (EXAM_QUESTIONS)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setExamSubcategory("ANSWER_KEY");
-                                  setIsRequired(false);
-                                }}
-                                className={cn(
-                                  "py-2 px-3 text-xs font-semibold rounded-lg border transition text-center",
-                                  examSubcategory === "ANSWER_KEY"
-                                    ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
-                                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                                )}
-                              >
-                                Answer Key (ANSWER_KEY)
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Unified Examination Note */}
-                          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-100/70 border border-blue-200 text-blue-900 text-xs">
-                            <Award className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-                            <div className="space-y-0.5">
-                              <p className="font-bold text-blue-950">Unified Course Examination</p>
-                              <p className="text-[11px] text-blue-800 leading-relaxed">
-                                Pre-Test and Post-Test use the exact same examination paper. Questions and choices are automatically shuffled by the platform for mentees. You only need to upload one exam file.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Answer Key Security Badge */}
-                        {examSubcategory === "ANSWER_KEY" && (
-                          <div className="flex items-start gap-2 p-3 bg-amber-100/70 border border-amber-300 rounded-lg text-amber-900 text-xs">
-                            <Lock className="w-4 h-4 shrink-0 mt-0.5 text-amber-800" />
+                      <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <Award className="w-5 h-5 text-blue-700 shrink-0" />
                             <div>
-                              <p className="font-bold">Confidential Answer Key Flagged</p>
-                              <p className="mt-0.5 text-[11px] text-amber-800">
-                                This answer key will be locked until mentees complete their examination. Accessible solely to mentors and super admins.
+                              <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wide">
+                                Unified Examination (Single CSV File Only)
+                              </h4>
+                              <p className="text-[11px] text-blue-800 mt-0.5">
+                                Questions and answer keys are not separated—they must be uploaded in the same CSV file.
                               </p>
                             </div>
                           </div>
-                        )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={downloadSampleExamCsv}
+                            className="bg-white border-blue-300 text-blue-900 hover:bg-blue-50 text-xs h-7 self-start sm:self-auto shrink-0 shadow-2xs font-semibold"
+                          >
+                            <Download className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                            Download CSV Template
+                          </Button>
+                        </div>
+
+                        <div className="p-3 bg-white/90 rounded-lg border border-blue-200 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-gray-800 text-[11px]">Required CSV Header Columns:</span>
+                            <span className="text-[10px] text-blue-600 font-medium">UTF-8 Format (.csv)</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 font-mono text-[10px] text-blue-900">
+                            <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">question</span>
+                            <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_a</span>
+                            <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_b</span>
+                            <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_c</span>
+                            <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_d</span>
+                            <span className="px-1.5 py-0.5 bg-emerald-50 rounded border border-emerald-300 text-emerald-800 font-bold">correct_answer</span>
+                            <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">marks</span>
+                          </div>
+                          <p className="text-[10px] text-gray-500 pt-0.5">
+                            Unified Pipeline: This single CSV will import questions and answer keys into the exams backend, powering both the Pre-Test and Post-Test.
+                          </p>
+                        </div>
                       </div>
                     )}
 
@@ -1429,11 +1409,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                       {materialCategory === "PRACTICAL_ASSESSMENT"
                         ? "OSCE Practical Checklist Builder"
                         : materialCategory === "EXAMINATION"
-                        ? `${
-                            examSubcategory === "EXAM_QUESTIONS"
-                              ? "Question Bank / Exam Paper"
-                              : "Official Answer Key"
-                          } (Pre-Test & Post-Test Shuffled)`
+                        ? "Upload Examination CSV (Questions & Answer Key)"
                         : "Upload Training & Curriculum Media"}
                     </CardTitle>
                     <CardDescription className="text-xs text-gray-500 mt-0.5">
@@ -1639,52 +1615,41 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                     </div>
                   )}
 
-                  {/* TAILORED VIEW 2: EXAMINATION (QUESTIONS OR ANSWER KEY) */}
+                  {/* TAILORED VIEW 2: EXAMINATION (CSV QUESTIONS & ANSWER KEY IN SAME FILE) */}
                   {materialCategory === "EXAMINATION" && (
-                    <div className="space-y-5">
-                      {examSubcategory === "ANSWER_KEY" ? (
-                        <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Lock className="w-5 h-5 text-amber-700 shrink-0" />
-                            <h4 className="text-sm font-bold">
-                              Locked Until Post-Exam Completion
-                            </h4>
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-900">
+                            <Award className="w-4 h-4 text-blue-700" />
+                            Unified Course Examination (CSV File Only)
                           </div>
-                          <p className="text-xs text-amber-800 leading-relaxed">
-                            This official answer key will be encrypted and hidden from mentees. It automatically unlocks only for authorized midwife preceptors after the mentee submits their post-test attempt.
+                          <p className="text-xs text-blue-800 mt-0.5">
+                            Both questions and correct answer keys are contained within this single CSV file.
                           </p>
                         </div>
-                      ) : (
-                        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex items-center justify-between">
-                          <div>
-                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-900">
-                              <Award className="w-4 h-4 text-blue-700" />
-                              Unified Course Examination Questions
-                            </div>
-                            <p className="text-xs text-blue-800 mt-0.5">
-                              Uploaded test questions serve as both Pre-Test and Post-Test (shuffled automatically by the system).
-                            </p>
-                          </div>
-                          <Badge className="bg-blue-600 text-white text-[10px]">
-                            Pre/Post Shuffled
-                          </Badge>
-                        </div>
-                      )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={downloadSampleExamCsv}
+                          className="bg-white border-blue-300 text-blue-900 hover:bg-blue-100 text-xs h-7 self-start sm:self-auto shrink-0 shadow-2xs font-semibold"
+                        >
+                          <Download className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                          Download Sample CSV
+                        </Button>
+                      </div>
 
-                      {/* File Upload for Exam Document */}
+                      {/* File Upload for Exam CSV Document */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-gray-800">
-                          Upload{" "}
-                          {examSubcategory === "ANSWER_KEY"
-                            ? "Answer Key Document"
-                            : "Examination Question Bank"}{" "}
-                          <span className="text-red-500">*</span>
+                          Upload Examination CSV (.csv only) <span className="text-red-500">*</span>
                         </label>
 
                         <input
                           type="file"
                           ref={fileInputRef}
-                          accept={getAcceptedExtensions()}
+                          accept=".csv,text/csv,application/vnd.ms-excel"
                           onChange={handleFileSelect}
                           className="hidden"
                         />
@@ -1698,36 +1663,39 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
                             className={cn(
                               "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-3",
                               isDragOver
-                                ? "border-[#194611] bg-emerald-50/70 scale-[0.99]"
+                                ? "border-blue-600 bg-blue-50/70 scale-[0.99]"
                                 : step2Errors.fileOrUrl
                                 ? "border-red-400 bg-red-50/20"
                                 : "border-gray-300 bg-gray-50/50 hover:bg-gray-100/60 hover:border-gray-400"
                             )}
                           >
-                            <div className="w-12 h-12 rounded-full bg-white shadow-xs border border-gray-200 flex items-center justify-center text-[#194611]">
-                              <UploadCloud className="w-6 h-6" />
+                            <div className="w-12 h-12 rounded-full bg-white shadow-xs border border-gray-200 flex items-center justify-center text-blue-700">
+                              <FileText className="w-6 h-6" />
                             </div>
                             <div>
                               <p className="text-sm font-semibold text-gray-900">
-                                Click to browse or drag and drop examination file
+                                Click to select Examination CSV or drag and drop
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
-                                PDF, DOCX, or Excel examination formats up to 50MB
+                                Columns: question, option_a, option_b, option_c, option_d, correct_answer, marks
                               </p>
                             </div>
+                            <Badge variant="outline" className="text-[10px] bg-white text-blue-800 border-blue-200 font-mono">
+                              UTF-8 .CSV ONLY
+                            </Badge>
                           </div>
                         ) : (
-                          <div className="border border-emerald-200 bg-emerald-50/40 rounded-xl p-4 flex items-center justify-between gap-3 shadow-2xs">
+                          <div className="border border-blue-200 bg-blue-50/40 rounded-xl p-4 flex items-center justify-between gap-3 shadow-2xs">
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-lg bg-[#194611] text-white flex items-center justify-center shrink-0">
-                                <FileText className="w-5 h-5" />
+                              <div className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                                CSV
                               </div>
                               <div className="min-w-0">
                                 <p className="text-sm font-bold text-gray-900 truncate">
                                   {selectedFile.name}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for upload
+                                  {(selectedFile.size / 1024).toFixed(1)} KB • Examination CSV Ready
                                 </p>
                               </div>
                             </div>

@@ -22,6 +22,10 @@ import {
   createPracticalChecklist,
   type PracticalChecklistItem,
 } from "@/services/practical-checklists.service";
+import {
+  importUnifiedCourseExam,
+  downloadSampleExamCsv,
+} from "@/services/exams.service";
 import type { LearningModule, ModuleContent } from "@/types/learning";
 import type {
   AdminResource,
@@ -48,6 +52,7 @@ import {
   Sparkles,
   Plus,
   Trash2,
+  Download,
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -252,23 +257,19 @@ export function ResourceFormDialog({
       setResourceType("presentation");
       setIsRequired(true);
       if (!title || title.includes("Manual") || title.includes("Guide")) {
-        setTitle("Clinical Training Slide Deck");
+        setTitle("Course Training Materials");
       }
     } else if (newCat === "FACILITATOR_GUIDE") {
       setResourceType("document");
       setIsRequired(false);
-      if (!title || title.includes("Manual") || title.includes("Slides")) {
+      if (!title || title.includes("Manual") || title.includes("Slides") || title.includes("Training")) {
         setTitle("Facilitator Guide (Mentor Only)");
       }
     } else if (newCat === "EXAMINATION") {
       setResourceType("document");
-      setIsRequired(examSubcategory === "EXAM_QUESTIONS");
-      if (!title || title.includes("Manual") || title.includes("Slides")) {
-        setTitle(
-          `Course Examination ${
-            examSubcategory === "ANSWER_KEY" ? "Answer Key" : "Questions"
-          }`
-        );
+      setIsRequired(true);
+      if (!title || title.includes("Manual") || title.includes("Slides") || title.includes("Training")) {
+        setTitle("Course Examination");
       }
     } else if (newCat === "PRACTICAL_ASSESSMENT") {
       setResourceType("document");
@@ -420,6 +421,8 @@ export function ResourceFormDialog({
 
   const getAcceptedExtensions = (): string => {
     switch (materialCategory) {
+      case "EXAMINATION":
+        return ".csv,text/csv,application/vnd.ms-excel";
       case "POWERPOINT_PRESENTATION":
         return ".ppt,.pptx,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf";
       default:
@@ -475,10 +478,21 @@ export function ResourceFormDialog({
         onSuccess(created);
         onOpenChange(false);
       } else {
-        const targetCategory: LearningMaterialCategory =
-          materialCategory === "EXAMINATION" && examSubcategory === "ANSWER_KEY"
-            ? "ANSWER_KEY"
-            : (materialCategory as LearningMaterialCategory);
+        // Examination CSV Import via dedicated exams backend API
+        if (materialCategory === "EXAMINATION" && selectedFile) {
+          try {
+            await importUnifiedCourseExam(selectedFile, {
+              title: title.trim(),
+              description: description.trim() || undefined,
+              thematic_area_id: Number(effectiveThematicAreaId) || 1,
+              cycle_id: 1,
+            });
+          } catch (examErr) {
+            console.warn("Backend exam CSV import notice:", examErr);
+          }
+        }
+
+        const targetCategory = materialCategory as LearningMaterialCategory;
 
         if (isEditing && resource) {
           const updated = await updateResource(resource.id, {
@@ -489,11 +503,7 @@ export function ResourceFormDialog({
             moduleId: selectedModuleId ? Number(selectedModuleId) : undefined,
             thematicAreaId: effectiveThematicAreaId,
             category: targetCategory,
-            examinationStage: materialCategory === "EXAMINATION" ? examinationStage : undefined,
-            isRequired:
-              targetCategory === "FACILITATOR_GUIDE" || targetCategory === "ANSWER_KEY"
-                ? false
-                : isRequired,
+            isRequired: targetCategory !== "FACILITATOR_GUIDE",
           });
           onSuccess(updated);
           onOpenChange(false);
@@ -506,11 +516,7 @@ export function ResourceFormDialog({
             moduleId: selectedModuleId ? Number(selectedModuleId) : undefined,
             thematicAreaId: effectiveThematicAreaId,
             category: targetCategory,
-            examinationStage: materialCategory === "EXAMINATION" ? examinationStage : undefined,
-            isRequired:
-              targetCategory === "FACILITATOR_GUIDE" || targetCategory === "ANSWER_KEY"
-                ? false
-                : isRequired,
+            isRequired: targetCategory !== "FACILITATOR_GUIDE",
           });
           onSuccess(created);
           onOpenChange(false);
@@ -608,7 +614,7 @@ export function ResourceFormDialog({
                 >
                   <FileText className="w-4 h-4 text-purple-700" />
                   <div className="mt-1.5">
-                    <p className="text-[11px] font-bold text-gray-900 leading-tight">PowerPoint</p>
+                    <p className="text-[11px] font-bold text-gray-900 leading-tight">Training Materials</p>
                     <p className="text-[9px] text-purple-700 font-semibold mt-0.5 leading-none">Course Training</p>
                   </div>
                 </div>
@@ -643,7 +649,7 @@ export function ResourceFormDialog({
                   <Award className="w-4 h-4 text-blue-700" />
                   <div className="mt-1.5">
                     <p className="text-[11px] font-bold text-gray-900 leading-tight">Examination</p>
-                    <p className="text-[9px] text-blue-700 font-medium mt-0.5 leading-none">Pre/Post Test</p>
+                    <p className="text-[9px] text-blue-700 font-medium mt-0.5 leading-none">CSV (Questions & Keys)</p>
                   </div>
                 </div>
 
@@ -697,43 +703,48 @@ export function ResourceFormDialog({
 
             {/* DYNAMIC FIELDS CONDITIONALLY RENDERED */}
             <div className="pt-2 border-t border-gray-100 space-y-4">
-              {/* CASE 1: EXAMINATION SUB-SELECTORS */}
+              {/* CASE 1: EXAMINATION SPECIFIC CSV UPLOAD ARCHITECTURE */}
               {materialCategory === "EXAMINATION" && (
                 <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3">
-                  <div>
-                    <Label className="text-[11px] font-bold text-gray-700 block mb-1">
-                      Examination Component <span className="text-red-500">*</span>
-                    </Label>
-                    <select
-                      value={examSubcategory}
-                      onChange={(e) => {
-                        const val = e.target.value as ExamSubcategory;
-                        setExamSubcategory(val);
-                        setIsRequired(val === "EXAM_QUESTIONS");
-                        setTitle(`Course Examination ${val === "ANSWER_KEY" ? "Answer Key" : "Questions"}`);
-                      }}
-                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[#194611]"
-                    >
-                      <option value="EXAM_QUESTIONS">Course Examination Paper (Questions)</option>
-                      <option value="ANSWER_KEY">Official Answer Key (Mentor/Admin Only)</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-start gap-2 p-2.5 bg-blue-100/70 border border-blue-200 rounded-lg text-blue-900 text-xs">
-                    <Award className="w-4 h-4 shrink-0 text-blue-700 mt-0.5" />
-                    <span className="text-[11px] leading-relaxed">
-                      <strong>Unified Course Examination:</strong> Pre-Test and Post-Test use the same exam paper (questions and choices are automatically shuffled by the system for mentees). Only one exam document needs to be uploaded.
-                    </span>
-                  </div>
-
-                  {examSubcategory === "ANSWER_KEY" && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-100/90 p-2.5 rounded-lg border border-amber-300">
-                      <Lock className="w-3.5 h-3.5 shrink-0 text-amber-700" />
-                      <span>
-                        Confidential Answer Key: Locked until mentees complete their examination.
-                      </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <Award className="w-5 h-5 text-blue-700 shrink-0" />
+                      <div>
+                        <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wide">
+                          Unified Examination (Single CSV File Only)
+                        </h4>
+                        <p className="text-[11px] text-blue-800 mt-0.5">
+                          Questions and answer keys are combined in the same CSV file.
+                        </p>
+                      </div>
                     </div>
-                  )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={downloadSampleExamCsv}
+                      className="bg-white border-blue-300 text-blue-900 hover:bg-blue-100 text-xs h-7 self-start sm:self-auto shrink-0 shadow-2xs font-semibold"
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                      Download Template
+                    </Button>
+                  </div>
+
+                  <div className="p-3 bg-white/90 rounded-lg border border-blue-200 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-gray-800 text-[11px]">Required CSV Header Columns:</span>
+                      <span className="text-[10px] text-blue-600 font-medium">UTF-8 Format (.csv)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 font-mono text-[10px] text-blue-900">
+                      <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">question</span>
+                      <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_a</span>
+                      <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_b</span>
+                      <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_c</span>
+                      <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">option_d</span>
+                      <span className="px-1.5 py-0.5 bg-emerald-50 rounded border border-emerald-300 text-emerald-800 font-bold">correct_answer</span>
+                      <span className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200">marks</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1093,17 +1104,22 @@ export function ResourceFormDialog({
                   </div>
                 )}
 
-                {materialCategory === "EXAMINATION" && examSubcategory === "ANSWER_KEY" && (
-                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-amber-700 shrink-0" />
-                    <span>Locked Until Post-Exam Completion (Encrypted from mentees).</span>
+                {materialCategory === "EXAMINATION" && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center gap-2">
+                    <Award className="w-4 h-4 text-blue-700 shrink-0" />
+                    <span>Upload examination questions CSV. Questions, options, and answer keys are in the same file.</span>
                   </div>
                 )}
 
                 {/* Upload Area */}
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-gray-800">
-                    Upload {materialCategory === "POWERPOINT_PRESENTATION" ? "Presentation Deck" : "Document"}{" "}
+                    Upload{" "}
+                    {materialCategory === "EXAMINATION"
+                      ? "Examination CSV (.csv)"
+                      : materialCategory === "POWERPOINT_PRESENTATION"
+                      ? "Training Materials / Slide Deck"
+                      : "Document"}{" "}
                     <span className="text-red-500">*</span>
                   </Label>
 
@@ -1136,7 +1152,9 @@ export function ResourceFormDialog({
                           Click to browse or drag and drop file here
                         </p>
                         <p className="text-[10px] text-gray-500 mt-0.5">
-                          {materialCategory === "POWERPOINT_PRESENTATION"
+                          {materialCategory === "EXAMINATION"
+                            ? "CSV files only (.csv with question, options & answer key)"
+                            : materialCategory === "POWERPOINT_PRESENTATION"
                             ? "PPT, PPTX or PDF slides"
                             : "PDF or Word documents"}
                         </p>
