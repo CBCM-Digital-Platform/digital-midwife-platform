@@ -26,6 +26,7 @@ import {
   createPracticalChecklist,
   type PracticalChecklistItem,
 } from "@/services/practical-checklists.service";
+import { detectBackendResourceType } from "@/services/resources.service";
 import type { ThematicArea } from "@/types/thematic-area";
 import type { LearningMaterialCategory } from "@/types/resource";
 import {
@@ -530,9 +531,10 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
             ? "ANSWER_KEY"
             : (materialCategory as LearningMaterialCategory);
 
+        const effectiveType = detectBackendResourceType(materialType, selectedFile);
         const contentPayload: AddContentPayload = {
           title: materialTitle.trim(),
-          type: materialType,
+          type: effectiveType,
           description: materialDescription.trim() || undefined,
           file: selectedFile || undefined,
           url: undefined,

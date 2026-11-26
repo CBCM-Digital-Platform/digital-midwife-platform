@@ -44,6 +44,7 @@ import {
   completeAssignedResource,
   downloadAssignedResource,
   openResourceInNewTab,
+  detectBackendResourceType,
 } from "@/services/resources.service";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -958,9 +959,11 @@ export function ModuleDetailClient({
           ? "ANSWER_KEY"
           : newMaterialCategory;
 
+      const detectedType = detectBackendResourceType(newMaterialType, newMaterialFile);
+
       const payload: AddContentPayload = {
         title: newMaterialTitle.trim(),
-        type: newMaterialType,
+        type: detectedType,
         description: newMaterialDesc.trim() || undefined,
         url: undefined,
         file: newMaterialFile || undefined,

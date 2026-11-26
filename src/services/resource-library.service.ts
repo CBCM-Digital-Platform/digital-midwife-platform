@@ -1,6 +1,7 @@
 import { apiClient } from "@/lib/api-client";
 import { ENDPOINTS } from "@/services/endpoints";
 import type { Resource, ResourceCategory, ResourceKind } from "@/types/resource";
+import { detectBackendResourceType } from "@/services/resources.service";
 
 const STORAGE_STARRED_KEY = "cbcm_starred_resources";
 
@@ -304,9 +305,10 @@ export async function createResource(input: {
         }
     }
 
+    const backendType = detectBackendResourceType(input.type, input.file);
     const payload = {
         title: input.title,
-        type: input.type,
+        type: backendType,
         thematic_area_id: input.thematicAreaId,
         module_id: input.moduleId,
         file_id: fileId,

@@ -55,7 +55,7 @@ export interface AdminResource {
 export interface CreateResourceInput {
   title: string;
   description?: string;
-  type: AdminResourceType;
+  type: AdminResourceType | "pdf" | string;
   url?: string;
   file?: File;
   fileId?: number | string;
@@ -69,7 +69,7 @@ export interface CreateResourceInput {
 export interface UpdateResourceInput {
   title?: string;
   description?: string;
-  type?: AdminResourceType;
+  type?: AdminResourceType | "pdf" | string;
   url?: string;
   file?: File;
   fileId?: number | string;

@@ -237,6 +237,64 @@ export async function getResources(): Promise<AdminResource[]> {
 }
 
 /**
+ * Detects the correct backend resource type based on uploaded file extension and MIME type.
+ * Ensures that presentation slides uploaded as PDF are sent as type 'pdf' to satisfy
+ * backend MIME validation, while preserving category 'POWERPOINT_PRESENTATION'.
+ */
+export function detectBackendResourceType(
+  requestedType?: string,
+  file?: File | null,
+  fileName?: string
+): "pdf" | "presentation" | "video" | "audio" {
+  const name = (file?.name || fileName || "").toLowerCase();
+  const mime = (file?.type || "").toLowerCase();
+
+  // 1. Detect from actual file extension / MIME first if a file is present
+  if (name.endsWith(".pdf") || mime === "application/pdf") {
+    return "pdf";
+  }
+  if (
+    name.endsWith(".ppt") ||
+    name.endsWith(".pptx") ||
+    name.endsWith(".odp") ||
+    mime.includes("presentation") ||
+    mime.includes("powerpoint")
+  ) {
+    return "presentation";
+  }
+  if (
+    name.endsWith(".mp4") ||
+    name.endsWith(".webm") ||
+    name.endsWith(".mov") ||
+    mime.startsWith("video/")
+  ) {
+    return "video";
+  }
+  if (
+    name.endsWith(".mp3") ||
+    name.endsWith(".wav") ||
+    name.endsWith(".m4a") ||
+    name.endsWith(".ogg") ||
+    mime.startsWith("audio/")
+  ) {
+    return "audio";
+  }
+
+  // 2. Fall back to requested type
+  const req = (requestedType || "").toLowerCase();
+  if (req.includes("presentation") || req.includes("powerpoint")) {
+    return "presentation";
+  }
+  if (req.includes("video")) {
+    return "video";
+  }
+  if (req.includes("audio")) {
+    return "audio";
+  }
+  return "pdf";
+}
+
+/**
  * POST /api/v1/resources
  * Creates a resource in the backend database.
  */
@@ -268,7 +326,7 @@ export async function createResource(
   }
 
   const parsedModuleId = input.moduleId ? parsePositiveInt(input.moduleId) : null;
-  const backendType = input.type === "document" || input.type === "link" ? "pdf" : input.type;
+  const backendType = detectBackendResourceType(input.type, input.file, fileName);
   const category = input.category || "PARTICIPANT_MANUAL";
   const backendCategory = category === "PRACTICAL_ASSESSMENT" ? "FACILITATOR_GUIDE" : category;
   const payload: Record<string, any> = {
@@ -302,11 +360,16 @@ export async function createResource(
   }
 
   // Fallback local persistence
+  const fallbackType: AdminResourceType =
+    input.type === "video" || input.type === "audio" || input.type === "presentation" || input.type === "link"
+      ? input.type
+      : "document";
+
   const newResource: AdminResource = {
     id: `res-custom-${Date.now()}`,
     title: input.title.trim(),
     description: input.description?.trim() || "",
-    type: input.type,
+    type: fallbackType,
     url: input.url?.trim(),
     fileId,
     fileName,
@@ -356,7 +419,9 @@ export async function updateResource(
   const payload: Record<string, any> = {};
   if (input.title !== undefined) payload.title = input.title.trim();
   if (input.description !== undefined) payload.description = input.description?.trim() || null;
-  if (input.type !== undefined) payload.type = input.type;
+  if (input.type !== undefined || input.file !== undefined) {
+    payload.type = detectBackendResourceType(input.type, input.file, fileName);
+  }
   if (fileId !== undefined) payload.file_id = fileId;
   if (input.url !== undefined) payload.url = input.url?.trim() || null;
   if (input.thematicAreaId !== undefined) payload.thematic_area_id = input.thematicAreaId;
@@ -390,11 +455,18 @@ export async function updateResource(
   const stored = getStoredResources();
   const existing = stored.find((r) => r.id === idStr);
 
+  const fallbackUpdatedType: AdminResourceType =
+    input.type === "video" || input.type === "audio" || input.type === "presentation" || input.type === "link"
+      ? input.type
+      : input.type !== undefined
+      ? "document"
+      : existing?.type || "document";
+
   const updated: AdminResource = {
     id: idStr,
     title: input.title !== undefined ? input.title.trim() : existing?.title || "",
     description: input.description !== undefined ? (input.description?.trim() || "") : (existing?.description || ""),
-    type: input.type !== undefined ? input.type : existing?.type || "document",
+    type: fallbackUpdatedType,
     url: input.url !== undefined ? input.url?.trim() : existing?.url,
     fileId: fileId !== undefined ? fileId : existing?.fileId,
     fileName: fileName || existing?.fileName,

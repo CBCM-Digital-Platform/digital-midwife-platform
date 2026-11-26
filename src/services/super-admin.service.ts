@@ -5,7 +5,10 @@ import type {
   LearningExaminationStage,
   LearningMaterialCategory,
 } from "@/types/resource";
-import { createResource } from "@/services/resources.service";
+import {
+  createResource,
+  detectBackendResourceType,
+} from "@/services/resources.service";
 import {
   normalizeLearningModule,
   normalizeModuleContent,
@@ -141,11 +144,12 @@ export async function addContent(
       ? "FACILITATOR_GUIDE"
       : payload.category;
 
+    // Detect actual file type from uploaded file to prevent MIME type mismatch errors on the backend
+    const detectedType = detectBackendResourceType(payload.type, payload.file);
+
     const rawData = await createResource({
       title: payload.title.trim(),
-      type: payload.type === "audio" || payload.type === "video" || payload.type === "presentation"
-        ? payload.type
-        : "document",
+      type: detectedType,
       description: payload.description,
       url: payload.url,
       file: payload.file,
