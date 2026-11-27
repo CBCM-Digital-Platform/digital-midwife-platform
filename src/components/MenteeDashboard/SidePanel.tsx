@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, GraduationCap } from "lucide-react";
+import { CalendarDays, FileText, GraduationCap, UserRound } from "lucide-react";
 import type { AssignedMentor, Handbook } from "@/types/mentee-dashboard";
 
 function initials(name: string) {
@@ -15,52 +15,69 @@ function initials(name: string) {
 const cardClass = "rounded-xl border border-gray-200 bg-white p-5 shadow-xs";
 const labelClass = "text-[10px] font-semibold uppercase tracking-wide text-gray-500";
 
-export function SidePanel({ mentor, handbook }: { mentor: AssignedMentor; handbook: Handbook }) {
+export function SidePanel({
+    mentors,
+    mentorLoadError,
+    handbook,
+}: {
+    mentors: AssignedMentor[];
+    mentorLoadError?: string;
+    handbook: Handbook;
+}) {
     return (
         <aside className="space-y-4">
             <section className={cardClass}>
                 <div className="flex items-center justify-between">
-                    <p className={labelClass}>Assigned Clinical Mentor</p>
-                    {mentor.active && (
+                    <p className={labelClass}>Assigned Clinical Mentors</p>
+                    {!mentorLoadError && (
                         <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
-                            Active
+                            {mentors.length} {mentors.length === 1 ? "mentor" : "mentors"}
                         </span>
                     )}
                 </div>
 
-                <div className="mt-4 flex items-center gap-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#194611] text-sm font-bold text-white">
-                        {initials(mentor.name)}
-                    </span>
-                    <div className="min-w-0">
-                        <p className="font-semibold text-gray-900">
-                            {mentor.name}, {mentor.credentials}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                            {mentor.role} • {mentor.credentials}
-                        </p>
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-green-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-600" />
-                            {mentor.openSlots} slots open this week
-                        </p>
+                {mentorLoadError ? (
+                    <p className="mt-4 text-sm text-red-700" role="alert">
+                        {mentorLoadError}
+                    </p>
+                ) : mentors.length === 0 ? (
+                    <div className="mt-4 flex items-center gap-3 text-sm text-gray-600">
+                        <UserRound className="h-5 w-5 shrink-0 text-gray-400" />
+                        No mentor is currently assigned to you.
                     </div>
-                </div>
+                ) : (
+                    <div className="mt-4 space-y-4">
+                        {mentors.map((mentor) => (
+                            <div key={mentor.id} className="flex items-center gap-3">
+                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#194611] text-sm font-bold text-white">
+                                    {initials(mentor.name)}
+                                </span>
+                                <div className="min-w-0">
+                                    <p className="truncate font-semibold text-gray-900">
+                                        {mentor.name}
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                        {mentor.role || "Clinical Mentor"}
+                                    </p>
+                                    <Link
+                                        href={`/messaging?userId=${encodeURIComponent(mentor.id)}&name=${encodeURIComponent(mentor.name)}`}
+                                        className="mt-1 inline-block text-xs font-semibold text-[#194611] hover:underline"
+                                    >
+                                        Message mentor
+                                    </Link>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Link
-                        href={mentor.id ? `/messaging?userId=${String(mentor.id).replace(/\D/g, "") || mentor.id}&name=${encodeURIComponent(mentor.name)}` : "/messaging"}
-                        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm font-semibold text-gray-800 hover:bg-gray-50"
-                    >
-                        Message
-                    </Link>
-                    {/* TODO: open a scheduling flow once mentee sessions exist */}
-                    <button
-                        type="button"
-                        className="rounded-lg bg-[#194611] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f2f0b]"
-                    >
-                        Schedule 1-on-1
-                    </button>
-                </div>
+                <Link
+                    href="/mentee/sessions"
+                    className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-[#194611] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f2f0b]"
+                >
+                    <CalendarDays className="h-4 w-4" />
+                    View sessions
+                </Link>
             </section>
 
             <section className={cardClass}>

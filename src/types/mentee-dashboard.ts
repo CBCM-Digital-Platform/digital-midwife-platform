@@ -56,12 +56,9 @@ export interface ResumeTarget {
 }
 
 export interface AssignedMentor {
-    id?: string | number;
+    id: string;
     name: string;
-    credentials: string;
-    role: string;
-    openSlots: number;
-    active: boolean;
+    role?: string;
 }
 
 export interface Handbook {
@@ -77,6 +74,7 @@ export interface MenteeDashboardData {
     modulePassRate: number; // % of attempted modules passed
     cpdHours: number;
     cpdTarget: number;
-    mentor: AssignedMentor;
+    mentors: AssignedMentor[];
+    mentorLoadError?: string;
     handbook: Handbook;
 }

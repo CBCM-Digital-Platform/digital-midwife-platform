@@ -25,7 +25,11 @@ export async function MenteeDashboardView({ displayName }: MenteeDashboardViewPr
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
         <CurriculumBreakdown chapters={data.chapters} summary={data.summary} />
-        <SidePanel mentor={data.mentor} handbook={data.handbook} />
+        <SidePanel
+          mentors={data.mentors}
+          mentorLoadError={data.mentorLoadError}
+          handbook={data.handbook}
+        />
       </div>
 
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-4 text-xs text-gray-500">

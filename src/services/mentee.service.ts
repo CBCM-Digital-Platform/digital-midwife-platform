@@ -36,6 +36,12 @@ export interface MenteeSessionItem {
   joinUrl?: string;
 }
 
+export interface MenteeAssignedMentor {
+  id: string;
+  name: string;
+  role?: string;
+}
+
 export interface MenteeResourceItem {
   id: string;
   title: string;
@@ -46,6 +52,108 @@ export interface MenteeResourceItem {
   fileSizeMb?: number;
   assignedBy?: string;
   assignedAt: string;
+}
+
+/**
+ * Fetches the signed-in mentee's active mentor assignments.
+ */
+export async function getAssignedMentors(): Promise<MenteeAssignedMentor[]> {
+  const { getServerSession } = await import("next-auth/next");
+  const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+  const session = await getServerSession(authOptions);
+  const menteeId = (session?.user as { id?: string | number } | undefined)?.id;
+  if (menteeId === undefined || menteeId === null || String(menteeId).trim() === "") {
+    throw new Error("Unable to determine the signed-in mentee ID.");
+  }
+
+  const [response, contactsResponse] = await Promise.all([
+    apiClient<unknown>(ENDPOINTS.ASSIGNMENTS.MENTEE_ASSIGNMENTS(menteeId)),
+    apiClient<unknown>(ENDPOINTS.MESSAGES.CONTACTS).catch((error) => {
+      console.warn("Could not load mentor names from messaging contacts:", error);
+      return null;
+    }),
+  ]);
+  const contactsPayload =
+    contactsResponse !== null &&
+    typeof contactsResponse === "object" &&
+    "data" in contactsResponse
+      ? contactsResponse.data
+      : contactsResponse;
+  const contactsById = new Map<string, string>();
+  if (Array.isArray(contactsPayload)) {
+    for (const contact of contactsPayload) {
+      if (!contact || typeof contact !== "object") continue;
+      const record = contact as Record<string, unknown>;
+      const id = String(record.id ?? "");
+      const name = String(
+        record.full_name ?? record.fullName ?? record.name ?? ""
+      ).trim();
+      if (id && name) contactsById.set(id, name);
+    }
+  }
+
+  const payload =
+    response !== null && typeof response === "object" && "data" in response
+      ? response.data
+      : response;
+  const assignments = Array.isArray(payload)
+    ? payload
+    : payload !== null &&
+      typeof payload === "object" &&
+      "assignments" in payload &&
+      Array.isArray(payload.assignments)
+    ? payload.assignments
+    : null;
+  if (!assignments) {
+    throw new Error("The assignments API returned an unexpected mentee assignment list.");
+  }
+
+  const mentors = new Map<string, MenteeAssignedMentor>();
+  for (const assignment of assignments) {
+    if (!assignment || typeof assignment !== "object") continue;
+    const record = assignment as Record<string, unknown>;
+    if (String(record.status ?? "").toLowerCase() !== "assigned") continue;
+    const rawMentor = record.mentor;
+    const mentor =
+      rawMentor !== null && typeof rawMentor === "object"
+        ? rawMentor as Record<string, unknown>
+        : {};
+    const mentorProfile =
+      mentor.user !== null && typeof mentor.user === "object"
+        ? mentor.user as Record<string, unknown>
+        : mentor.profile !== null && typeof mentor.profile === "object"
+        ? mentor.profile as Record<string, unknown>
+        : {};
+    const id = String(record.mentor_id ?? mentor.id ?? "");
+    if (!id) continue;
+    const name = String(
+      record.mentor_name ??
+        record.mentorName ??
+        record.mentor_full_name ??
+        record.mentorFullName ??
+        mentor.full_name ??
+        mentor.fullName ??
+        mentor.name ??
+        mentor.display_name ??
+        mentorProfile.full_name ??
+        mentorProfile.fullName ??
+        mentorProfile.name ??
+        (typeof rawMentor === "string" ? rawMentor : "")
+    ).trim();
+    const displayName = name || contactsById.get(id) || "";
+    mentors.set(id, {
+      id,
+      name: displayName || "Name unavailable",
+      role:
+        typeof mentor.role === "string"
+          ? mentor.role
+          : typeof mentorProfile.role === "string"
+          ? mentorProfile.role
+          : undefined,
+    });
+  }
+
+  return Array.from(mentors.values());
 }
 
 /**
@@ -127,8 +235,20 @@ function normalizeSession(raw: any): MenteeSessionItem {
   const durationMinutes = Number(raw?.duration_minutes || raw?.durationMinutes || 45);
 
   const rawStatus = String(raw?.status || "scheduled").toLowerCase().replaceAll("-", "_");
-  const allowedStatuses = ["draft", "scheduled", "in_progress", "completed", "cancelled", "terminated", "no_show"];
-  const status = allowedStatuses.includes(rawStatus) ? rawStatus : "scheduled";
+  const allowedStatuses: MenteeSessionItem["status"][] = [
+    "draft",
+    "scheduled",
+    "in_progress",
+    "completed",
+    "cancelled",
+    "terminated",
+    "no_show",
+  ];
+  const status: MenteeSessionItem["status"] = allowedStatuses.includes(
+    rawStatus as MenteeSessionItem["status"]
+  )
+    ? (rawStatus as MenteeSessionItem["status"])
+    : "scheduled";
 
   // A session is active now if it is currently in progress or within 30 minutes of scheduled time
   const scheduledTime = new Date(scheduledAt).getTime();
@@ -137,6 +257,8 @@ function normalizeSession(raw: any): MenteeSessionItem {
   const isActiveNow =
     status === "in_progress" ||
     (status === "scheduled" && diffMinutes >= -15 && diffMinutes <= durationMinutes);
+  const displayStatus: MenteeSessionItem["status"] =
+    status === "scheduled" && isActiveNow ? "in_progress" : status;
 
   return {
     id,
@@ -149,7 +271,7 @@ function normalizeSession(raw: any): MenteeSessionItem {
     clinicalSetting: raw?.clinical_setting || raw?.clinicalSetting || undefined,
     sessionGoals: raw?.session_goals || raw?.sessionGoals || undefined,
     preparationNotes: raw?.preparation_notes || raw?.preparationNotes || undefined,
-    status: status === "completed" ? "completed" : status === "cancelled" ? "cancelled" : isActiveNow ? "in_progress" : "scheduled",
+    status: displayStatus,
     isActiveNow,
     joinUrl: raw?.join_url || raw?.joinUrl || undefined,
   };
