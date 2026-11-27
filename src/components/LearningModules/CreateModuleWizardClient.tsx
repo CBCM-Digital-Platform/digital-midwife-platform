@@ -104,7 +104,7 @@ export function CreateModuleWizardClient({ thematicAreas }: CreateModuleWizardCl
   const thematicAreaOptions = thematicAreas.map((area) => ({
     value: String(area.id),
     label: area.name,
-    description: area.code ? `[${area.code}] - ${area.category}` : area.category,
+    description: area.code ? `Domain Code: ${area.code}` : undefined,
   }));
 
   // Auto-dismiss toast

@@ -26,6 +26,7 @@ import {
   Layers,
   Newspaper,
   PanelsTopLeft,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { NavItem } from "@/types/navigation";
@@ -56,6 +57,8 @@ const iconMap: Record<string, LucideIcon> = {
   messages: MessageSquare,
   news: Newspaper,
   "landing-page": PanelsTopLeft,
+  "passing-rules": SlidersHorizontal,
+  "assessment-passing-rules": SlidersHorizontal,
 };
 
 interface SidebarNavProps {

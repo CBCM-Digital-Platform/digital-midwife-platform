@@ -32,10 +32,14 @@ export interface AssessmentPassingRule {
     id: number;
     cycle_id: number | null;
     thematic_area_id: number | null;
-    criteria_min_score: number;
-    theory_min_score: number;
-    practical_min_score: number;
+    pre_test_threshold: number;
+    post_test_threshold: number;
+    practical_threshold: number;
     is_active: boolean;
+    // Compatibility aliases
+    criteria_min_score?: number;
+    theory_min_score?: number;
+    practical_min_score?: number;
 }
 
 export interface AssessmentTypeOption {

@@ -80,22 +80,24 @@ export function UsersTableToolbar({
           <span>Filter by:</span>
         </div>
 
-        {/* Thematic Areas Filter */}
-        <div className="relative">
-          <select
-            value={selectedThematicArea}
-            onChange={(e) => onThematicAreaChange(e.target.value)}
-            className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none cursor-pointer shadow-sm"
-          >
-            <option value="all">All Thematic Areas</option>
-            {thematicList.map((t, idx) => (
-              <option key={`thematic-${t}-${idx}`} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-        </div>
+        {/* Thematic Areas Filter (Only applicable for Mentors) */}
+        {role === "mentor" && (
+          <div className="relative">
+            <select
+              value={selectedThematicArea}
+              onChange={(e) => onThematicAreaChange(e.target.value)}
+              className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none cursor-pointer shadow-sm"
+            >
+              <option value="all">All Thematic Areas</option>
+              {thematicList.map((t, idx) => (
+                <option key={`thematic-${t}-${idx}`} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+          </div>
+        )}
 
         {/* Statuses Filter */}
         <div className="relative">

@@ -17,7 +17,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
-import { changeUserStatus } from "@/services/users.service";
+import { changeUserStatus, resolveThematicAreaName, getStoredUserMeta } from "@/services/users.service";
 import { UserDetailDialog } from "@/components/User/UserDetailDialog";
 import { UsersTableToolbar } from "@/components/User/UsersTableToolbar";
 import { UsersTablePagination } from "@/components/User/UsersTablePagination";
@@ -45,6 +45,19 @@ const thematicBadgeStyles: Record<string, string> = {
   Cardiovascular: "bg-blue-50 text-blue-800 border-blue-200",
   "Critical Care": "bg-purple-50 text-purple-800 border-purple-200",
 };
+
+function getThematicBadgeStyle(areaName?: string): string {
+  if (!areaName) return "bg-gray-100 text-gray-700 border-gray-200";
+  const direct = thematicBadgeStyles[areaName];
+  if (direct) return direct;
+  const lower = areaName.toLowerCase();
+  for (const [key, val] of Object.entries(thematicBadgeStyles)) {
+    if (key.toLowerCase() === lower || lower.includes(key.toLowerCase())) {
+      return val;
+    }
+  }
+  return "bg-gray-100 text-gray-700 border-gray-200";
+}
 
 export function UsersTable({
   role,
@@ -177,33 +190,36 @@ export function UsersTable({
       },
     };
 
-    // Profession & Cadre Column
-    const professionCol: ColumnDef<ClinicalUser> = {
-      id: "profession",
-      header: "PROFESSION",
+    const isInvalid = (val?: string) =>
+      !val ||
+      val.trim() === "" ||
+      val.toLowerCase() === "not specified" ||
+      val.toLowerCase() === "notspecified" ||
+      val.toLowerCase() === "undefined" ||
+      val.toLowerCase() === "null";
+
+    // Qualification Column (Backend: highest_qualification)
+    const qualificationCol: ColumnDef<ClinicalUser> = {
+      id: "qualification",
+      header: "QUALIFICATION",
       cell: ({ row }) => {
         const user = row.original;
-        const profession =
-          user.profession ||
-          (user as any).highest_qualification ||
-          (user.role === "mentor" ? "Midwifery Preceptor" : "Resident Midwife");
-        if (user.role === "mentor") {
-          const mentor = user as MentorUser;
-          return (
-            <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
-              <span className="text-xs text-gray-500 truncate mt-0.5">{mentor.department || "Clinical Unit"}</span>
-            </div>
-          );
-        } else {
-          const mentee = user as MenteeUser;
-          return (
-            <div className="flex flex-col max-w-[210px]">
-              <span className="text-sm font-semibold text-gray-900 leading-tight">{profession}</span>
-              <span className="text-xs text-gray-500 truncate mt-0.5">{mentee.cadreLevel || "Clinical Midwifery"}</span>
-            </div>
-          );
-        }
+        const storedMeta =
+          getStoredUserMeta(String(user.id)) ||
+          getStoredUserMeta(String(user.email)) ||
+          getStoredUserMeta(String(user.name));
+
+        const qualification =
+          (!isInvalid(user.highestQualification) && user.highestQualification) ||
+          (!isInvalid((user as any).highest_qualification) && (user as any).highest_qualification) ||
+          (!isInvalid((user as any).qualification) && (user as any).qualification) ||
+          (!isInvalid(storedMeta?.highestQualification) && storedMeta?.highestQualification) ||
+          "Not specified";
+        return (
+          <span className="text-sm font-semibold text-gray-900 leading-tight">
+            {qualification}
+          </span>
+        );
       },
     };
 
@@ -265,10 +281,23 @@ export function UsersTable({
       header: "THEMATIC AREA",
       cell: ({ row }) => {
         const area = row.original.thematicArea;
-        const badgeClass = thematicBadgeStyles[area] || "bg-gray-100 text-gray-700 border-gray-200";
+        const areaId = row.original.thematicAreaId;
+        const displayName =
+          resolveThematicAreaName(area) ||
+          (areaId !== undefined ? resolveThematicAreaName(areaId) : undefined) ||
+          (area && !/^\d+$/.test(area) ? area : undefined);
+
+        if (!displayName) {
+          return (
+            <span className="text-xs text-gray-400 italic">
+              {role === "mentee" ? "Assigned via Cycle" : "Unassigned"}
+            </span>
+          );
+        }
+        const badgeClass = getThematicBadgeStyle(displayName);
         return (
           <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
-            {area}
+            {displayName}
           </span>
         );
       },
@@ -281,6 +310,13 @@ export function UsersTable({
       cell: ({ row }) => {
         const mentee = row.original as MenteeUser;
         const score = mentee.knowledgeScore;
+
+        if (score === undefined || score === null) {
+          return (
+            <span className="text-xs text-gray-400 italic">Pending Assessment</span>
+          );
+        }
+
         const isRemediation = mentee.scoreTier === "Remediation" || score < 60;
         const isTier1 = mentee.scoreTier === "Tier 1" || score >= 80;
 
@@ -291,7 +327,7 @@ export function UsersTable({
                 {score}%
               </span>
               <span className={`text-[11px] font-medium ${isRemediation ? "text-red-600 font-semibold" : "text-gray-500"}`}>
-                {mentee.scoreTier}
+                {mentee.scoreTier || (score >= 80 ? "Tier 1" : "Tier 2")}
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
@@ -304,16 +340,6 @@ export function UsersTable({
             </div>
           </div>
         );
-      },
-    };
-
-    // Role-specific: MENTOR Experience
-    const experienceCol: ColumnDef<ClinicalUser> = {
-      id: "experience",
-      header: "EXPERIENCE",
-      cell: ({ row }) => {
-        const mentor = row.original as MentorUser;
-        return <span className="text-sm font-semibold text-gray-800">{mentor.yearsOfExperience} yrs</span>;
       },
     };
 
@@ -396,41 +422,51 @@ export function UsersTable({
       },
     };
 
-    // Composition based on role
+    // Composition based on role (facility column omitted as users belong to same facility context)
     if (role === "mentor") {
-      return [identityCol, professionCol, facilityCol, thematicAreaCol, experienceCol, loadCol, statusCol, actionsCol];
+      return [identityCol, qualificationCol, thematicAreaCol, loadCol, statusCol, actionsCol];
     } else {
-      return [identityCol, professionCol, facilityCol, assignedMentorCol, thematicAreaCol, knowledgeScoreCol, statusCol, actionsCol];
+      return [identityCol, qualificationCol, assignedMentorCol, knowledgeScoreCol, statusCol, actionsCol];
     }
   }, [role, activeMenuUserId, updatingStatusUserId]);
 
   // 2. CLIENT-SIDE FILTERING (Text search & dropdowns)
   const filteredData = useMemo(() => {
     return usersData.filter((item) => {
-      // Global search matches name, systemId, profession, or facility
+      // Global search matches name, systemId, qualification, facility, or thematic area
       if (globalFilter.trim()) {
         const query = globalFilter.toLowerCase();
         const matchesName = (item.name || "").toLowerCase().includes(query);
         const matchesId = (item.systemId || "").toLowerCase().includes(query);
         const matchesFacility = (item.facility || "").toLowerCase().includes(query);
+        const matchesQualification = (item.highestQualification || (item as any).highest_qualification || getStoredUserMeta(String(item.id))?.highestQualification || getStoredUserMeta(String(item.email))?.highestQualification || "").toLowerCase().includes(query);
         const matchesThematic = (item.thematicArea || "").toLowerCase().includes(query);
-        if (!matchesName && !matchesId && !matchesFacility && !matchesThematic) {
+        if (!matchesName && !matchesId && !matchesFacility && !matchesQualification && !matchesThematic) {
           return false;
         }
       }
 
-      // Thematic area filter
-      if (selectedThematicArea !== "all" && item.thematicArea !== selectedThematicArea) {
+      // Thematic area filter (case-insensitive + ID support)
+      if (selectedThematicArea !== "all") {
+        const rawArea = (item.thematicArea || "").toLowerCase().trim();
+        const resolvedName = (resolveThematicAreaName(item.thematicArea) || (item.thematicAreaId !== undefined ? resolveThematicAreaName(item.thematicAreaId) : undefined) || "").toLowerCase().trim();
+        const selectedArea = selectedThematicArea.toLowerCase().trim();
+        const matchesThematic =
+          rawArea === selectedArea ||
+          resolvedName === selectedArea ||
+          (item.thematicAreaId !== undefined && String(item.thematicAreaId) === selectedThematicArea);
+        if (!matchesThematic) {
+          return false;
+        }
+      }
+
+      // Facility filter (case-insensitive)
+      if (selectedFacility !== "all" && item.facility?.toLowerCase().trim() !== selectedFacility.toLowerCase().trim()) {
         return false;
       }
 
-      // Facility filter
-      if (selectedFacility !== "all" && item.facility !== selectedFacility) {
-        return false;
-      }
-
-      // Status filter
-      if (selectedStatus !== "all" && item.status !== selectedStatus) {
+      // Status filter (case-insensitive)
+      if (selectedStatus !== "all" && String(item.status).toLowerCase().trim() !== selectedStatus.toLowerCase().trim()) {
         return false;
       }
 
@@ -474,7 +510,11 @@ export function UsersTable({
       Array.from(
         new Set(
           usersData
-            .map((d) => d?.thematicArea)
+            .map((d) =>
+              resolveThematicAreaName(d?.thematicArea) ||
+              (d?.thematicAreaId !== undefined ? resolveThematicAreaName(d?.thematicAreaId) : undefined) ||
+              (d?.thematicArea && !/^\d+$/.test(d.thematicArea) ? d.thematicArea : undefined)
+            )
             .filter((t): t is NonNullable<typeof t> => Boolean(t))
         )
       ),
@@ -493,8 +533,18 @@ export function UsersTable({
   const totalDisplayCount = totalCohortCount || usersData.length;
 
   const handleExportCsv = () => {
-    const headers = ["Name", "ID", "Facility", "Thematic Area", "Status"];
-    const rows = filteredData.map((d) => [d.name, d.systemId, d.facility, d.thematicArea, d.status]);
+    const headers = ["Name", "ID", "Facility", "Qualification", "Thematic Area", "Status"];
+    const rows = filteredData.map((d) => [
+      d.name,
+      d.systemId,
+      d.facility,
+      d.highestQualification || (d as any).highest_qualification || "",
+      resolveThematicAreaName(d.thematicArea) ||
+        (d.thematicAreaId !== undefined ? resolveThematicAreaName(d.thematicAreaId) : undefined) ||
+        d.thematicArea ||
+        "",
+      d.status,
+    ]);
     const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

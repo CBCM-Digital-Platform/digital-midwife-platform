@@ -326,18 +326,48 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
         const raw = cycleRes?.data || cycleRes;
         if (!raw || !raw.id) return getLocallyCreatedCycle(id);
 
-        let facilityList: CycleFacility[] = (Array.isArray(facRes?.data) ? facRes.data : []).map((f: any) => ({
+        const rawFacList = Array.isArray(facRes?.data)
+            ? facRes.data
+            : Array.isArray(facRes?.data?.items)
+            ? facRes.data.items
+            : Array.isArray(facRes?.items)
+            ? facRes.items
+            : Array.isArray(facRes)
+            ? facRes
+            : [];
+
+        let facilityList: CycleFacility[] = rawFacList.map((f: any) => ({
             id: Number(f.id),
-            name: f.name,
-            type: f.type,
-            region: f.region,
+            name: f.name || `Facility #${f.id}`,
+            type: f.type || "Health Facility",
+            region: f.region || "",
         }));
 
-        const thematicAreaList: CycleThematicArea[] = (Array.isArray(areaRes?.data) ? areaRes.data : []).map((a: any) => ({
-            id: Number(a.id),
-            code: a.code,
-            name: a.name,
-        }));
+        const rawAreaList = Array.isArray(areaRes?.data)
+            ? areaRes.data
+            : Array.isArray(areaRes?.data?.items)
+            ? areaRes.data.items
+            : Array.isArray(areaRes?.data?.thematic_areas)
+            ? areaRes.data.thematic_areas
+            : Array.isArray(areaRes?.items)
+            ? areaRes.items
+            : Array.isArray(areaRes?.thematic_areas)
+            ? areaRes.thematic_areas
+            : Array.isArray(areaRes)
+            ? areaRes
+            : [];
+
+        const thematicAreaList: CycleThematicArea[] = rawAreaList
+            .map((a: any) => {
+                const nested = a.thematic_area || a.thematicArea || {};
+                const id = Number(nested.id || a.thematic_area_id || a.thematicAreaId || a.id);
+                const name = String(
+                    nested.name || a.thematic_area_name || a.name || a.title || `Thematic Area #${id}`
+                );
+                const code = String(nested.code || a.thematic_area_code || a.code || "");
+                return { id, name, code };
+            })
+            .filter((a: any) => !isNaN(a.id) && a.id > 0);
 
         const facIds = new Set(facilityList.map((f) => f.id));
 
@@ -390,9 +420,11 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
             .map((mentorId) => {
                 const u = mentorMap.get(mentorId);
                 if (!u) return null;
-                const assignedCount = rawAssignments.filter(
-                    (a: any) => String(a.mentor_id) === mentorId
-                ).length || 0;
+                const assignedCount = new Set(
+                    rawAssignments
+                        .filter((a: any) => String(a.mentor_id ?? a.mentorId) === mentorId && (a.mentee_id ?? a.menteeId))
+                        .map((a: any) => String(a.mentee_id ?? a.menteeId))
+                ).size;
                 const facId = u.facility_id ?? u.facilityId;
                 const facilityName =
                     (facId && FACILITY_ID_MAP[facId]) ||
@@ -404,8 +436,9 @@ export async function getCycleById(id: string | number): Promise<Cycle | null> {
                     id: u.id,
                     name: u.full_name || u.name || "Clinical Mentor",
                     email: u.email || "",
-                    phone: u.phone || "",
-                    profession: u.highest_qualification || "Lead Midwifery Preceptor",
+                    phone: u.phone || u.phone_number || "",
+                    highestQualification: u.highest_qualification || u.highestQualification || "",
+                    thematicArea: u.thematic_area || u.thematicArea || "",
                     facility: facilityName,
                     assignedMenteesCount: assignedCount,
                     status: u.status || "active",

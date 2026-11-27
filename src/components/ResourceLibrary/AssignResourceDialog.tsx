@@ -244,7 +244,7 @@ export function AssignResourceDialog({
                 </option>
                 {mentors.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name} {m.profession ? `— ${m.profession}` : ""} {m.department ? `(${m.department})` : ""}
+                    {m.name} {m.highestQualification ? `— ${m.highestQualification}` : ""} {m.thematicArea ? `(${m.thematicArea})` : ""}
                   </option>
                 ))}
               </select>

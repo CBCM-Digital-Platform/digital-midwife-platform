@@ -26,11 +26,15 @@ export default async function MentorsPage() {
       ? `${((activeCount / totalMentors) * 100).toFixed(1)}% active`
       : "0% active";
 
+  const uniqueThematicAreasCount = new Set(
+    mentors.map((m) => m.thematicAreaId || m.thematicArea).filter(Boolean)
+  ).size;
+
   const stats: StatCardProps[] = [
     {
       title: "Total Mentors",
       value: totalMentors,
-      trend: "↑8% this quarter",
+      trend: "Total registered",
       icon: Users,
       iconColor: "bg-blue-50 text-blue-600",
       accentBarColor: "bg-[#194611]",
@@ -56,17 +60,13 @@ export default async function MentorsPage() {
       accentBarWidth: "w-20",
     },
     {
-      title: "Completion Rate",
-      value: "94.6%",
-      trend: "↑1.4%",
-      trendIcon: true,
+      title: "Thematic Areas Covered",
+      value: uniqueThematicAreasCount,
+      subtext: `${uniqueThematicAreasCount} distinct clinical domains`,
       icon: CheckCircle2,
       iconColor: "bg-purple-50 text-purple-600",
-      progress: {
-        percentage: 94.6,
-        target: 92,
-        barColor: "bg-[#194611]",
-      },
+      accentBarColor: "bg-purple-600",
+      accentBarWidth: "w-24",
     },
   ];
 

@@ -233,11 +233,10 @@ export function SuperAdminReportsView({
 
   // Export Thematic Area Summary CSV
   const handleExportThematicCsv = () => {
-    const headers = ["Domain Code", "Thematic Area Name", "Category", "Competencies Count", "Status"];
+    const headers = ["Domain Code", "Thematic Area Name", "Competencies Count", "Status"];
     const rows = thematicAreas.map((t) => [
       t.code,
       `"${t.name}"`,
-      `"${t.category}"`,
       t.competenciesCount || 12,
       t.status,
     ]);

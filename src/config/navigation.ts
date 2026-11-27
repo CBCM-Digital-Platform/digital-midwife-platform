@@ -6,6 +6,7 @@ export const superAdminNavLinks: NavItem[] = [
   { name: "Facilities", href: "/facilities", icon: "facilities" },
   { name: "Facility Admins", href: "/facility-admins", icon: "users" },
   { name: "Thematic Areas", href: "/thematic-areas", icon: "thematic" },
+  { name: "Passing Rules", href: "/assessment-passing-rules", icon: "passing-rules" },
   { name: "Reports", href: "/reports", icon: "reports" },
   { name: "Landing Page", href: "/super-admin/landing-page", icon: "landing-page" },
   { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
@@ -18,8 +19,8 @@ export const adminNavLinks: NavItem[] = [
   { name: "Mentees", href: "/mentees", icon: "mentee" },
   { name: "Assignments", href: "/assignments", icon: "assignments" },
   { name: "Cycles", href: "/cycles", icon: "cycles" },
+  { name: "Passing Rules", href: "/assessment-passing-rules", icon: "passing-rules" },
   { name: "Reports", href: "/reports", icon: "reports" },
-  { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
 

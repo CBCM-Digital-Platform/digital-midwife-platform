@@ -9,12 +9,10 @@ import {
   Layers,
   Award,
   BookOpen,
-  Users,
   Calendar,
   Loader2,
   ShieldCheck,
   AlertCircle,
-  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -103,7 +101,6 @@ export function ThematicAreaDetailDialog({
             <h3 className="text-base font-bold text-gray-900 leading-snug pt-0.5">
               {thematicArea.name}
             </h3>
-            <p className="text-xs text-gray-500">{thematicArea.category}</p>
           </div>
         </div>
 
@@ -141,38 +138,6 @@ export function ThematicAreaDetailDialog({
               })}
             </div>
           </div>
-        </div>
-
-        {/* Applicable Cadres */}
-        {thematicArea.targetCadres && thematicArea.targetCadres.length > 0 && (
-          <div className="p-3.5 rounded-xl border border-gray-100 bg-white space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-              <Users className="h-3.5 w-3.5 text-[#194611]" />
-              <span>Target Clinician Cadres</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {thematicArea.targetCadres.map((cadre) => (
-                <span
-                  key={cadre}
-                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-100"
-                >
-                  {cadre}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Scope / Description */}
-        <div className="p-3.5 rounded-xl border border-gray-100 bg-white space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-            <FileText className="h-3.5 w-3.5 text-gray-400" />
-            <span>Clinical Scope & Objectives</span>
-          </div>
-          <p className="text-xs text-gray-600 leading-relaxed">
-            {thematicArea.description ||
-              "Standard Ministry of Health clinical mentorship domain for clinical midwives and adolescent care preceptors."}
-          </p>
         </div>
 
         {/* Status Actions */}

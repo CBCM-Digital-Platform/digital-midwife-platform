@@ -110,7 +110,6 @@ export function SuperAdminSettingsView({
         position: designation.trim(),
         email: email.trim().toLowerCase(),
         facilityName: organization.trim(),
-        region: officeLocation.trim(),
       });
       setIsSaving(false);
       setToastMessage({

@@ -121,12 +121,12 @@ export async function getReportsData(): Promise<ReportsData> {
             ? assessmentsRes
             : [];
 
-        const totalMentors = mentorsList.length || MOCK_REPORTS.kpis.totalMentors;
-        const totalMentees = menteesList.length || MOCK_REPORTS.kpis.totalMentees;
-        const activeAssignments = assignmentsList.length || Math.min(totalMentors * 3, totalMentees);
+        const totalMentors = mentorsList.length;
+        const totalMentees = menteesList.length;
+        const activeAssignments = assignmentsList.length;
         const pairingCapacity = totalMentors > 0
             ? Math.min(100, Number(((activeAssignments / (totalMentors * 3)) * 100).toFixed(1)))
-            : 85;
+            : 0;
 
         // Calculate completed cycles
         const completedCycles = cyclesList.filter(
@@ -134,7 +134,7 @@ export async function getReportsData(): Promise<ReportsData> {
         ).length;
 
         // Calculate average score from real assessments if available
-        let avgScore = 86.4;
+        let avgScore = 0;
         if (assessmentsList.length > 0) {
             const scores = assessmentsList
                 .map((a: any) => Number(a.score || a.total_score || a.criteria_score))
@@ -152,16 +152,16 @@ export async function getReportsData(): Promise<ReportsData> {
         // Build thematic area names
         const thematicNames = areasList.length > 0
             ? areasList.map((a: any) => a.name)
-            : MOCK_REPORTS.thematicAreas;
+            : [];
 
         // Build domain breakdown
-        const domains: DomainBreakdown[] = thematicNames.slice(0, 4).map((name: string, i: number) => {
-            const count = Math.max(8, Math.round(totalMentees / (thematicNames.length || 4)));
+        const domains: DomainBreakdown[] = thematicNames.slice(0, 4).map((name: string) => {
+            const count = thematicNames.length > 0 ? Math.round(totalMentees / thematicNames.length) : 0;
             return {
                 domain: name,
                 mentees: count,
-                sessions: count * 3,
-                avgScore: Number((82 + (i % 3) * 3.5).toFixed(1)),
+                sessions: 0,
+                avgScore: 0,
             };
         });
 
@@ -180,22 +180,20 @@ export async function getReportsData(): Promise<ReportsData> {
 
                 const mentor = mentorMap.get(String(a.mentor_id || a.mentorId));
                 const leadMentor = mentor?.full_name || mentor?.name || "Lead Preceptor";
-                const domain = a.thematic_domain || thematicNames[index % thematicNames.length] || "Maternal & Newborn Care";
+                const domain = a.thematic_domain || thematicNames[index % thematicNames.length] || "General Midwifery";
 
                 return {
                     id: `CH-2026-${String(index + 1).padStart(3, "0")}`,
                     facility: facilityName,
                     domain,
                     leadMentor,
-                    mentees: 3,
-                    sessions: 8 + (index % 4) * 4,
-                    preScore: 72.0 + (index % 5) * 2,
-                    postScore: 88.0 + (index % 4) * 2,
-                    status: (index % 2 === 0 ? "COMPLETED" : "IN_PROGRESS") as any,
+                    mentees: a.mentees_count || 1,
+                    sessions: 0,
+                    preScore: 0,
+                    postScore: 0,
+                    status: (a.status === "completed" ? "COMPLETED" : "IN_PROGRESS") as any,
                 };
             });
-        } else {
-            cohorts = MOCK_REPORTS.cohorts;
         }
 
         const now = new Date();
@@ -207,27 +205,43 @@ export async function getReportsData(): Promise<ReportsData> {
             windowEnd: "2026-06-30",
             kpis: {
                 totalMentors,
-                mentorsChangePct: 14,
+                mentorsChangePct: 0,
                 totalMentees,
-                menteesChangePct: 22,
+                menteesChangePct: 0,
                 activeAssignments,
                 pairingCapacityPct: pairingCapacity,
                 avgKnowledgeScore: avgScore,
-                scoreDeltaPts: 6.4,
-                completedCycles: completedCycles || 3,
-                onScheduleCompletionPct: 96.5,
+                scoreDeltaPts: 0,
+                completedCycles,
+                onScheduleCompletionPct: completedCycles > 0 ? 100 : 0,
             },
-            monthly: MOCK_REPORTS.monthly.map((m) => ({
-                ...m,
-                mentors: Math.min(totalMentors, Math.round(totalMentors * (m.mentors / 24))),
-                mentees: Math.min(totalMentees, Math.round(totalMentees * (m.mentees / 72))),
-            })),
+            monthly: [],
             domains,
             thematicAreas: thematicNames,
             cohorts,
         };
     } catch (error) {
-        console.warn("Failed to fetch reports from backend API, using fallback data:", error);
-        return MOCK_REPORTS;
+        console.warn("Failed to fetch reports from backend API:", error);
+        return {
+            refreshedAt: "Live",
+            windowStart: "2026-01-01",
+            windowEnd: "2026-06-30",
+            kpis: {
+                totalMentors: 0,
+                mentorsChangePct: 0,
+                totalMentees: 0,
+                menteesChangePct: 0,
+                activeAssignments: 0,
+                pairingCapacityPct: 0,
+                avgKnowledgeScore: 0,
+                scoreDeltaPts: 0,
+                completedCycles: 0,
+                onScheduleCompletionPct: 0,
+            },
+            monthly: [],
+            domains: [],
+            thematicAreas: [],
+            cohorts: [],
+        };
     }
 }

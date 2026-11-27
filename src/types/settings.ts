@@ -7,9 +7,6 @@ export interface AdminProfile {
     email: string;
     phone: string;
     facilityName: string;
-    region: string;
-    zone: string;
-    woreda: string;
     username: string; // read-only
     status: AccountStatus;
     memberSince: string; // ISO date
@@ -22,9 +19,6 @@ export interface UpdateProfileInput {
     email: string;
     phone: string;
     facilityName?: string;
-    region?: string;
-    zone?: string;
-    woreda?: string;
     avatarUrl?: string | null;
 }
 

@@ -25,19 +25,20 @@ export default async function MenteesPage() {
     totalMentees > 0
       ? `${((activeCount / totalMentees) * 100).toFixed(1)}% in rotation`
       : "0% in rotation";
+  const scoredMentees = mentees.filter((m) => m.knowledgeScore !== undefined && m.knowledgeScore !== null);
   const avgKnowledgeMastery =
-    totalMentees > 0
-      ? (
-          mentees.reduce((acc, m) => acc + (m.knowledgeScore || 0), 0) /
-          totalMentees
-        ).toFixed(1)
-      : "84.2";
+    scoredMentees.length > 0
+      ? `${(
+          scoredMentees.reduce((acc, m) => acc + (m.knowledgeScore || 0), 0) /
+          scoredMentees.length
+        ).toFixed(1)}%`
+      : "Pending";
 
   const stats: StatCardProps[] = [
     {
       title: "Total Mentees",
       value: totalMentees,
-      trend: "↑8% this term",
+      trend: "Total registered",
       icon: Users,
       iconColor: "bg-blue-50 text-blue-600",
       accentBarColor: "bg-[#194611]",
@@ -64,8 +65,8 @@ export default async function MenteesPage() {
     },
     {
       title: "Average Score",
-      value: `${avgKnowledgeMastery}%`,
-      trend: "+2.4% vs cohort",
+      value: avgKnowledgeMastery,
+      trend: scoredMentees.length > 0 ? `${scoredMentees.length} assessed` : "No assessments yet",
       icon: Award,
       iconColor: "bg-purple-50 text-purple-600",
       accentBarColor: "bg-purple-600",

@@ -164,11 +164,11 @@ export async function getFacilityOverviewData(): Promise<{
         if (!rawList || rawList.length === 0) {
             return {
                 stats: {
-                    activeFacilities: 24,
-                    totalMenteesPlaced: 156,
-                    avgComplianceScore: 94,
+                    activeFacilities: 0,
+                    totalMenteesPlaced: 0,
+                    avgComplianceScore: 0,
                 },
-                facilities: MOCK_FACILITY_CARDS,
+                facilities: [],
             };
         }
 
@@ -178,22 +178,25 @@ export async function getFacilityOverviewData(): Promise<{
             ? usersRes.data
             : [];
 
-        // Map live facilities into cards
+        // Map live facilities into cards with real data
         const facilities: FacilityCardItem[] = rawList.map((f: any, idx: number) => {
             const id = String(f.id);
             const name = f.name || `Clinical Facility #${id}`;
             const district = f.region || DISTRICTS[idx % DISTRICTS.length];
-            const distance = `${10 + (idx % 6) * 6}m`;
+            const distance = "";
             const status: "ACTIVE" | "UNDER_REVIEW" | "INACTIVE" =
-                idx === 1 || idx === 5 ? "UNDER_REVIEW" : idx === 8 ? "INACTIVE" : "ACTIVE";
+                f.status?.toLowerCase() === "inactive"
+                    ? "INACTIVE"
+                    : f.status?.toLowerCase() === "pending"
+                    ? "UNDER_REVIEW"
+                    : "ACTIVE";
 
-            // Count mentees tagged to this facility or generate realistic distribution
+            // Count real mentees tagged to this facility
             const facMentees = menteesList.filter(
                 (m: any) => String(m.facility_id ?? m.facilityId ?? "") === id
             );
-            const count = facMentees.length > 0 ? facMentees.length : [32, 14, 8, 28, 22, 16, 12, 19][idx % 8];
-            const trend: "up" | "flat" | "down" = idx % 3 === 0 ? "up" : idx % 3 === 1 ? "flat" : "down";
-            const compliance = [98, 82, 100, 96, 92, 85, 94, 88][idx % 8];
+            const count = facMentees.length;
+            const trend: "up" | "flat" | "down" = "flat";
             const imageUrl = IMAGES[idx % IMAGES.length];
 
             return {
@@ -204,44 +207,41 @@ export async function getFacilityOverviewData(): Promise<{
                 status,
                 menteesCount: count,
                 menteesTrend: trend,
-                complianceScore: compliance,
+                complianceScore: 0,
                 imageUrl,
                 type: f.type || "General Hospital",
-                region: f.region,
-                address: f.street_address || `${district}, Main Health Corridor`,
-                contactPerson: f.contact_person || "Senior Nurse Preceptor",
-                contactPhone: f.contact_phone || "+251 91 000 0000",
-                contactEmail: f.contact_email || "facility@health.gov.et",
-                activeMentorsCount: Math.max(2, Math.round(count / 3)),
-                departments: ["Labor & Delivery", "Maternal Care", "Neonatal Unit"],
-                accreditationDate: "2024",
+                region: f.region || "Unassigned",
+                address: f.street_address || f.address || `${district}, Main Health Corridor`,
+                contactPerson: f.contact_person || f.contactPerson || "",
+                contactPhone: f.contact_phone || f.contactPhone || "",
+                contactEmail: f.contact_email || f.contactEmail || "",
+                activeMentorsCount: 0,
+                departments: [],
+                accreditationDate: f.created_at ? new Date(f.created_at).getFullYear().toString() : "2024",
             };
         });
 
-        // Compute summary stats
-        const activeCount = facilities.filter((f) => f.status === "ACTIVE").length || 24;
-        const totalMentees = facilities.reduce((sum, f) => sum + f.menteesCount, 0) || 156;
-        const avgScore = Math.round(
-            facilities.reduce((sum, f) => sum + f.complianceScore, 0) / (facilities.length || 1)
-        ) || 94;
+        // Compute real summary stats
+        const activeCount = facilities.filter((f) => f.status === "ACTIVE").length;
+        const totalMentees = facilities.reduce((sum, f) => sum + f.menteesCount, 0);
 
         return {
             stats: {
-                activeFacilities: Math.max(24, activeCount),
-                totalMenteesPlaced: Math.max(156, totalMentees),
-                avgComplianceScore: avgScore,
+                activeFacilities: activeCount,
+                totalMenteesPlaced: totalMentees,
+                avgComplianceScore: 0,
             },
             facilities,
         };
     } catch (err) {
-        console.warn("Failed to fetch live facility overview, using fallback dataset:", err);
+        console.warn("Failed to fetch live facility overview:", err);
         return {
             stats: {
-                activeFacilities: 24,
-                totalMenteesPlaced: 156,
-                avgComplianceScore: 94,
+                activeFacilities: 0,
+                totalMenteesPlaced: 0,
+                avgComplianceScore: 0,
             },
-            facilities: MOCK_FACILITY_CARDS,
+            facilities: [],
         };
     }
 }

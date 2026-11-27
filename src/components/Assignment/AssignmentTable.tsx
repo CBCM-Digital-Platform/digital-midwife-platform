@@ -88,23 +88,28 @@ export default function AssignmentTable({ data, compact = false, onRowClick }: A
 
                     return (
                         <div className="flex items-center gap-3">
-                            <div className="flex -space-x-2">
-                                {menteeList.map((m) => (
+                            <div className="flex -space-x-2 shrink-0">
+                                {menteeList.slice(0, 3).map((m) => (
                                     <Avatar key={m.id} person={m} className="size-8 ring-2 ring-white" />
                                 ))}
+                                {menteeList.length > 3 && (
+                                    <span className="flex size-8 items-center justify-center rounded-full bg-gray-100 text-[11px] font-semibold text-gray-700 ring-2 ring-white">
+                                        +{menteeList.length - 3}
+                                    </span>
+                                )}
                             </div>
                             <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                    <p className="font-medium text-gray-900 truncate max-w-xs">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium text-gray-900 text-sm">
                                         {menteeList.map((m) => m.name).join(", ")}
-                                    </p>
-                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 shrink-0">
+                                    </span>
+                                    <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
                                         {menteeList.length} Mentees
                                     </span>
                                 </div>
                                 {!compact && (
                                     <p className="text-xs text-gray-500">
-                                        {menteeList[0]?.subtitle || "Clinical Mentees"}
+                                        Clinical Mentees Cohort
                                     </p>
                                 )}
                             </div>
@@ -115,10 +120,15 @@ export default function AssignmentTable({ data, compact = false, onRowClick }: A
             { accessorKey: "facility", header: "Assigned Facility" },
             {
                 accessorKey: "thematicDomain",
-                header: "Thematic Domain",
-                cell: ({ getValue }) => (
-                    <span className="rounded bg-gray-100 px-2 py-1 text-xs">{getValue<string>()}</span>
-                ),
+                header: "Thematic Area",
+                cell: ({ getValue }) => {
+                    const name = getValue<string>() || "Clinical Midwifery";
+                    return (
+                        <span className="inline-flex items-center rounded-md bg-[#194611]/10 px-2.5 py-1 text-xs font-medium text-[#194611]">
+                            {name}
+                        </span>
+                    );
+                },
             },
             {
                 accessorKey: "assignedDate",

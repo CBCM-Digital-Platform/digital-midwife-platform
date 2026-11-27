@@ -247,7 +247,10 @@ export async function getModules(filters?: GetModulesFilters): Promise<LearningM
   try {
     const params: Record<string, any> = {};
     if (filters?.status) params.status = filters.status;
-    if (filters?.thematicAreaId) params.thematicAreaId = filters.thematicAreaId;
+    if (filters?.thematicAreaId) {
+      params.thematicAreaId = filters.thematicAreaId;
+      params.thematic_area_id = filters.thematicAreaId;
+    }
     if (filters?.publishedOnly !== undefined) params.publishedOnly = filters.publishedOnly;
     if (filters?.authorizedOnly !== undefined) params.authorizedOnly = filters.authorizedOnly;
 

@@ -85,11 +85,41 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             }
         }
 
+        // Build lookup maps for all accredited thematic areas
+        const thematicAreaById = new Map<string, ThematicAreaOptionItem>();
+        const thematicAreaByName = new Map<string, ThematicAreaOptionItem>();
+        for (const item of thematicAreasList) {
+            thematicAreaById.set(String(item.id), item);
+            thematicAreaByName.set(item.name.toLowerCase().trim(), item);
+        }
+
         // Enrich cycles with their assigned thematic areas
         const cycles: CycleOption[] = await Promise.all(
             rawCycles.map(async (c: any) => {
                 const thematicAreaIds: string[] = [];
                 const thematicAreaNames: string[] = [];
+
+                const addArea = (rawId?: any, rawName?: any) => {
+                    const idStr = rawId !== undefined && rawId !== null ? String(rawId).trim() : "";
+                    const nameStr = rawName ? String(rawName).trim() : "";
+
+                    if (idStr && thematicAreaById.has(idStr)) {
+                        const matched = thematicAreaById.get(idStr)!;
+                        thematicAreaIds.push(matched.id);
+                        thematicAreaNames.push(matched.name);
+                        return;
+                    }
+
+                    if (nameStr && thematicAreaByName.has(nameStr.toLowerCase())) {
+                        const matched = thematicAreaByName.get(nameStr.toLowerCase())!;
+                        thematicAreaIds.push(matched.id);
+                        thematicAreaNames.push(matched.name);
+                        return;
+                    }
+
+                    if (idStr) thematicAreaIds.push(idStr);
+                    if (nameStr) thematicAreaNames.push(nameStr);
+                };
 
                 // 1. Check if thematic_areas are already embedded on the cycle object
                 const rawAreas = Array.isArray(c.thematic_areas)
@@ -98,25 +128,35 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
                     ? c.thematicAreas
                     : [];
 
-                for (const a of rawAreas) {
-                    const idStr = String(a.id || a.thematic_area_id || "");
-                    const nameStr = a.name || a.thematic_area_name || "";
-                    if (idStr) thematicAreaIds.push(idStr);
-                    if (nameStr) thematicAreaNames.push(nameStr);
+                for (const a of (rawAreas as any[])) {
+                    if (typeof a === "number" || typeof a === "string") {
+                        addArea(a, undefined);
+                    } else if (a && typeof a === "object") {
+                        const nested: any = a.thematic_area || a.thematicArea || a;
+                        addArea(
+                            nested?.id || a.thematic_area_id || a.thematicAreaId || a.id,
+                            nested?.name || a.thematic_area_name || a.thematicAreaName || a.name
+                        );
+                    }
                 }
 
                 // 2. If not embedded, fetch linked thematic areas from cycle endpoint
                 if (thematicAreaIds.length === 0 && c.id) {
                     try {
                         const areaRes = await apiClient<any>(ENDPOINTS.CYCLES.THEMATIC_AREAS(c.id)).catch(() => null);
-                        const fetchedAreas = areaRes
-                            ? getApiList(areaRes, ["items", "thematic_areas", "thematicAreas", "results"])
+                        const fetchedAreas: any[] = areaRes
+                            ? (getApiList(areaRes, ["items", "thematic_areas", "thematicAreas", "results", "data"]) as any[])
                             : [];
                         for (const a of fetchedAreas) {
-                            const idStr = String(a.id || a.thematic_area_id || "");
-                            const nameStr = String(a.name || a.thematic_area_name || "");
-                            if (idStr) thematicAreaIds.push(idStr);
-                            if (nameStr) thematicAreaNames.push(nameStr);
+                            if (typeof a === "number" || typeof a === "string") {
+                                addArea(a, undefined);
+                            } else if (a && typeof a === "object") {
+                                const nested: any = a.thematic_area || a.thematicArea || a;
+                                addArea(
+                                    nested?.id || a.thematic_area_id || a.thematicAreaId || a.id,
+                                    nested?.name || a.thematic_area_name || a.thematicAreaName || a.name
+                                );
+                            }
                         }
                     } catch {
                         // Ignore endpoint errors gracefully
@@ -138,7 +178,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             id: String(m.id),
             name: m.name || m.email,
             initials: getInitials(m.name),
-            specialty: m.profession || "Obstetrics & Gynecology",
+            specialty: m.highestQualification || m.thematicArea || "Clinical Mentorship",
             currentLoad: m.assignedMenteesCount || 0,
             maxLoad: 3,
             avatarUrl: m.avatarUrl || undefined,
@@ -149,7 +189,7 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
             id: String(me.id),
             name: me.name || me.email,
             initials: getInitials(me.name),
-            specialty: me.profession || "Midwifery Practice",
+            specialty: me.highestQualification || "Clinical Mentee",
             facility: facilityMap.get(Number(me.facilityId)) || me.facility || "Facility unavailable",
             facilityId: me.facilityId,
         }));
@@ -175,6 +215,53 @@ export async function getAssignmentFormOptions(): Promise<AssignmentFormOptions>
     } catch (err) {
         console.error("Failed to fetch assignment form options from backend:", err);
         throw err;
+    }
+}
+
+/**
+ * Helper to ensure a thematic area is linked to a mentorship cycle in the backend database.
+ * Uses a robust multi-strategy approach to support various backend API conventions.
+ */
+export async function linkThematicAreaToCycle(cycleId: number | string, thematicAreaId: number | string): Promise<void> {
+    const cycleIdNum = parsePositiveInt(cycleId);
+    const areaIdNum = parsePositiveInt(thematicAreaId);
+    if (!cycleIdNum || !areaIdNum) return;
+
+    // Strategy 1: POST snake_case single ID { thematic_area_id: areaIdNum }
+    try {
+        await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
+            method: "POST",
+            body: { thematic_area_id: areaIdNum },
+        });
+        return;
+    } catch {
+        // Strategy 2: POST snake_case array { thematic_area_ids: [areaIdNum] }
+        try {
+            await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
+                method: "POST",
+                body: { thematic_area_ids: [areaIdNum] },
+            });
+            return;
+        } catch {
+            // Strategy 3: POST camelCase single ID { thematicAreaId: areaIdNum }
+            try {
+                await apiClient(ENDPOINTS.CYCLES.THEMATIC_AREAS(cycleIdNum), {
+                    method: "POST",
+                    body: { thematicAreaId: areaIdNum },
+                });
+                return;
+            } catch {
+                // Strategy 4: PATCH cycle directly
+                try {
+                    await apiClient.patch(ENDPOINTS.CYCLES.DETAIL(cycleIdNum), {
+                        thematic_area_ids: [areaIdNum],
+                    });
+                    return;
+                } catch {
+                    // Non-blocking fallback
+                }
+            }
+        }
     }
 }
 
@@ -219,9 +306,12 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ ids
         throw new Error("At least one mentor and one mentee must be selected for the assignment.");
     }
 
+    // 2. Automatically link the thematic area to the cycle in the backend database
+    await linkThematicAreaToCycle(cycleIdNum, numericAreaId);
+
     const createdIds: string[] = [];
 
-    // 2. Iterate through selected mentors and mentees to create individual assignment pairs
+    // 3. Iterate through selected mentors and mentees to create individual assignment pairs
     for (const mentorId of mentorList) {
         for (const menteeId of menteeList) {
             const mentorIdNum = parsePositiveInt(mentorId);
@@ -246,8 +336,20 @@ export async function createAssignment(input: NewAssignmentInput): Promise<{ ids
                 matching_reason: matchingReasonText,
             };
 
-            // Post assignment to backend
-            const singleRes = await apiClient.post<unknown>(ENDPOINTS.ASSIGNMENTS.BASE, assignmentPayload);
+            // Post assignment to backend, with automatic retry & cycle-area re-linking if required
+            let singleRes: unknown;
+            try {
+                singleRes = await apiClient.post<unknown>(ENDPOINTS.ASSIGNMENTS.BASE, assignmentPayload);
+            } catch (err: any) {
+                const errMsg = String(err?.message || "").toLowerCase();
+                if (errMsg.includes("not assigned to this cycle") || errMsg.includes("thematic area")) {
+                    await linkThematicAreaToCycle(cycleIdNum, numericAreaId);
+                    singleRes = await apiClient.post<unknown>(ENDPOINTS.ASSIGNMENTS.BASE, assignmentPayload);
+                } else {
+                    throw err;
+                }
+            }
+
             let createdPayload: unknown = singleRes;
             for (let depth = 0; depth < 4; depth += 1) {
                 if (!createdPayload || typeof createdPayload !== "object") break;

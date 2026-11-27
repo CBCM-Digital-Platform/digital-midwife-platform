@@ -31,17 +31,16 @@ export interface BaseUser {
   facility: string;
   facilityId?: number;
   facilityType?: string;
-  thematicArea: ThematicArea;
+  thematicArea?: ThematicArea;
+  thematicAreaId?: number | string;
   avatarInitials: string;
   avatarBgColor?: string;
   avatarUrl?: string;
+  highestQualification?: string;
 }
 
 export interface MentorUser extends BaseUser {
   role: "mentor";
-  profession: string;
-  department: string;
-  yearsOfExperience: number;
   assignedMenteesCount: number;
   status: MentorStatus;
 }
@@ -55,11 +54,10 @@ export interface AssignedMentorInfo {
 
 export interface MenteeUser extends BaseUser {
   role: "mentee";
-  profession: string;
-  cadreLevel: string;
+  cadreLevel?: string;
   assignedMentor: AssignedMentorInfo;
-  knowledgeScore: number;
-  scoreTier: "Tier 1" | "Tier 2" | "Remediation";
+  knowledgeScore?: number;
+  scoreTier?: "Tier 1" | "Tier 2" | "Remediation";
   status: MenteeStatus;
 }
 

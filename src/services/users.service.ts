@@ -1,5 +1,8 @@
 import { apiClient } from "@/lib/api-client";
+import { THEMATIC_AREA_ID_MAP, resolveThematicAreaName } from "@/services/thematic-areas.service";
 import type { MentorUser, MenteeUser, ClinicalUser, MentorSummaryStats, MenteeSummaryStats } from "@/types/user";
+
+export { THEMATIC_AREA_ID_MAP, resolveThematicAreaName };
 
 /**
  * Facility ID mapping for resolving backend facility_id numbers into human-readable facility names.
@@ -12,6 +15,42 @@ export const FACILITY_ID_MAP: Record<number | string, string> = {
   5: "Zewditu Memorial Hospital",
   6: "Yekatit 12 Hospital Medical College",
 };
+
+export const USER_META_STORAGE_KEY = "cbcm_user_meta_store";
+
+export interface StoredUserMeta {
+  phone?: string;
+  highestQualification?: string;
+  thematicArea?: string;
+  thematicAreaId?: number | string;
+}
+
+export function getStoredUserMeta(key?: string): StoredUserMeta | undefined {
+  if (typeof window === "undefined" || !key || !key.trim()) return undefined;
+  try {
+    const raw = localStorage.getItem(USER_META_STORAGE_KEY);
+    if (!raw) return undefined;
+    const store = JSON.parse(raw);
+    const cleanKey = key.trim().toLowerCase();
+    return store[cleanKey] || store[key.trim()];
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveUserMeta(key: string, meta: StoredUserMeta): void {
+  if (typeof window === "undefined" || !key || !key.trim()) return;
+  try {
+    const raw = localStorage.getItem(USER_META_STORAGE_KEY);
+    const store = raw ? JSON.parse(raw) : {};
+    const cleanKey = key.trim().toLowerCase();
+    store[cleanKey] = { ...(store[cleanKey] || {}), ...meta };
+    store[key.trim()] = { ...(store[key.trim()] || {}), ...meta };
+    localStorage.setItem(USER_META_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    // Ignore quota errors
+  }
+}
 
 /**
  * Normalizes raw backend user models (snake_case full_name, facility_id, highest_qualification, etc.)
@@ -65,12 +104,127 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
     (facilityId !== undefined && FACILITY_ID_MAP[facilityId]) ||
     (facilityId !== undefined ? `Facility #${facilityId}` : "Unassigned Facility");
 
-  const profession =
-    raw.profession ||
-    raw.highest_qualification ||
-    (role === "mentor" ? "Lead Midwifery Preceptor" : "Resident Midwife");
+  // Deep extractor searching raw root and nested objects (user, profile, mentor, details, etc.)
+  const extractValue = (...keys: string[]): string | undefined => {
+    const sources = [
+      raw,
+      raw?.user,
+      raw?.profile,
+      raw?.user_profile,
+      raw?.userProfile,
+      raw?.mentor,
+      raw?.mentor_profile,
+      raw?.mentorProfile,
+      raw?.mentee,
+      raw?.mentee_profile,
+      raw?.menteeProfile,
+      raw?.details,
+      raw?.meta,
+      raw?.metadata,
+      raw?.attributes,
+    ];
 
-  const thematicArea = raw.thematicArea || raw.thematic_area || "Maternal & Child";
+    for (const src of sources) {
+      if (!src || typeof src !== "object") continue;
+      for (const k of keys) {
+        const val = src[k];
+        if (
+          val !== undefined &&
+          val !== null &&
+          typeof val === "string" &&
+          val.trim() !== "" &&
+          val.trim().toLowerCase() !== "null" &&
+          val.trim().toLowerCase() !== "undefined" &&
+          val.trim().toLowerCase() !== "not specified" &&
+          val.trim().toLowerCase() !== "notspecified"
+        ) {
+          return val.trim();
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const storedMeta =
+    getStoredUserMeta(String(raw.id ?? raw._id ?? "")) ||
+    getStoredUserMeta(String(raw.email ?? "")) ||
+    getStoredUserMeta(rawName || "");
+
+  const highestQualification =
+    extractValue(
+      "highest_qualification",
+      "highestQualification",
+      "qualification",
+      "qualifications",
+      "degree",
+      "highest_degree",
+      "highestDegree",
+      "education",
+      "education_level",
+      "educationLevel",
+      "educational_level",
+      "educationalLevel",
+      "academic_qualification",
+      "academicQualification",
+      "credentials",
+      "credential",
+      "specialty",
+      "specialization",
+      "title",
+      "role_title",
+      "cadre",
+      "cadre_level"
+    ) ||
+    storedMeta?.highestQualification ||
+    undefined;
+
+  const phone =
+    extractValue(
+      "phone",
+      "phone_number",
+      "phoneNumber",
+      "telephone",
+      "mobile",
+      "mobile_phone",
+      "contact_phone",
+      "contactPhone",
+      "contact_number",
+      "contactNumber",
+      "phone_no",
+      "phoneNo",
+      "tel",
+      "cell"
+    ) ||
+    storedMeta?.phone ||
+    "";
+
+  const thematicAreaId =
+    raw.thematic_area_id !== undefined && raw.thematic_area_id !== null
+      ? Number(raw.thematic_area_id)
+      : raw.thematicAreaId !== undefined && raw.thematicAreaId !== null
+      ? Number(raw.thematicAreaId)
+      : raw.thematic_area?.id !== undefined && raw.thematic_area?.id !== null
+      ? Number(raw.thematic_area.id)
+      : raw.thematicArea?.id !== undefined && raw.thematicArea?.id !== null
+      ? Number(raw.thematicArea.id)
+      : storedMeta?.thematicAreaId !== undefined
+      ? Number(storedMeta.thematicAreaId)
+      : undefined;
+
+  const rawThematicAreaName =
+    (typeof raw.thematic_area === "object" ? raw.thematic_area?.name : raw.thematic_area) ||
+    (typeof raw.thematicArea === "object" ? raw.thematicArea?.name : raw.thematicArea) ||
+    raw.thematicAreaName ||
+    raw.thematic_area_name ||
+    storedMeta?.thematicArea;
+
+  const thematicArea =
+    resolveThematicAreaName(rawThematicAreaName) ||
+    (thematicAreaId !== undefined ? resolveThematicAreaName(thematicAreaId) : undefined) ||
+    (typeof rawThematicAreaName === "string" && rawThematicAreaName.trim() && !/^\d+$/.test(rawThematicAreaName.trim())
+      ? rawThematicAreaName.trim()
+      : undefined) ||
+    storedMeta?.thematicArea;
 
   const rawStatus = String(raw.status || "").toLowerCase().trim();
   const rawTrainingStatus = String(raw.training_status || "").toLowerCase().trim();
@@ -105,41 +259,50 @@ export function normalizeUser(raw: any, defaultRole: "mentor" | "mentee"): Clini
       systemId,
       name,
       email: raw.email || "",
-      phone: raw.phone || "+251911234567",
+      phone,
       role: "mentor",
       facility,
       facilityId,
       thematicArea,
+      thematicAreaId,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-emerald-100 text-emerald-800",
-      profession,
-      department: raw.department || "Maternal & Fetal Health Unit",
-      yearsOfExperience: Number(raw.yearsOfExperience || raw.years_of_experience) || 5,
+      highestQualification,
       assignedMenteesCount: Number(raw.assignedMenteesCount || raw.assigned_mentees_count) || 0,
       status: status as any,
     };
     return mentor;
   } else {
+    const rawScore = raw.knowledgeScore ?? raw.knowledge_score;
+    const menteeScore =
+      rawScore !== undefined && rawScore !== null && !isNaN(Number(rawScore))
+        ? Number(rawScore)
+        : undefined;
+
+    const menteeTier =
+      raw.scoreTier ||
+      (menteeScore !== undefined ? (menteeScore >= 80 ? "Tier 1" : "Tier 2") : undefined);
+
     const mentee: MenteeUser = {
       id,
       systemId,
       name,
       email: raw.email || "",
-      phone: raw.phone || "+251911234567",
+      phone,
       role: "mentee",
       facility,
       facilityId,
-      thematicArea,
+      thematicArea: thematicArea || undefined,
+      thematicAreaId,
       avatarInitials: initials,
       avatarBgColor: raw.avatarBgColor || "bg-blue-100 text-blue-800",
-      profession,
-      cadreLevel: raw.cadreLevel || raw.cadre_level || "Junior Midwife Resident",
+      highestQualification,
       assignedMentor: raw.assignedMentor || {
         name: raw.mentor_name || undefined,
-        status: raw.mentor_id || raw.mentor_name ? "assigned" : "pending_review",
+        status: raw.mentor_id || raw.mentor_name ? "assigned" : "unassigned",
       },
-      knowledgeScore: Number(raw.knowledgeScore || raw.knowledge_score) || 84,
-      scoreTier: (raw.scoreTier || (Number(raw.knowledgeScore || raw.knowledge_score) >= 80 ? "Tier 1" : "Tier 2")) as any,
+      knowledgeScore: menteeScore,
+      scoreTier: menteeTier as any,
       status: status as any,
     };
     return mentee;
@@ -176,9 +339,60 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
   const query = new URLSearchParams({ role: "mentor", page: "1", limit: "100" });
 
   try {
-    const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
+    const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
+    const { getThematicAreas } = await import("@/services/thematic-areas.service");
+    const [res, assignmentsList, thematicAreasList] = await Promise.all([
+      apiClient<any>(`/api/v1/users?${query.toString()}`),
+      getAssignments(activeFacilityId).catch(() => []),
+      getThematicAreas().catch(() => []),
+    ]);
+
+    const thematicAreaLookup = new Map<string, string>();
+    for (const ta of thematicAreasList) {
+      if (ta.id && ta.name) thematicAreaLookup.set(String(ta.id).trim(), ta.name.trim());
+    }
+
+    const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+    const facilityStoredAssignments = activeFacilityId
+      ? storedAssignments.filter((a) => !a.facilityId || String(a.facilityId) === String(activeFacilityId))
+      : storedAssignments;
+    const allAssignments = [...assignmentsList, ...facilityStoredAssignments];
+    const groupedAssignments = groupAssignmentsByMentor(allAssignments);
+
+    // Count real unique assigned mentees per mentor from grouped assignments
+    const mentorMenteesCountMap = new Map<string, number>();
+
+    for (const a of groupedAssignments) {
+      const mentorId = String(a.mentor?.id ?? "").trim();
+      const mentorName = String(a.mentor?.name ?? "").trim().toLowerCase();
+      const count = a.mentees && a.mentees.length > 0 ? a.mentees.length : (a.mentee?.id ? 1 : 0);
+
+      if (mentorId) {
+        mentorMenteesCountMap.set(mentorId, count);
+      }
+      if (mentorName) {
+        mentorMenteesCountMap.set(mentorName, count);
+      }
+    }
+
     const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
-    let list = (rawList || []).map((u: any) => normalizeUser(u, "mentor")) as MentorUser[];
+    let list = (rawList || []).map((u: any) => {
+      const mentor = normalizeUser(u, "mentor") as MentorUser;
+      const countById = mentorMenteesCountMap.get(String(mentor.id).trim());
+      const countByName = mentorMenteesCountMap.get(String(mentor.name).trim().toLowerCase());
+      const count = countById !== undefined ? countById : countByName;
+      mentor.assignedMenteesCount = count !== undefined ? count : 0;
+
+      // Ensure mentor's thematic area name is resolved to a human-readable title
+      if (mentor.thematicAreaId && (!mentor.thematicArea || /^\d+$/.test(mentor.thematicArea))) {
+        const liveName = thematicAreaLookup.get(String(mentor.thematicAreaId));
+        mentor.thematicArea = liveName || resolveThematicAreaName(mentor.thematicAreaId);
+      } else if (mentor.thematicArea) {
+        mentor.thematicArea = resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea;
+      }
+
+      return mentor;
+    }) as MentorUser[];
 
     // Ensure users are filtered to the active facility
     if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
@@ -194,6 +408,7 @@ export async function getMentors(facilityId?: number | string): Promise<MentorUs
 
 /**
  * Fetches mentees directly from backend API without mock fallbacks.
+ * Automatically links real assigned mentors from /api/v1/assignments.
  * Automatically respects facilityId for Facility Admins.
  */
 export async function getMentees(facilityId?: number | string): Promise<MenteeUser[]> {
@@ -212,9 +427,66 @@ export async function getMentees(facilityId?: number | string): Promise<MenteeUs
   const query = new URLSearchParams({ role: "mentee", page: "1", limit: "100" });
 
   try {
-    const res = await apiClient<any>(`/api/v1/users?${query.toString()}`);
+    const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
+    const [res, assignmentsList] = await Promise.all([
+      apiClient<any>(`/api/v1/users?${query.toString()}`),
+      getAssignments(activeFacilityId).catch(() => []),
+    ]);
+
+    const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+    const facilityStoredAssignments = activeFacilityId
+      ? storedAssignments.filter((a) => !a.facilityId || String(a.facilityId) === String(activeFacilityId))
+      : storedAssignments;
+    const allAssignments = [...assignmentsList, ...facilityStoredAssignments];
+    const groupedAssignments = groupAssignmentsByMentor(allAssignments);
+
+    // Build assignment lookup map: menteeId / menteeName -> AssignedMentorInfo
+    const assignmentMap = new Map<string, { name: string; title: string; avatarInitials: string; status: "assigned" }>();
+
+    for (const a of groupedAssignments) {
+      const mentorName = a.mentor?.name;
+      const mentorTitle = a.mentor?.subtitle || "Clinical Mentor";
+      const mentorInitials = a.mentor?.initials || "CM";
+
+      if (mentorName) {
+        const info = {
+          name: mentorName,
+          title: mentorTitle,
+          avatarInitials: mentorInitials,
+          status: "assigned" as const,
+        };
+
+        if (a.mentee?.id) {
+          assignmentMap.set(String(a.mentee.id).trim(), info);
+        }
+        if (a.mentee?.name) {
+          assignmentMap.set(String(a.mentee.name).trim().toLowerCase(), info);
+        }
+
+        if (Array.isArray(a.mentees)) {
+          for (const m of a.mentees) {
+            if (m?.id) {
+              assignmentMap.set(String(m.id).trim(), info);
+            }
+            if (m?.name) {
+              assignmentMap.set(String(m.name).trim().toLowerCase(), info);
+            }
+          }
+        }
+      }
+    }
+
     const rawList = Array.isArray(res) ? res : res?.data?.users || res?.data || res?.users || [];
-    let list = (rawList || []).map((u: any) => normalizeUser(u, "mentee")) as MenteeUser[];
+    let list = (rawList || []).map((u: any) => {
+      const mentee = normalizeUser(u, "mentee") as MenteeUser;
+      const assignedById = assignmentMap.get(String(mentee.id).trim());
+      const assignedByName = assignmentMap.get(String(mentee.name).trim().toLowerCase());
+      const assigned = assignedById || assignedByName;
+      if (assigned) {
+        mentee.assignedMentor = assigned;
+      }
+      return mentee;
+    }) as MenteeUser[];
 
     // Ensure users are filtered to the active facility
     if (activeFacilityId !== undefined && activeFacilityId !== null && String(activeFacilityId).trim() !== "") {
@@ -235,9 +507,32 @@ export async function getMentorStats(facilityId?: number | string): Promise<Ment
   }
   try {
     const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
-    return (res?.data || res?.stats || res) as MentorSummaryStats;
+    if (res?.data || res?.stats) {
+      return (res?.data || res?.stats) as MentorSummaryStats;
+    }
   } catch (error: any) {
-    console.warn("Failed to fetch mentor stats:", error?.message || error);
+    console.warn("Could not fetch mentor stats from /api/v1/users/stats, deriving from mentors list:", error?.message || error);
+  }
+
+  // Derive real statistics from mentors list
+  try {
+    const mentors = await getMentors(facilityId);
+    const totalMentors = mentors.length;
+    const activeCount = mentors.filter((m) => m.status === "active").length;
+    const pendingCount = mentors.filter((m) => m.status === "pending").length;
+    const inactiveCount = mentors.filter((m) => m.status === "inactive" || m.status === "suspended").length;
+
+    return {
+      totalMentors,
+      activeCount,
+      pendingCount,
+      inactiveCount,
+      quarterTrend: "+0%",
+      completionPercentage: totalMentors > 0 ? Math.round((activeCount / totalMentors) * 100) : 0,
+      completionTrend: "+0%",
+      completionTarget: totalMentors,
+    };
+  } catch {
     return {
       totalMentors: 0,
       activeCount: 0,
@@ -258,9 +553,32 @@ export async function getMenteeStats(facilityId?: number | string): Promise<Ment
   }
   try {
     const res = await apiClient<any>(`/api/v1/users/stats?${query.toString()}`);
-    return (res?.data || res?.stats || res) as MenteeSummaryStats;
+    if (res?.data || res?.stats) {
+      return (res?.data || res?.stats) as MenteeSummaryStats;
+    }
   } catch (error: any) {
-    console.warn("Failed to fetch mentee stats:", error?.message || error);
+    console.warn("Could not fetch mentee stats from /api/v1/users/stats, deriving from mentees list:", error?.message || error);
+  }
+
+  // Derive real statistics from mentees list
+  try {
+    const mentees = await getMentees(facilityId);
+    const totalMentees = mentees.length;
+    const activeInRotation = mentees.filter((m) => m.status === "active").length;
+    const pendingOrientation = mentees.filter((m) => m.status === "pending").length;
+    const operationalPercentage = totalMentees > 0 ? `${Math.round((activeInRotation / totalMentees) * 100)}%` : "0%";
+
+    return {
+      totalMentees,
+      termTrend: "+0%",
+      activeInRotation,
+      operationalPercentage,
+      pendingOrientation,
+      pendingStage: pendingOrientation > 0 ? "Orientation Pending" : "None",
+      avgKnowledgeMastery: 0,
+      cohortTrend: "+0%",
+    };
+  } catch {
     return {
       totalMentees: 0,
       termTrend: "+0%",
@@ -280,11 +598,113 @@ export async function createUser(data: Partial<ClinicalUser>): Promise<ClinicalU
 
 /**
  * Fetches a single user by ID and normalizes into a strongly typed ClinicalUser model.
+ * Automatically links real assigned mentor or mentee load within the user's facility.
  */
-export async function getUserById(id: string): Promise<ClinicalUser> {
-  const res = await apiClient.get<any>(`/api/v1/users/${id}`);
-  const raw = res?.data?.user || res?.data || res?.user || res;
-  return normalizeUser(raw, raw?.role || "mentee");
+export async function getUserById(id: string, facilityId?: number | string): Promise<ClinicalUser> {
+  const { getAssignments, getStoredCreatedAssignments, groupAssignmentsByMentor } = await import("@/services/assignments.service");
+  const res = await apiClient.get<any>(`/api/v1/users/${id}`).catch(() => null);
+  const rawData = res?.data?.user || res?.data?.users?.[0] || res?.data || res?.user || res;
+  const raw = Array.isArray(rawData) ? rawData[0] : rawData;
+  const user = raw ? normalizeUser(raw, raw?.role || "mentee") : ({ id, role: "mentor" } as any);
+
+  const storedMeta =
+    getStoredUserMeta(String(id)) ||
+    getStoredUserMeta(String(user.id)) ||
+    getStoredUserMeta(String(user.email)) ||
+    getStoredUserMeta(user.name);
+
+  if (storedMeta) {
+    if ((!user.phone || user.phone === "Not specified") && storedMeta.phone) {
+      user.phone = storedMeta.phone;
+    }
+    if ((!user.highestQualification || user.highestQualification === "Not specified") && storedMeta.highestQualification) {
+      user.highestQualification = storedMeta.highestQualification;
+    }
+    if ((!user.thematicArea || /^\d+$/.test(user.thematicArea)) && storedMeta.thematicArea) {
+      user.thematicArea = storedMeta.thematicArea;
+    }
+  }
+
+  let targetFacilityId = facilityId ?? user.facilityId;
+  if (!targetFacilityId && typeof window === "undefined") {
+    try {
+      const { getServerSession } = await import("next-auth/next");
+      const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
+      const session = await getServerSession(authOptions);
+      targetFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    } catch {
+      // Ignore
+    }
+  } else if (!targetFacilityId && typeof window !== "undefined") {
+    try {
+      const { getSession } = await import("next-auth/react");
+      const session = await getSession();
+      targetFacilityId = (session?.user as any)?.facility_id ?? (session?.user as any)?.facilityId;
+    } catch {
+      // Ignore
+    }
+  }
+
+  const assignmentsList = await getAssignments(targetFacilityId).catch(() => []);
+  const storedAssignments = typeof window !== "undefined" ? getStoredCreatedAssignments() : [];
+  const facilityStoredAssignments = targetFacilityId
+    ? storedAssignments.filter((a) => !a.facilityId || String(a.facilityId) === String(targetFacilityId))
+    : storedAssignments;
+
+  const allAssignments = [...assignmentsList, ...facilityStoredAssignments];
+  const groupedAssignments = groupAssignmentsByMentor(allAssignments);
+
+  if (user.role === "mentee") {
+    const targetId = String(id).trim();
+    const targetName = String(user.name).trim().toLowerCase();
+
+    const matched = groupedAssignments.find((a) => {
+      const mId = String(a.mentee?.id ?? "").trim();
+      const mName = String(a.mentee?.name ?? "").trim().toLowerCase();
+      if (mId === targetId || (mName && mName === targetName)) return true;
+      if (Array.isArray(a.mentees)) {
+        return a.mentees.some(
+          (m) =>
+            String(m?.id ?? "").trim() === targetId ||
+            (m?.name && String(m.name).trim().toLowerCase() === targetName)
+        );
+      }
+      return false;
+    });
+
+    if (matched && matched.mentor?.name) {
+      (user as MenteeUser).assignedMentor = {
+        name: matched.mentor.name,
+        title: matched.mentor.subtitle || "Clinical Mentor",
+        avatarInitials: matched.mentor.initials || "CM",
+        status: "assigned",
+      };
+    }
+  } else if (user.role === "mentor") {
+    const mentorId = String(id).trim();
+    const mentorName = String(user.name).trim().toLowerCase();
+
+    const matched = groupedAssignments.find(
+      (a) =>
+        String(a.mentor?.id ?? "").trim() === mentorId ||
+        (a.mentor?.name && String(a.mentor.name).trim().toLowerCase() === mentorName)
+    );
+
+    const count = matched
+      ? (matched.mentees && matched.mentees.length > 0 ? matched.mentees.length : (matched.mentee?.id ? 1 : 0))
+      : 0;
+
+    (user as MentorUser).assignedMenteesCount = count;
+
+    const mentor = user as MentorUser;
+    if (mentor.thematicAreaId && (!mentor.thematicArea || /^\d+$/.test(mentor.thematicArea))) {
+      mentor.thematicArea = resolveThematicAreaName(mentor.thematicAreaId);
+    } else if (mentor.thematicArea) {
+      mentor.thematicArea = resolveThematicAreaName(mentor.thematicArea) || mentor.thematicArea;
+    }
+  }
+
+  return user;
 }
 
 export interface ChangeUserStatusResult {

@@ -27,7 +27,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ClinicalUser, MentorUser, MenteeUser } from "@/types/user";
-import { getUserById, changeUserStatus } from "@/services/users.service";
+import { getUserById, changeUserStatus, resolveThematicAreaName, getStoredUserMeta } from "@/services/users.service";
 
 interface UserDetailDialogProps {
   user: ClinicalUser | null;
@@ -63,9 +63,26 @@ export function UserDetailDialog({
     let isMounted = true;
     setIsLoading(true);
 
-    getUserById(String(user.id))
+    const isInvalid = (val?: string) =>
+      !val ||
+      val.trim() === "" ||
+      val.toLowerCase() === "not specified" ||
+      val.toLowerCase() === "notspecified" ||
+      val.toLowerCase() === "undefined" ||
+      val.toLowerCase() === "null";
+
+    getUserById(String(user.id), user.facilityId)
       .then((freshUser) => {
         if (isMounted && freshUser && freshUser.id) {
+          if ((user as MentorUser)?.assignedMenteesCount !== undefined) {
+            (freshUser as MentorUser).assignedMenteesCount = (user as MentorUser).assignedMenteesCount;
+          }
+          if (isInvalid(freshUser.phone) && !isInvalid(user.phone)) {
+            freshUser.phone = user.phone;
+          }
+          if (isInvalid(freshUser.highestQualification) && !isInvalid(user.highestQualification)) {
+            freshUser.highestQualification = user.highestQualification;
+          }
           setCurrentUser(freshUser);
           setTargetStatus(freshUser.status || "active");
         }
@@ -88,6 +105,37 @@ export function UserDetailDialog({
   const isMentor = role === "mentor";
   const name = currentUser.name || "Clinician";
   const systemId = currentUser.systemId || `ID-${currentUser.id}`;
+
+  const isInvalid = (val?: string) =>
+    !val ||
+    val.trim() === "" ||
+    val.toLowerCase() === "not specified" ||
+    val.toLowerCase() === "notspecified" ||
+    val.toLowerCase() === "undefined" ||
+    val.toLowerCase() === "null";
+
+  const storedUserMeta =
+    getStoredUserMeta(String(currentUser.id)) ||
+    getStoredUserMeta(String(currentUser.email)) ||
+    getStoredUserMeta(String(user?.id)) ||
+    getStoredUserMeta(String(user?.email)) ||
+    getStoredUserMeta(name);
+
+  const displayPhone =
+    (!isInvalid(currentUser.phone) && currentUser.phone) ||
+    (!isInvalid((currentUser as any).phone_number) && (currentUser as any).phone_number) ||
+    (!isInvalid((currentUser as any).phoneNumber) && (currentUser as any).phoneNumber) ||
+    (!isInvalid(user?.phone) && user?.phone) ||
+    (!isInvalid(storedUserMeta?.phone) && storedUserMeta?.phone) ||
+    "Not specified";
+
+  const displayQualification =
+    (!isInvalid(currentUser.highestQualification) && currentUser.highestQualification) ||
+    (!isInvalid((currentUser as any).highest_qualification) && (currentUser as any).highest_qualification) ||
+    (!isInvalid((currentUser as any).qualification) && (currentUser as any).qualification) ||
+    (!isInvalid(user?.highestQualification) && user?.highestQualification) ||
+    (!isInvalid(storedUserMeta?.highestQualification) && storedUserMeta?.highestQualification) ||
+    "Not specified";
 
   const handleStatusChange = async (newStatus: string) => {
     if (!currentUser.id || isUpdatingStatus) return;
@@ -294,7 +342,7 @@ export function UserDetailDialog({
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-700">
                 <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                <span>{currentUser.phone || "+251 91 123 4567"}</span>
+                <span>{displayPhone}</span>
               </div>
             </div>
 
@@ -310,7 +358,7 @@ export function UserDetailDialog({
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                <span>Regional Medical Center</span>
+                <span>Affiliated Health Center</span>
               </div>
             </div>
           </div>
@@ -318,52 +366,39 @@ export function UserDetailDialog({
           {/* Clinical & Academic Details */}
           <div className="p-4 rounded-xl border border-gray-100 bg-white shadow-xs space-y-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">
-              Professional & Cadre Details
+              Qualifications & Clinical Details
             </span>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <span className="text-gray-400 block text-[11px]">Profession / Qualification</span>
+                <span className="text-gray-400 block text-[11px]">Highest Qualification</span>
                 <span className="font-bold text-gray-900">
-                  {currentUser.profession || (currentUser as any).highest_qualification || "Midwife Practitioner"}
+                  {displayQualification}
                 </span>
               </div>
 
-              <div>
-                <span className="text-gray-400 block text-[11px]">Primary Thematic Area</span>
-                <span className="font-bold text-gray-900">{currentUser.thematicArea || "Maternal & Child"}</span>
-              </div>
-
               {isMentor ? (
-                <>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Clinical Department</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MentorUser).department || "Maternal & Fetal Unit"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Years of Experience</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MentorUser).yearsOfExperience ?? 5} Years
-                    </span>
-                  </div>
-                </>
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Primary Thematic Area</span>
+                  <span className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                    {resolveThematicAreaName(currentUser.thematicArea) ||
+                    (currentUser.thematicAreaId !== undefined
+                      ? resolveThematicAreaName(currentUser.thematicAreaId)
+                      : undefined) ||
+                    (currentUser.thematicArea && !/^\d+$/.test(currentUser.thematicArea)
+                      ? currentUser.thematicArea
+                      : undefined) || (
+                      <span className="text-gray-400 italic font-normal">Unassigned</span>
+                    )}
+                  </span>
+                </div>
               ) : (
-                <>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Cadre Level</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MenteeUser).cadreLevel || "Junior Midwife Resident"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 block text-[11px]">Knowledge Score Tier</span>
-                    <span className="font-bold text-gray-900">
-                      {(currentUser as MenteeUser).scoreTier || "Tier 1"}
-                    </span>
-                  </div>
-                </>
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Assigned Mentor</span>
+                  <span className="font-bold text-gray-900">
+                    {(currentUser as MenteeUser).assignedMentor?.name || "Unassigned"}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -392,15 +427,25 @@ export function UserDetailDialog({
                   <span className="text-xs font-bold text-gray-900">Knowledge Mastery Score</span>
                 </div>
                 <span className="text-xs font-extrabold text-emerald-800">
-                  {(currentUser as MenteeUser).knowledgeScore ?? 84}%
+                  {(currentUser as MenteeUser).knowledgeScore !== undefined &&
+                  (currentUser as MenteeUser).knowledgeScore !== null
+                    ? `${(currentUser as MenteeUser).knowledgeScore}%`
+                    : "Pending Assessment"}
                 </span>
               </div>
-              <div className="w-full bg-emerald-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-[#194611] h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(currentUser as MenteeUser).knowledgeScore ?? 84}%` }}
-                />
-              </div>
+              {(currentUser as MenteeUser).knowledgeScore !== undefined &&
+              (currentUser as MenteeUser).knowledgeScore !== null ? (
+                <div className="w-full bg-emerald-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-[#194611] h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(currentUser as MenteeUser).knowledgeScore}%` }}
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-500 italic">
+                  No theoretical or practical assessments completed yet.
+                </p>
+              )}
             </div>
           )}
         </div>
