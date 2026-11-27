@@ -1,4 +1,5 @@
 import { NavItem, UserRole } from "@/types/navigation";
+import newsManagement from "@/lib/news-management";
 
 export const superAdminNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
@@ -7,6 +8,7 @@ export const superAdminNavLinks: NavItem[] = [
   { name: "Thematic Areas", href: "/thematic-areas", icon: "thematic" },
   { name: "Passing Rules", href: "/assessment-passing-rules", icon: "passing-rules" },
   { name: "Reports", href: "/reports", icon: "reports" },
+  { name: "Landing Page", href: "/super-admin/landing-page", icon: "landing-page" },
   { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
@@ -36,7 +38,8 @@ export const menteeNavLinks: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
   { name: "Learning Modules", href: "/learning/modules", icon: "learning" },
   { name: "Clinical Skills", href: "/clinical-skills", icon: "clinical-skills" },
-  { name: "Mentors", href: "/mentors", icon: "mentor" },
+  { name: "My Mentor", href: "/mentee/mentors", icon: "mentor" },
+  { name: "Sessions", href: "/mentee/sessions", icon: "sessions" },
   { name: "Messages", href: "/messaging", icon: "messages" },
   { name: "Progress", href: "/progress", icon: "progress" },
   { name: "Clinical Assistant", href: "/ai-assistant", icon: "assistant" },
@@ -45,11 +48,7 @@ export const menteeNavLinks: NavItem[] = [
 
 export function getNavLinksByRole(role?: UserRole | string): NavItem[] {
   const normalized = (role || "").toLowerCase().replace(/[-_\s]/g, "");
-  if (
-    normalized.includes("superadmin") ||
-    role === "super_admin" ||
-    normalized === "admin"
-  ) {
+  if (newsManagement.isNewsAdminRole(role)) {
     return superAdminNavLinks;
   }
   if (normalized.includes("facilityadmin") || role === "facility_admin") {

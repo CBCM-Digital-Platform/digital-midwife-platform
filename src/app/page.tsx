@@ -20,24 +20,22 @@ import {
   Sparkles,
   Building2,
   BookOpen,
-  BarChart3,
   CheckCircle2,
   HeartHandshake,
   Stethoscope,
   Lock,
   ChevronRight,
-  GraduationCap,
   Layers,
-  FileCheck2,
-  Clock,
-  Eye,
-  Sliders,
-  Laptop,
+  Newspaper,
 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DEFAULT_LANDING_PAGE_CONTENT } from "@/config/landing-page-defaults";
 import { cn } from "@/lib/utils";
+import { getPublicNews, type PublicNewsArticle } from "@/services/news.service";
+import { getPublicLandingPageContent } from "@/services/landing-page.service";
+import type { LandingPageContent } from "@/types/landing-page";
 
 // Animated Counter Component for Statistics
 function Counter({
@@ -115,6 +113,56 @@ const springTransition: Transition = {
 
 export default function LandingPage() {
   const [activeRole, setActiveRole] = useState<string>("mentor");
+  const [landingPageContent, setLandingPageContent] = useState<LandingPageContent>(
+    DEFAULT_LANDING_PAGE_CONTENT
+  );
+  const [news, setNews] = useState<PublicNewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [newsRetry, setNewsRetry] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    getPublicLandingPageContent()
+      .then((result) => {
+        if (active) setLandingPageContent(result);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          console.error("Unable to load managed landing page content; showing the default content.", error);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    getPublicNews()
+      .then((result) => {
+        if (active) setNews(result.items);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setNewsError(error instanceof Error ? error.message : "Unable to load news.");
+        }
+      })
+      .finally(() => {
+        if (active) setNewsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [newsRetry]);
+
+  const content = landingPageContent;
+  const activeRoleContent = content.roles.cards.find((role) => role.id === activeRole)
+    || content.roles.cards[0];
 
   return (
     <div className="min-h-screen bg-[#FDFDFE] text-slate-900 selection:bg-[#FDD028]/30 selection:text-[#194611] overflow-x-hidden">
@@ -154,6 +202,9 @@ export default function LandingPage() {
               </a>
               <a href="#impact" className="hover:text-[#194611] transition-colors">
                 Clinical Impact
+              </a>
+              <a href="#news" className="hover:text-[#194611] transition-colors">
+                News
               </a>
               <a href="#security" className="hover:text-[#194611] transition-colors">
                 Governance
@@ -197,21 +248,19 @@ export default function LandingPage() {
               {/* Refined eyebrow pill with subtle warm gold spark */}
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#194611]/5 border border-[#194611]/15 text-[#194611] text-xs font-semibold mb-6 shadow-2xs">
                 <Sparkles className="h-3.5 w-3.5 text-[#FDD028] fill-[#FDD028]/70" />
-                <span>Center for Adolescent Girls Health • CBCM Clinical Program</span>
+                <span>{content.hero.eyebrow}</span>
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.12] mb-6">
-                Elevating Clinical Skills.{" "}
+                {content.hero.title}{" "}
                 <span className="text-[#194611] relative">
-                  Saving Mother & Newborn Lives.
+                  {content.hero.highlight}
                   <span className="block h-1 w-24 bg-[#FDD028] rounded-full mt-2 opacity-90" />
                 </span>
               </h1>
 
               <p className="text-lg sm:text-xl text-slate-600 font-normal leading-relaxed mb-8 max-w-2xl">
-                The CBCM platform connects senior preceptors with frontline midwives across accredited
-                teaching hospitals. Standardize clinical evaluations, oversee competency milestones,
-                and transform health outcomes.
+                {content.hero.description}
               </p>
 
               {/* Exclusive Login CTA & Badges */}
@@ -241,18 +290,12 @@ export default function LandingPage() {
 
               {/* Clinical Verification Badges */}
               <div className="pt-6 border-t border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6 text-xs text-slate-600 font-medium">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                  <span>Facility-Led Cohorts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                  <span>National Guidelines</span>
-                </div>
-                <div className="flex items-center gap-2 col-span-2 sm:col-span-1">
-                  <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                  <span>Role-Based Access</span>
-                </div>
+                {content.hero.proof_points.map((point, index) => (
+                  <div key={`${point}-${index}`} className={`flex items-center gap-2 ${index === 2 ? "col-span-2 sm:col-span-1" : ""}`}>
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-[#194611]" />
+                    <span>{point}</span>
+                  </div>
+                ))}
               </div>
             </motion.div>
 
@@ -270,8 +313,8 @@ export default function LandingPage() {
                 {/* Pure edge-to-edge photo with rounded-3xl and soft shadow */}
                 <div className="relative w-full h-[480px] sm:h-[530px] rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 group">
                   <img
-                    src="/image.png"
-                    alt="Midwife Mentors and Mentees outside Operation Room"
+                    src={content.hero.image_url}
+                    alt={content.hero.image_alt}
                     className="w-full h-full object-cover object-[50%_18%] group-hover:scale-102 transition-transform duration-700"
                     loading="eager"
                   />
@@ -287,7 +330,7 @@ export default function LandingPage() {
                   transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                 >
                   <div className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
-                  <span className="text-xs font-semibold text-slate-800">12 Hospitals Connected</span>
+                  <span className="text-xs font-semibold text-slate-800">{content.hero.connected_badge}</span>
                 </motion.div>
 
                 {/* Floating Shadcn Card: Theory Score Pass badge overlapping bottom-left */}
@@ -303,13 +346,13 @@ export default function LandingPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-bold text-slate-900">Theory Score: 85%</span>
+                        <span className="text-sm font-bold text-slate-900">{content.hero.verification_title}</span>
                         <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase">
-                          Pass
+                          {content.hero.verification_label}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                        Clinical Competency Verified
+                        {content.hero.verification_description}
                       </p>
                     </div>
                   </Card>
@@ -339,202 +382,75 @@ export default function LandingPage() {
             >
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#194611]/8 text-[#194611] text-xs font-bold uppercase tracking-wider mb-4 border border-[#194611]/15 shadow-2xs">
                 <Sparkles className="h-3.5 w-3.5 text-[#FDD028] fill-[#FDD028]" />
-                <span>Standardized Clinical Workflow</span>
+                <span>{content.how_it_works.eyebrow}</span>
               </div>
               <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-4 leading-tight">
-                How CBCM Powers <span className="text-[#194611]">Hospital Mentorship</span>
+                {content.how_it_works.title}{" "}
+                <span className="text-[#194611]">{content.how_it_works.highlight}</span>
               </h2>
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto">
-                A unified 3-stage clinical progression framework connecting bedside evaluations,
-                standardized curriculum authoring, and sequential competency pacing.
+                {content.how_it_works.description}
               </p>
             </motion.div>
           </div>
 
-          {/* 3 Perfectly Aligned Clinical Cards */}
           <motion.div
-            className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch"
+            className="grid grid-cols-1 gap-8 items-stretch lg:grid-cols-3"
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, margin: "-50px" }}
           >
-            {/* ── CARD 1: On-The-Floor OSCE Assessments */}
-            <motion.div variants={itemVariants} className="h-full">
-              <Card className="h-full bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between group">
-                <div>
-                  {/* Image container: aspect 4/3 ensures full photo visibility without head-cropping */}
-                  <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-100 mb-6 group-hover:border-slate-300 transition-colors">
-                    <img
-                      src="/image2.jpg"
-                      alt="Midwife mentor conducting clinical skills assessment"
-                      className="w-full h-full object-cover object-[50%_18%] group-hover:scale-103 transition-transform duration-500"
-                    />
-                    {/* Top step badge */}
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/80 shadow-xs flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#194611]" />
-                      <span className="text-[11px] font-bold text-[#194611] uppercase tracking-wider">Step 01</span>
-                    </div>
-                    {/* Bottom status badge */}
-                    <div className="absolute bottom-3 left-3 right-3">
-                      <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/80 shadow-md flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="text-[11px] font-bold text-slate-900 truncate">
-                          Live Station • Bedside Evaluation
-                        </span>
+            {content.how_it_works.cards.map((card, index) => {
+              const FeatureIcon = [Stethoscope, BookOpen, Layers, Sparkles][index % 4];
+              return (
+                <motion.div key={`${card.id}-${index}`} variants={itemVariants} className="h-full">
+                  <Card className="group flex h-full flex-col justify-between rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl sm:p-7">
+                    <div>
+                      <div className="relative mb-6 aspect-[4/3] w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-100">
+                        {card.image_url && (
+                          <img
+                            src={card.image_url}
+                            alt={card.image_alt}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-103"
+                          />
+                        )}
+                        {card.step && (
+                          <div className="absolute left-3 top-3 rounded-lg border border-white/80 bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#194611] shadow-xs">
+                            {card.step}
+                          </div>
+                        )}
+                        {card.status && (
+                          <div className="absolute bottom-3 left-3 right-3 truncate rounded-xl border border-white/80 bg-white/95 px-3 py-1.5 text-[11px] font-bold text-slate-900 shadow-md">
+                            {card.status}
+                          </div>
+                        )}
                       </div>
+                      {card.category && (
+                        <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-[#194611]/12 bg-[#194611]/8 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#194611]">
+                          <FeatureIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          {card.category}
+                        </div>
+                      )}
+                      <h3 className="mb-3 text-xl font-extrabold leading-snug text-slate-900 transition-colors group-hover:text-[#194611] sm:text-2xl">
+                        {card.title}
+                      </h3>
+                      <p className="mb-6 text-sm leading-relaxed text-slate-600">{card.description}</p>
                     </div>
-                  </div>
-
-                  {/* Header & title */}
-                  <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#194611]/8 text-[#194611] text-[11px] font-bold uppercase tracking-wider border border-[#194611]/12 mb-3 w-fit">
-                    <Stethoscope className="h-3.5 w-3.5 text-[#194611]" />
-                    <span>Objective Clinical OSCE</span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-[#194611] transition-colors mb-3 leading-snug">
-                    On-The-Floor OSCE Assessments
-                  </h3>
-                  <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                    Senior mentors conduct bedside observation using standardized digital OSCE checklists.
-                    Score procedural steps live with split-screen rubrics and submit immediate formative feedback.
-                  </p>
-                </div>
-
-                {/* Features list pinned to bottom for perfect alignment */}
-                <div className="mt-auto pt-5 border-t border-slate-100 space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Objective scoring criteria</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Split-screen grading rubric</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Instant formative debrief</span>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-
-            {/* ── CARD 2: Standardized National Curriculum */}
-            <motion.div variants={itemVariants} className="h-full">
-              <Card className="h-full bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between group">
-                <div>
-                  {/* Image container: aspect 4/3 ensures full photo visibility without cropping */}
-                  <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-100 mb-6 group-hover:border-slate-300 transition-colors">
-                    <img
-                      src="/image3.jpg"
-                      alt="Healthcare mentors and admins aligning on curriculum standards"
-                      className="w-full h-full object-cover object-[50%_20%] group-hover:scale-103 transition-transform duration-500"
-                    />
-                    {/* Top step badge */}
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/80 shadow-xs flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#194611]" />
-                      <span className="text-[11px] font-bold text-[#194611] uppercase tracking-wider">Step 02</span>
-                    </div>
-                    {/* Bottom status badge */}
-                    <div className="absolute bottom-3 left-3 right-3">
-                      <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/80 shadow-md flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[#194611] shrink-0" />
-                        <span className="text-[11px] font-bold text-slate-900 truncate">
-                          National Healthcare Framework
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Header & title */}
-                  <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#194611]/8 text-[#194611] text-[11px] font-bold uppercase tracking-wider border border-[#194611]/12 mb-3 w-fit">
-                    <BookOpen className="h-3.5 w-3.5 text-[#194611]" />
-                    <span>Super Admin Authoring</span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-[#194611] transition-colors mb-3 leading-snug">
-                    Standardized Curriculum
-                  </h3>
-                  <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                    Super Admins centralize clinical learning modules across thematic areas, ensuring
-                    hospital cohorts adhere to national health ministry directives and accredited protocols.
-                  </p>
-                </div>
-
-                {/* Features list pinned to bottom for perfect alignment */}
-                <div className="mt-auto pt-5 border-t border-slate-100 space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>MOH directive alignment</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Thematic domain mapping</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Centrally approved resources</span>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-
-            {/* ── CARD 3: Drip-Feed Learning & Milestones */}
-            <motion.div variants={itemVariants} className="h-full">
-              <Card className="h-full bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between group">
-                <div>
-                  {/* Image container: aspect 4/3 ensures full photo visibility without cropping */}
-                  <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-100 mb-6 group-hover:border-slate-300 transition-colors">
-                    <img
-                      src="/image1.jpg"
-                      alt="Midwives studying clinical modules in classroom"
-                      className="w-full h-full object-cover object-[50%_25%] group-hover:scale-103 transition-transform duration-500"
-                    />
-                    {/* Top step badge */}
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/80 shadow-xs flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#194611]" />
-                      <span className="text-[11px] font-bold text-[#194611] uppercase tracking-wider">Step 03</span>
-                    </div>
-                    {/* Bottom status badge */}
-                    <div className="absolute bottom-3 left-3 right-3">
-                      <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/80 shadow-md flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                        <span className="text-[11px] font-bold text-slate-900 truncate">
-                          Milestone-Gated Release
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Header & title */}
-                  <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#194611]/8 text-[#194611] text-[11px] font-bold uppercase tracking-wider border border-[#194611]/12 mb-3 w-fit">
-                    <Layers className="h-3.5 w-3.5 text-[#194611]" />
-                    <span>Competency Pacing</span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-[#194611] transition-colors mb-3 leading-snug">
-                    Drip-Feed Learning
-                  </h3>
-                  <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                    Modules unlock sequentially as mentees master prerequisite competencies, preventing
-                    cognitive overload and ensuring solid foundational clinical skills before advancement.
-                  </p>
-                </div>
-
-                {/* Features list pinned to bottom for perfect alignment */}
-                <div className="mt-auto pt-5 border-t border-slate-100 space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Prerequisite-gated progression</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Verified milestone mastery</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-[#194611] shrink-0" />
-                    <span>Cognitive skill retention</span>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
+                    {card.features.length > 0 && (
+                      <ul className="mt-auto space-y-2.5 border-t border-slate-100 pt-5">
+                        {card.features.map((feature, featureIndex) => (
+                          <li key={`${feature}-${featureIndex}`} className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#194611]" aria-hidden="true" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Card>
+                </motion.div>
+              );
+            })}
           </motion.div>
         </div>
       </section>
@@ -542,337 +458,118 @@ export default function LandingPage() {
       {/* ───────────────────────────────────────────────────────────
           ROLE-BASED ECOSYSTEM (INTERACTIVE SHADCN TABS)
       ──────────────────────────────────────────────────────────── */}
-      <section id="roles" className="py-28 bg-white relative overflow-hidden scroll-mt-20 border-b border-slate-200/80">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(25,70,17,0.06)_0%,_transparent_55%)] pointer-events-none" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={springTransition}
-            >
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#194611]/8 text-[#194611] text-xs font-bold uppercase tracking-widest mb-5 border border-[#194611]/20 shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#194611]" />
-                Role-Based Ecosystem
-              </div>
-              <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-4 leading-tight">
-                A Platform for{" "}
-                <span className="text-[#194611]">Every Role</span>
-              </h2>
-              <p className="text-base sm:text-lg text-slate-500 leading-relaxed">
-                Tailored interfaces and strict RBAC privileges designed specifically for each tier of
-                clinical mentorship and hospital administration.
-              </p>
-            </motion.div>
+      <section id="roles" className="scroll-mt-20 border-b border-slate-200/80 bg-white py-28">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto mb-14 max-w-3xl text-center">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#194611]/20 bg-[#194611]/8 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-[#194611] shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#194611]" />
+              {content.roles.eyebrow}
+            </div>
+            <h2 className="mb-4 text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl">
+              {content.roles.title}{" "}
+              <span className="text-[#194611]">{content.roles.highlight}</span>
+            </h2>
+            <p className="text-base leading-relaxed text-slate-500 sm:text-lg">{content.roles.description}</p>
           </div>
 
-          {/* Interactive Role Tabs */}
-          <div className="w-full max-w-6xl mx-auto">
-            <Tabs
-              value={activeRole}
-              onValueChange={(val) => setActiveRole(val as string)}
-              className="w-full flex flex-col items-center"
-            >
-              {/* Tab Triggers */}
-              <div className="w-full flex justify-center mb-10 overflow-x-auto px-2 py-1">
-                <TabsList className="bg-white p-1.5 rounded-2xl border border-slate-200 inline-flex gap-1 shadow-sm">
-                  {[
-                    { value: "super_admin", label: "Super Admin" },
-                    { value: "facility_admin", label: "Facility Admin" },
-                    { value: "mentor", label: "Mentor" },
-                    { value: "mentee", label: "Mentee" },
-                  ].map((tab) => (
-                    <TabsTrigger
-                      key={tab.value}
-                      value={tab.value}
-                      className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all data-active:bg-[#194611] data-active:text-[#FDD028] data-active:shadow-md text-slate-500 hover:text-slate-800 hover:bg-slate-50 cursor-pointer whitespace-nowrap"
-                    >
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-
-              {/* Animated Tab Contents via AnimatePresence */}
-              <div className="w-full">
-                <AnimatePresence mode="wait">
-                  {/* 1. Super Admin View */}
-                  {activeRole === "super_admin" && (
-                    <motion.div
-                      key="super_admin"
+          {content.roles.cards.length > 0 && activeRoleContent ? (
+            <div className="mx-auto w-full max-w-6xl">
+              <Tabs
+                value={activeRoleContent.id}
+                onValueChange={setActiveRole}
+                className="flex w-full flex-col items-center"
+              >
+                <div className="mb-10 w-full overflow-x-auto px-2 py-1">
+                  <TabsList className="inline-flex gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+                    {content.roles.cards.map((role, index) => (
+                      <TabsTrigger
+                        key={`${role.id}-${index}`}
+                        value={role.id}
+                        className="cursor-pointer whitespace-nowrap rounded-xl px-5 py-2.5 text-xs font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-800 data-active:bg-[#194611] data-active:text-[#FDD028] data-active:shadow-md sm:text-sm"
+                      >
+                        {role.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+                <div className="w-full">
+                  <AnimatePresence mode="wait">
+                    <motion.article
+                      key={activeRoleContent.id}
                       initial={{ opacity: 0, y: 18 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={springTransition}
-                      className="w-full"
+                      className="grid overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-lg lg:grid-cols-2"
                     >
-                      <div className="rounded-3xl bg-white border border-slate-200/80 shadow-lg overflow-hidden">
-                        <div className="grid grid-cols-1 lg:grid-cols-2">
-                          {/* Left: text */}
-                          <div className="p-8 sm:p-12 flex flex-col justify-center">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#194611]/10 text-[#194611] text-[11px] font-bold uppercase tracking-wider mb-5 border border-[#194611]/15 w-fit">
-                              <ShieldCheck className="h-3.5 w-3.5" />
-                              System-Wide Governance
-                            </div>
-                            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-4 leading-snug">
-                              National Curriculum &amp; Content Creation
-                            </h3>
-                            <p className="text-slate-500 text-sm sm:text-[15px] leading-relaxed mb-8">
-                              Super Administrators manage the foundation of CBCM. Author learning materials,
-                              approve regional medical guidelines, and monitor cross-facility performance
-                              dashboards without touching local hospital confidential data.
-                            </p>
-                            <div className="space-y-4">
-                              {[
-                                { icon: <BookOpen className="h-3.5 w-3.5" />, label: "Curriculum Authoring", desc: "Create modules, attach clinical guidelines, configure passing thresholds." },
-                                { icon: <BarChart3 className="h-3.5 w-3.5" />, label: "Ministry Analytics", desc: "Aggregated metrics tracking midwife competency retention nationwide." },
-                                { icon: <Sliders className="h-3.5 w-3.5" />, label: "Facility Oversight", desc: "Provision teaching hospitals and assign authorized Facility Administrators." },
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-3.5">
-                                  <div className="h-7 w-7 rounded-lg bg-[#194611] text-[#FDD028] flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                                    {item.icon}
-                                  </div>
-                                  <div>
-                                    <span className="text-sm font-bold text-slate-800">{item.label}: </span>
-                                    <span className="text-sm text-slate-500">{item.desc}</span>
-                                  </div>
+
+                      <div className="flex flex-col justify-center p-8 sm:p-12">
+                        <div className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-[#194611]/15 bg-[#194611]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#194611]">
+                          <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                          {activeRoleContent.eyebrow}
+                        </div>
+                        <h3 className="mb-4 text-2xl font-extrabold leading-snug text-slate-900 sm:text-3xl">
+                          {activeRoleContent.title}
+                        </h3>
+                        <p className="mb-8 text-sm leading-relaxed text-slate-500 sm:text-[15px]">
+                          {activeRoleContent.description}
+                        </p>
+                        {activeRoleContent.highlights.length > 0 && (
+                          <ul className="space-y-4">
+                            {activeRoleContent.highlights.map((item, index) => (
+                              <li key={`${item.title}-${index}`} className="flex items-start gap-3.5">
+                                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#194611]" aria-hidden="true" />
+                                <div>
+                                  <span className="text-sm font-bold text-slate-800">{item.title}: </span>
+                                  <span className="text-sm text-slate-500">{item.description}</span>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                          {/* Right: feature icon grid */}
-                          <div className="bg-slate-50/80 border-l border-slate-200/70 p-8 sm:p-10 grid grid-cols-2 gap-4 content-center">
-                            {[
-                              { icon: <Sparkles className="h-5 w-5" />, color: "emerald", label: "Content Creation", desc: "Rich media, videos & objective rubrics." },
-                              { icon: <Building2 className="h-5 w-5" />, color: "amber", label: "Hospital Directory", desc: "12+ teaching hospital networks." },
-                              { icon: <FileCheck2 className="h-5 w-5" />, color: "blue", label: "OSCE Standards", desc: "Calibrated checklists aligned nationally." },
-                              { icon: <ShieldCheck className="h-5 w-5" />, color: "purple", label: "Role RBAC", desc: "Strict boundary enforcement." },
-                            ].map((card, i) => (
-                              <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm flex flex-col gap-3 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-                                <div className={`h-10 w-10 rounded-xl bg-${card.color}-50 text-${card.color}-600 flex items-center justify-center`}>
-                                  {card.icon}
-                                </div>
-                                <span className="font-bold text-slate-900 text-sm leading-tight">{card.label}</span>
-                                <p className="text-xs text-slate-500 leading-relaxed">{card.desc}</p>
-                              </div>
+                              </li>
                             ))}
-                          </div>
-                        </div>
+                          </ul>
+                        )}
                       </div>
-                    </motion.div>
-                  )}
-
-                  {/* 2. Facility Admin View */}
-                  {activeRole === "facility_admin" && (
-                    <motion.div
-                      key="facility_admin"
-                      initial={{ opacity: 0, y: 18 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={springTransition}
-                      className="w-full"
-                    >
-                      <div className="rounded-3xl bg-white border border-slate-200/80 shadow-lg overflow-hidden">
-                        <div className="grid grid-cols-1 lg:grid-cols-2">
-                          {/* Left: text */}
-                          <div className="p-8 sm:p-12 flex flex-col justify-center">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#194611]/10 text-[#194611] text-[11px] font-bold uppercase tracking-wider mb-5 border border-[#194611]/15 w-fit">
-                              <Building2 className="h-3.5 w-3.5" />
-                              Hospital Command Centre
+                      <div className="relative min-h-[380px] bg-slate-50/80">
+                        {activeRoleContent.image_url && (
+                          <img
+                            src={activeRoleContent.image_url}
+                            alt={activeRoleContent.image_alt}
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                        <div className="absolute bottom-6 left-6 right-6 space-y-3">
+                          {(activeRoleContent.caption || activeRoleContent.subcaption) && (
+                            <div className="rounded-2xl border border-white/70 bg-white/95 px-4 py-3 shadow-xl backdrop-blur-md">
+                              {activeRoleContent.caption && (
+                                <p className="text-xs font-bold text-slate-900">{activeRoleContent.caption}</p>
+                              )}
+                              {activeRoleContent.subcaption && (
+                                <p className="mt-1 text-[11px] text-slate-500">{activeRoleContent.subcaption}</p>
+                              )}
                             </div>
-                            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-4 leading-snug">
-                              Mentor-Mentee Pairing &amp; Content Distribution
-                            </h3>
-                            <p className="text-slate-500 text-sm sm:text-[15px] leading-relaxed mb-8">
-                              Facility Admins manage local hospital operations — mapping senior preceptors to
-                              junior midwives, dispatching learning modules, and monitoring compliance without
-                              curriculum interference.
-                            </p>
-                            <div className="space-y-4">
-                              {[
-                                { label: "Preceptor Pairing", desc: "Assign 1-on-1 pairs based on clinical specialty and ward rotations." },
-                                { label: "Thematic-Area Coverage", desc: "Maintain mentor assignments so published modules are available automatically by thematic area." },
-                                { label: "Cohort Rosters", desc: "Onboard hospital personnel and maintain active staff rosters." },
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-3.5">
-                                  <CheckCircle2 className="h-5 w-5 text-[#194611] shrink-0 mt-0.5" />
-                                  <div>
-                                    <span className="text-sm font-bold text-slate-800">{item.label}: </span>
-                                    <span className="text-sm text-slate-500">{item.desc}</span>
-                                  </div>
+                          )}
+                          {activeRoleContent.feature_cards.length > 0 && (
+                            <div className="grid grid-cols-2 gap-3">
+                              {activeRoleContent.feature_cards.map((feature, index) => (
+                                <div key={`${feature.title}-${index}`} className="rounded-xl border border-slate-200/80 bg-white/95 p-3 shadow-sm">
+                                  <p className="text-xs font-bold text-slate-900">{feature.title}</p>
+                                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{feature.description}</p>
                                 </div>
                               ))}
                             </div>
-                          </div>
-                          {/* Right: full-height image */}
-                          <div className="relative min-h-[380px] lg:min-h-0">
-                            <img
-                              src="/image3.jpg"
-                              alt="Facility administrator and hospital mentors coordinating mentorship pairs"
-                              className="absolute inset-0 w-full h-full object-cover object-[50%_20%]"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-                            <div className="absolute bottom-6 left-6 right-6">
-                              <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/70">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="h-8 w-8 rounded-lg bg-[#194611]/10 text-[#194611] flex items-center justify-center shrink-0">
-                                    <Building2 className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-900">Facility Oversight • Referral Hospital</p>
-                                    <p className="text-[11px] text-slate-500">100% Mentee-Preceptor Pairing Compliance</p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
-                    </motion.div>
-                  )}
-
-                  {/* 3. Mentor (Preceptor) View */}
-                  {activeRole === "mentor" && (
-                    <motion.div
-                      key="mentor"
-                      initial={{ opacity: 0, y: 18 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={springTransition}
-                      className="w-full"
-                    >
-                      <div className="rounded-3xl bg-white border border-slate-200/80 shadow-lg overflow-hidden">
-                        <div className="grid grid-cols-1 lg:grid-cols-2">
-                          {/* Left: text */}
-                          <div className="p-8 sm:p-12 flex flex-col justify-center">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#194611]/10 text-[#194611] text-[11px] font-bold uppercase tracking-wider mb-5 border border-[#194611]/15 w-fit">
-                              <Stethoscope className="h-3.5 w-3.5" />
-                              Senior Clinical Preceptor
-                            </div>
-                            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-4 leading-snug">
-                              Bedside Coaching &amp; OSCE Assessment
-                            </h3>
-                            <p className="text-slate-500 text-sm sm:text-[15px] leading-relaxed mb-8">
-                              Senior preceptors oversee assigned mentees directly on the hospital floor —
-                              conducting bedside mentorship sessions, grading clinical skills with digital OSCE
-                              criteria, and assigning targeted learning interventions.
-                            </p>
-                            <div className="space-y-4">
-                              {[
-                                { label: "Live Digital OSCE", desc: "Grading checklist for resuscitation, active labor, and postpartum care." },
-                                { label: "Action Plans", desc: "Identify gaps and set concrete remedial action plans for subsequent rounds." },
-                                { label: "Progress Tracking", desc: "Monitor mentee score trajectories across quarterly mentoring rounds." },
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-3.5">
-                                  <CheckCircle2 className="h-5 w-5 text-[#194611] shrink-0 mt-0.5" />
-                                  <div>
-                                    <span className="text-sm font-bold text-slate-800">{item.label}: </span>
-                                    <span className="text-sm text-slate-500">{item.desc}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          {/* Right: full-height image — mentor uses image1.jpg */}
-                          <div className="relative min-h-[380px] lg:min-h-0">
-                            <img
-                              src="/image1.jpg"
-                              alt="Senior preceptors reviewing clinical mentorship protocols"
-                              className="absolute inset-0 w-full h-full object-cover object-[50%_20%]"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-                            <div className="absolute bottom-6 left-6 right-6">
-                              <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/70">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="h-8 w-8 rounded-lg bg-[#194611]/10 text-[#194611] flex items-center justify-center shrink-0">
-                                    <Stethoscope className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-900">Senior Midwife Preceptors • Bedside Observation</p>
-                                    <p className="text-[11px] text-slate-500">Real-time scoring with instant debrief</p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* 4. Mentee (Junior Midwife) View */}
-                  {activeRole === "mentee" && (
-                    <motion.div
-                      key="mentee"
-                      initial={{ opacity: 0, y: 18 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={springTransition}
-                      className="w-full"
-                    >
-                      <div className="rounded-3xl bg-white border border-slate-200/80 shadow-lg overflow-hidden">
-                        <div className="grid grid-cols-1 lg:grid-cols-2">
-                          {/* Left: text */}
-                          <div className="p-8 sm:p-12 flex flex-col justify-center">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#194611]/10 text-[#194611] text-[11px] font-bold uppercase tracking-wider mb-5 border border-[#194611]/15 w-fit">
-                              <GraduationCap className="h-3.5 w-3.5" />
-                              Frontline Midwife Mentee
-                            </div>
-                            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-4 leading-snug">
-                              Distraction-Free Exam Mode &amp; Competency Mastery
-                            </h3>
-                            <p className="text-slate-500 text-sm sm:text-[15px] leading-relaxed mb-8">
-                              Mentees learn at their own pace with distraction-free theoretical examinations,
-                              interactive case studies, and clear visibility into preceptor evaluations and
-                              upcoming competency milestones.
-                            </p>
-                            <div className="space-y-4">
-                              {[
-                                { label: "Distraction-Free Exam", desc: "Focus-first test environment with timed questions and instant review." },
-                                { label: "Clinical Feedback", desc: "Read comprehensive preceptor notes and targeted improvement steps." },
-                                { label: "Certificate Pathway", desc: "Track progress toward accredited clinical certification and graduation." },
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-3.5">
-                                  <CheckCircle2 className="h-5 w-5 text-[#194611] shrink-0 mt-0.5" />
-                                  <div>
-                                    <span className="text-sm font-bold text-slate-800">{item.label}: </span>
-                                    <span className="text-sm text-slate-500">{item.desc}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          {/* Right: full-height image */}
-                          <div className="relative min-h-[380px] lg:min-h-0">
-                            <img
-                              src="/image4.jpg"
-                              alt="Junior midwife engaged in clinical study and digital learning"
-                              className="absolute inset-0 w-full h-full object-cover object-[50%_15%]"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-                            <div className="absolute bottom-6 left-6 right-6">
-                              <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/70">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="h-8 w-8 rounded-lg bg-[#194611]/10 text-[#194611] flex items-center justify-center shrink-0">
-                                    <GraduationCap className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-900">Mentee Study Center • Exam Mode Active</p>
-                                    <p className="text-[11px] text-slate-500">Focus UI • No Popups • Instant Verification</p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </Tabs>
-          </div>
+                    </motion.article>
+                  </AnimatePresence>
+                </div>
+              </Tabs>
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-600">
+              Role information is not available at this time.
+            </p>
+          )}
         </div>
       </section>
 
@@ -889,81 +586,43 @@ export default function LandingPage() {
               transition={springTransition}
             >
               <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#194611]/8 text-[#194611] text-xs font-bold uppercase tracking-wider mb-4 border border-[#194611]/15">
-                Measurable Healthcare Impact
+                {content.impact.eyebrow}
               </div>
               <h2 className="text-3xl sm:text-4xl font-extrabold text-[#194611] tracking-tight mb-4">
-                Strengthening Frontline Healthcare Capacity
+                {content.impact.title}
               </h2>
               <p className="text-base sm:text-lg text-slate-600">
-                Standardized clinical mentorship drives measurable improvements in neonatal
-                resuscitation, obstetric emergency management, and respectful maternity care.
+                {content.impact.description}
               </p>
             </motion.div>
           </div>
 
-          {/* 4 Animated Counter Statistics Cards with Spring Reveal */}
           <motion.div
-            className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 mb-20"
+            className="mb-20 grid grid-cols-2 gap-4 sm:gap-8 lg:grid-cols-4"
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, margin: "-50px" }}
           >
-            <motion.div
-              variants={itemVariants}
-              className="bg-white border border-slate-200/80 rounded-2xl p-6 text-center hover:shadow-md transition-all hover:border-[#194611]/20 hover:-translate-y-1"
-            >
-              <div className="h-11 w-11 mx-auto rounded-xl bg-[#194611]/10 text-[#194611] flex items-center justify-center mb-3">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <p className="text-3xl sm:text-4xl font-extrabold text-[#194611] mb-1">
-                <Counter value={12} suffix="+" />
-              </p>
-              <p className="text-xs sm:text-sm font-semibold text-slate-700">Accredited Hospitals</p>
-              <p className="text-[11px] text-slate-500 mt-1">Teaching & Referral Facilities</p>
-            </motion.div>
-
-            <motion.div
-              variants={itemVariants}
-              className="bg-white border border-slate-200/80 rounded-2xl p-6 text-center hover:shadow-md transition-all hover:border-[#194611]/20 hover:-translate-y-1"
-            >
-              <div className="h-11 w-11 mx-auto rounded-xl bg-[#194611]/10 text-[#194611] flex items-center justify-center mb-3">
-                <Award className="h-5 w-5" />
-              </div>
-              <p className="text-3xl sm:text-4xl font-extrabold text-[#194611] mb-1">
-                <Counter value={450} suffix="+" />
-              </p>
-              <p className="text-xs sm:text-sm font-semibold text-slate-700">Certified Preceptors</p>
-              <p className="text-[11px] text-slate-500 mt-1">Senior Midwife Mentors</p>
-            </motion.div>
-
-            <motion.div
-              variants={itemVariants}
-              className="bg-white border border-slate-200/80 rounded-2xl p-6 text-center hover:shadow-md transition-all hover:border-[#194611]/20 hover:-translate-y-1"
-            >
-              <div className="h-11 w-11 mx-auto rounded-xl bg-[#194611]/10 text-[#194611] flex items-center justify-center mb-3">
-                <Users className="h-5 w-5" />
-              </div>
-              <p className="text-3xl sm:text-4xl font-extrabold text-[#194611] mb-1">
-                <Counter value={1850} suffix="+" />
-              </p>
-              <p className="text-xs sm:text-sm font-semibold text-slate-700">Midwives Empowered</p>
-              <p className="text-[11px] text-slate-500 mt-1">Frontline Clinical Mentees</p>
-            </motion.div>
-
-            <motion.div
-              variants={itemVariants}
-              className="bg-white border border-slate-200/80 rounded-2xl p-6 text-center hover:shadow-md transition-all hover:border-[#194611]/20 hover:-translate-y-1"
-            >
-              <div className="h-11 w-11 mx-auto rounded-xl bg-[#194611]/10 text-[#194611] flex items-center justify-center mb-3">
-                <HeartHandshake className="h-5 w-5" />
-              </div>
-              <p className="text-3xl sm:text-4xl font-extrabold text-[#194611] mb-1">
-                <Counter value={98} suffix="%" />
-              </p>
-              <p className="text-xs sm:text-sm font-semibold text-slate-700">Competency Retention</p>
-              <p className="text-[11px] text-slate-500 mt-1">Verified Clinical Pass Rate</p>
-            </motion.div>
+            {content.impact.stats.map((stat, index) => {
+              const StatIcon = [Building2, Award, Users, HeartHandshake][index % 4];
+              return (
+                <motion.div
+                  key={`${stat.id}-${index}`}
+                  variants={itemVariants}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-6 text-center transition-all hover:-translate-y-1 hover:border-[#194611]/20 hover:shadow-md"
+                >
+                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#194611]/10 text-[#194611]">
+                    <StatIcon className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <p className="mb-1 text-3xl font-extrabold text-[#194611] sm:text-4xl">
+                    <Counter value={stat.value} suffix={stat.suffix} />
+                  </p>
+                  <p className="text-xs font-semibold text-slate-700 sm:text-sm">{stat.label}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{stat.description}</p>
+                </motion.div>
+              );
+            })}
           </motion.div>
 
           {/* ───────────────────────────────────────────────────────────
@@ -983,16 +642,15 @@ export default function LandingPage() {
             <div className="relative z-10 max-w-3xl mx-auto text-center flex flex-col items-center">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#FDD028] text-xs font-semibold mb-6 border border-white/10">
                 <Lock className="h-3.5 w-3.5" />
-                <span>Restricted Health Facility Portal</span>
+                <span>{content.impact.cta.eyebrow}</span>
               </div>
 
               <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-6">
-                Ready to Access Your Clinical Mentorship Dashboard?
+                {content.impact.cta.title}
               </h2>
 
               <p className="text-base sm:text-lg text-white/80 max-w-2xl mb-8 leading-relaxed font-normal">
-                Log in to review assigned cohorts, conduct competency evaluations, or analyze
-                cross-hospital clinical indicators.
+                {content.impact.cta.description}
               </p>
 
               {/* Exclusive Login Button */}
@@ -1003,7 +661,7 @@ export default function LandingPage() {
                   "bg-[#FDD028] hover:bg-[#eabf20] text-[#194611] font-bold shadow-lg shadow-black/20 hover:shadow-xl transition-all rounded-xl h-14 px-9 text-base flex items-center gap-3 cursor-pointer"
                 )}
               >
-                <span>Log In to CBCM Platform</span>
+                <span>{content.impact.cta.button_label}</span>
                 <ArrowRight className="h-5 w-5 text-[#194611]" />
               </Link>
 
@@ -1012,6 +670,100 @@ export default function LandingPage() {
               </p>
             </div>
           </motion.div>
+        </div>
+      </section>
+
+      <section id="news" className="scroll-mt-20 border-t border-slate-200/80 bg-white py-20 sm:py-28">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-12 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#194611]/15 bg-[#194611]/5 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#194611]">
+                <Newspaper className="h-3.5 w-3.5" aria-hidden="true" />
+                Updates from CBCM
+              </div>
+              <h2 className="text-3xl font-extrabold tracking-tight text-[#194611] sm:text-4xl">
+                News
+              </h2>
+              <p className="mt-3 text-base text-slate-600 sm:text-lg">
+                The latest announcements and updates from our clinical mentorship program.
+              </p>
+            </div>
+          </div>
+
+          {newsLoading ? (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-600" role="status">
+              Loading news...
+            </p>
+          ) : newsError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+              <p className="text-sm text-red-800" role="alert">{newsError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewsLoading(true);
+                  setNewsError(null);
+                  setNewsRetry((current) => current + 1);
+                }}
+                className="mt-4 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+              >
+                Try again
+              </button>
+            </div>
+          ) : news.length === 0 ? (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-600">
+              There are no news articles to share right now. Please check back soon.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {news.map((article) => {
+                const publishedDate = new Date(article.published_at);
+                const formattedDate = Number.isNaN(publishedDate.getTime())
+                  ? null
+                  : new Intl.DateTimeFormat(undefined, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    }).format(publishedDate);
+
+                return (
+                  <article
+                    key={article.id}
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow hover:shadow-lg"
+                  >
+                    {article.cover_image_url ? (
+                      <img
+                        src={article.cover_image_url}
+                        alt=""
+                        className="h-52 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-52 items-center justify-center bg-[#194611]/5 text-[#194611]" aria-hidden="true">
+                        <Newspaper className="h-12 w-12 opacity-60" />
+                      </div>
+                    )}
+                    <div className="p-6">
+                      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-semibold text-slate-500">
+                        {article.category && (
+                          <span className="rounded-full bg-[#194611]/8 px-3 py-1 text-[#194611]">
+                            {article.category}
+                          </span>
+                        )}
+                        {formattedDate && <time dateTime={article.published_at}>{formattedDate}</time>}
+                      </div>
+                      <h3 className="text-xl font-bold leading-snug text-slate-900">
+                        {article.title}
+                      </h3>
+                      {article.summary && (
+                        <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-slate-600">
+                          {article.summary}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 

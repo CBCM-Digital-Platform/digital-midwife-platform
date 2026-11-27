@@ -5,6 +5,7 @@ import type {
     ResumeTarget,
     AssignedMentor,
 } from "@/types/mentee-dashboard";
+import { getAssignedMentors } from "@/services/mentee.service";
 
 const CHAPTERS: Chapter[] = [
     {
@@ -114,44 +115,14 @@ function findResume(chapters: Chapter[]): ResumeTarget | null {
 }
 
 export async function getMenteeDashboard(): Promise<MenteeDashboardData> {
-    let assignedMentor: AssignedMentor = {
-        id: 0,
-        name: "Awaiting Assignment",
-        credentials: "N/A",
-        role: "Clinical Preceptor",
-        openSlots: 0,
-        active: false,
-    };
+    let mentors: AssignedMentor[] = [];
+    let mentorLoadError: string | undefined;
 
     try {
-        const { getAssignments, getStoredCreatedAssignments } = await import("@/services/assignments.service");
-        let myId: string | null = null;
-        if (typeof window === "undefined") {
-            const { getServerSession } = await import("next-auth/next");
-            const { authOptions } = await import("@/app/api/auth/[...nextauth]/route");
-            const session = await getServerSession(authOptions);
-            myId = (session?.user as any)?.id ? String((session?.user as any).id) : null;
-        }
-
-        const [assignments, localAssignments] = await Promise.all([
-            getAssignments().catch(() => []),
-            Promise.resolve(getStoredCreatedAssignments()),
-        ]);
-        const all = [...assignments, ...localAssignments];
-        const match = all.find((a) => !myId || String(a.mentee?.id || "") === myId);
-
-        if (match && match.mentor) {
-            assignedMentor = {
-                id: Number(String(match.mentor.id).replace(/\D/g, "")) || 1,
-                name: match.mentor.name || "Assigned Mentor",
-                credentials: match.mentor.subtitle || "CNM",
-                role: "Clinical Mentor",
-                openSlots: 3,
-                active: true,
-            };
-        }
-    } catch {
-        // Fall back gracefully
+        mentors = await getAssignedMentors();
+    } catch (error) {
+        console.error("Could not load the mentee's assigned mentors:", error);
+        mentorLoadError = "Unable to load your mentor assignments right now.";
     }
 
     return {
@@ -161,7 +132,8 @@ export async function getMenteeDashboard(): Promise<MenteeDashboardData> {
         modulePassRate: 100,
         cpdHours: 28.5,
         cpdTarget: 40,
-        mentor: assignedMentor,
+        mentors,
+        mentorLoadError,
         handbook: {
             title: "Maternal-Fetal Clinical & Physical Assessment (PDF)",
             details: "36 Pages • 4.2 MB • WHO/ICM compliant",

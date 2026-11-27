@@ -64,8 +64,15 @@ function downloadRoster(rows: MyMentee[]) {
     URL.revokeObjectURL(url);
 }
 
-export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[] }) {
+export function MyMenteesView({
+    mentees: initialMentees,
+    loadError: initialLoadError = null,
+}: {
+    mentees: MyMentee[];
+    loadError?: string | null;
+}) {
     const [mentees, setMentees] = useState<MyMentee[]>(initialMentees);
+    const [loadError, setLoadError] = useState<string | null>(initialLoadError);
     const [facility, setFacility] = useState("ALL");
     const [level, setLevel] = useState("ALL");
     const [assessmentFilter, setAssessmentFilter] = useState("ALL");
@@ -89,10 +96,18 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
     useEffect(() => {
         let isMounted = true;
         getMyMentees().then((fresh) => {
-            if (isMounted && fresh && fresh.length > 0) {
+            if (isMounted) {
                 setMentees(fresh);
+                setLoadError(null);
             }
-        }).catch(() => null);
+        }).catch((error) => {
+            console.error("Could not refresh the mentor's assigned mentees:", error);
+            if (isMounted) {
+                setLoadError(
+                    "We could not reach the backend to load your mentees. Check your connection and try again."
+                );
+            }
+        });
 
         const syncStored = () => {
             const stored = getStoredAssessments();
@@ -292,7 +307,23 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                 </div>
             </div>
 
-            {mentees.length === 0 ? (
+            {loadError && (
+                <div
+                    className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between"
+                    role="alert"
+                >
+                    <p>{loadError}</p>
+                    <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className="shrink-0 rounded-lg bg-red-700 px-3 py-2 font-semibold text-white hover:bg-red-800"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
+            {mentees.length === 0 && !loadError ? (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center space-y-3 shadow-2xs">
                     <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[#194611]">
                         <UserPlus className="w-6 h-6 text-[#194611]" />
@@ -302,7 +333,7 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                         Your facility administrator has not assigned any mentees to your clinical cohort yet. Once assignments are created in the system, they will appear here with active procedural competencies.
                     </p>
                 </div>
-            ) : (
+            ) : mentees.length > 0 ? (
                 <>
             {/* Filter Controls Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
@@ -445,7 +476,7 @@ export function MyMenteesView({ mentees: initialMentees }: { mentees: MyMentee[]
                 onAssessmentUpdated={handleAssessmentUpdated}
             />
                 </>
-            )}
+            ) : null}
         </div>
     );
 }
